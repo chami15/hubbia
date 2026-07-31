@@ -6,10 +6,26 @@ RETURNING id, nome, repositorio_url, repositorio_owner, repositorio_nome, branch
           arquitetura_resumo, ultimo_commit_sha, status, criado_em, atualizado_em;
 
 --QUERY: listar
-SELECT id, nome, repositorio_url, repositorio_owner, repositorio_nome, branch, descricao, stack,
-       arquitetura_resumo, status, criado_em, atualizado_em
-FROM projetos
-ORDER BY atualizado_em DESC;
+-- `estagnado` repete a MESMA regra de listar_estagnados (ativo, sem
+-- card em aberto, parado há mais que o limite) mas pra TODO projeto,
+-- não só o mais parado — é o que a tela usa pro destaque visual do
+-- card. O cutoff é o mesmo "agora menos dias_estagnacao" calculado em
+-- Python, pra não duplicar a leitura de config dentro do SQL.
+SELECT p.id, p.nome, p.repositorio_url, p.repositorio_owner, p.repositorio_nome, p.branch, p.descricao, p.stack,
+       p.arquitetura_resumo, p.status, p.criado_em, p.atualizado_em,
+       (
+           p.status = 'ativo'
+           AND NOT EXISTS (SELECT 1 FROM cards WHERE projeto_id = p.id AND status IN ('sugerido', 'aceito'))
+           AND COALESCE(ultimo_card.resolvido_em, p.criado_em) <= %s
+       ) AS estagnado
+FROM projetos p
+LEFT JOIN LATERAL (
+    SELECT resolvido_em FROM cards
+    WHERE projeto_id = p.id AND status IN ('rejeitado', 'finalizado')
+    ORDER BY resolvido_em DESC
+    LIMIT 1
+) ultimo_card ON true
+ORDER BY p.atualizado_em DESC;
 
 --QUERY: buscar_por_id
 SELECT id, nome, repositorio_url, repositorio_owner, repositorio_nome, branch, descricao, stack,

@@ -12,9 +12,12 @@ já existe um card em aberto; a UNIQUE INDEX em `cards` é só o backstop.
 """
 import json
 import re
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from agents.norte import agente as agente_norte
 from agents.norte import github_client
+from config import settings
 from utils.query_executor import executar_query
 
 _HISTORICO_CARDS_LIMITE = 10
@@ -95,7 +98,13 @@ async def criar_projeto(nome: str, repositorio_url: str, branch: str | None = No
 
 
 def listar_projetos() -> list[dict]:
-    return executar_query("projetos:listar")
+    # mesmo cálculo de cutoff que resolvers/interacao.py:_checar_norte usa
+    # pra decidir proatividade — aqui é só leitura, exibida em TODO
+    # projeto (lá é achar o mais parado, um só, pra gerar aviso de trabalho)
+    limite = datetime.now(ZoneInfo(settings.timezone_padrao)) - timedelta(
+        days=settings.interacao_dias_estagnacao_norte
+    )
+    return executar_query("projetos:listar", params=(limite,))
 
 
 def obter_projeto(projeto_id: int) -> dict:

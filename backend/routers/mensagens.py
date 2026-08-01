@@ -36,3 +36,11 @@ def responder_mensagem(mensagem_id: int, corpo: RespostaInput):
         return resolver.responder_mensagem(mensagem_id, corpo.conteudo)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.post("/{mensagem_id}/marcar-lida")
+def marcar_mensagem_lida(mensagem_id: int):
+    try:
+        return resolver.marcar_mensagem_lida(mensagem_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))

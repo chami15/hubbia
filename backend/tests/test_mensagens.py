@@ -80,3 +80,57 @@ class TestResponderMensagem:
         _criar_chefe()
         with pytest.raises(ValueError, match="não encontrada"):
             mensagens.responder_mensagem(99999, "Oi?")
+
+
+class TestListagemTrazLidaPeloChefe:
+    def test_mensagem_nova_comeca_nao_lida(self):
+        chefe_id = _criar_chefe()
+        agente_id = _criar_agente("Norte", especialidade="norte")
+        _inserir_mensagem(agente_id, chefe_id, "social", "Bom dia!")
+
+        todas = mensagens.listar_mensagens(None, 50)
+        assert todas[0]["lida_pelo_chefe"] is False
+
+    def test_filtro_por_tipo_tambem_traz_o_campo(self):
+        chefe_id = _criar_chefe()
+        agente_id = _criar_agente("Norte", especialidade="norte")
+        _inserir_mensagem(agente_id, chefe_id, "trabalho", "Aviso de trabalho")
+
+        do_tipo = mensagens.listar_mensagens("trabalho", 50)
+        assert do_tipo[0]["lida_pelo_chefe"] is False
+
+
+class TestMarcarMensagemLida:
+    def test_marca_como_lida(self):
+        chefe_id = _criar_chefe()
+        agente_id = _criar_agente("Norte", especialidade="norte")
+        original = _inserir_mensagem(agente_id, chefe_id, "social", "Oi, chefe!")
+
+        resultado = mensagens.marcar_mensagem_lida(original["id"])
+
+        assert resultado["lida_pelo_chefe"] is True
+        de_novo = mensagens.listar_mensagens(None, 50)
+        assert de_novo[0]["lida_pelo_chefe"] is True
+
+    def test_e_idempotente(self):
+        chefe_id = _criar_chefe()
+        agente_id = _criar_agente("Norte", especialidade="norte")
+        original = _inserir_mensagem(agente_id, chefe_id, "social", "Oi de novo!")
+
+        mensagens.marcar_mensagem_lida(original["id"])
+        resultado = mensagens.marcar_mensagem_lida(original["id"])  # marcar já-lida não quebra
+        assert resultado["lida_pelo_chefe"] is True
+
+    def test_rejeita_mensagem_nao_direcionada_ao_chefe(self):
+        _criar_chefe()
+        a_id = _criar_agente("A")
+        b_id = _criar_agente("B")
+        original = _inserir_mensagem(a_id, b_id, "social", "Conversa entre colegas")
+
+        with pytest.raises(ValueError, match="não foi direcionada"):
+            mensagens.marcar_mensagem_lida(original["id"])
+
+    def test_rejeita_mensagem_inexistente(self):
+        _criar_chefe()
+        with pytest.raises(ValueError, match="não encontrada"):
+            mensagens.marcar_mensagem_lida(99999)

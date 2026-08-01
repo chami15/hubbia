@@ -52,3 +52,20 @@ def responder_mensagem(mensagem_id: int, conteudo: str) -> dict:
         params=(chefe["id"], original["remetente_id"], "social", conteudo, numero_tick, mensagem_id),
     )
     return resultado[0]
+
+
+def marcar_mensagem_lida(mensagem_id: int) -> dict:
+    """"Lida" é por CLIQUE na mensagem específica (decisão do chefe) —
+    nunca por abrir o painel ou expandir a conversa inteira. Só faz
+    sentido pra mensagem que chegou PRA ele; marcar uma que ele mesmo
+    mandou, ou que é de outro par, não tem o que significar aqui."""
+    chefe = _buscar_chefe()
+
+    rows = executar_query("mensagens:buscar_por_id", params=(mensagem_id,))
+    if not rows:
+        raise ValueError(f"Mensagem {mensagem_id} não encontrada.")
+    if rows[0]["destinatario_id"] != chefe["id"]:
+        raise ValueError(f"Mensagem {mensagem_id} não foi direcionada a você.")
+
+    resultado = executar_query("mensagens:marcar_lida", returning=True, params=(mensagem_id,))
+    return resultado[0]

@@ -1,5 +1,5 @@
 --QUERY: listar_todas
-SELECT m.id, m.tipo, m.conteudo, m.tick, m.criado_em,
+SELECT m.id, m.tipo, m.conteudo, m.tick, m.criado_em, m.lida_pelo_chefe,
        m.remetente_id, r.nome AS remetente_nome,
        m.destinatario_id, d.nome AS destinatario_nome,
        m.respondendo_a_id,
@@ -56,7 +56,7 @@ ORDER BY criado_em ASC
 LIMIT 1;
 
 --QUERY: listar_por_tipo
-SELECT m.id, m.tipo, m.conteudo, m.tick, m.criado_em,
+SELECT m.id, m.tipo, m.conteudo, m.tick, m.criado_em, m.lida_pelo_chefe,
        m.remetente_id, r.nome AS remetente_nome,
        m.destinatario_id, d.nome AS destinatario_nome,
        m.respondendo_a_id,
@@ -75,6 +75,15 @@ LIMIT %s;
 SELECT id, tipo, conteudo, tick, criado_em, remetente_id, destinatario_id, respondendo_a_id
 FROM mensagens
 WHERE id = %s;
+
+--QUERY: marcar_lida
+-- "Lida" é por CLIQUE na mensagem específica, nunca por abrir a thread
+-- inteira (decisão do chefe) — por isso é um UPDATE de uma linha só, não
+-- um "marcar tudo desta conversa". Idempotente: marcar de novo uma já
+-- lida não faz mal nenhum.
+UPDATE mensagens SET lida_pelo_chefe = TRUE
+WHERE id = %s
+RETURNING id, lida_pelo_chefe;
 
 --QUERY: caixa_de_entrada
 -- "Caixa de mensagens do chefe": tudo que foi direcionado a ele,

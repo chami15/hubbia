@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 
-from agents._shared.execucoes import registrar_execucao
+from agents._shared.execucoes import cronometrar, registrar_execucao
 from config import settings
 
 load_dotenv()
@@ -80,16 +80,18 @@ async def gerar_analise(dados_calculados: dict) -> dict:
         dados_json=json.dumps(dados_calculados, ensure_ascii=False, indent=2, default=str)
     )
 
-    try:
-        resultado = await model.ainvoke(prompt)
-    except Exception as exc:
-        registrar_execucao(
-            especialidade=_ESPECIALIDADE,
-            modelo=settings.llm_model_strong,
-            contexto_prompt=prompt,
-            erro=f"falha na chamada: {exc}",
-        )
-        raise RuntimeError(f"Falha ao chamar o modelo: {exc}") from exc
+    with cronometrar() as t:
+        try:
+            resultado = await model.ainvoke(prompt)
+        except Exception as exc:
+            registrar_execucao(
+                especialidade=_ESPECIALIDADE,
+                modelo=settings.llm_model_strong,
+                contexto_prompt=prompt,
+                erro=f"falha na chamada: {exc}",
+                duracao_ms=t.ms,
+            )
+            raise RuntimeError(f"Falha ao chamar o modelo: {exc}") from exc
 
     if resultado.get("parsing_error"):
         registrar_execucao(
@@ -97,6 +99,7 @@ async def gerar_analise(dados_calculados: dict) -> dict:
             modelo=settings.llm_model_strong,
             contexto_prompt=prompt,
             erro=f"parsing_error: {resultado['parsing_error']}",
+            duracao_ms=t.ms,
         )
         raise RuntimeError(f"Agente não retornou o formato esperado: {resultado['parsing_error']}")
 
@@ -118,6 +121,7 @@ async def gerar_analise(dados_calculados: dict) -> dict:
         custo_usd=custo_usd,
         contexto_prompt=prompt,
         saida_bruta=str(resultado["parsed"]),
+        duracao_ms=t.ms,
     )
 
     return {

@@ -22,7 +22,34 @@ máximo imprime um aviso — é o oposto da disciplina do resto do hub
 (onde falha vira erro claro), e é deliberado: log que quebra o que
 estava logando é pior que log nenhum.
 """
+import time
+from contextlib import contextmanager
+
 from utils.query_executor import executar_query
+
+
+@contextmanager
+def cronometrar():
+    """Mede quanto tempo o bloco levou, em ms.
+
+        with cronometrar() as t:
+            resultado = await modelo.ainvoke(prompt)
+        registrar_execucao(..., duracao_ms=t.ms)
+
+    Fica em volta da chamada e NÃO dentro de `registrar_execucao` porque
+    o que interessa medir é o tempo do MODELO, não o do nosso INSERT.
+    Usa `perf_counter` (monotônico) em vez do relógio de parede: ajuste
+    de horário no meio da medição não vira latência negativa.
+
+    O tempo é contado mesmo quando o bloco levanta exceção — chamada que
+    demorou 30s e estourou é justamente a que mais interessa num painel
+    de monitoramento."""
+    marca = type("Cronometro", (), {"ms": None})()
+    inicio = time.perf_counter()
+    try:
+        yield marca
+    finally:
+        marca.ms = int((time.perf_counter() - inicio) * 1000)
 
 # Prompt e saída crua entram truncados. São pra replay/diagnóstico, não
 # pro dado em si — e o Norte manda contexto de repositório inteiro, que
@@ -58,6 +85,7 @@ def registrar_execucao(
     saida_bruta: str | None = None,
     erro: str | None = None,
     dry_run: bool = False,
+    duracao_ms: int | None = None,
 ) -> None:
     """Grava uma chamada de LLM em `tick_execucoes`.
 
@@ -92,6 +120,7 @@ def registrar_execucao(
                 custo_usd,
                 dry_run,
                 erro,
+                duracao_ms,
             ),
         )
     except Exception as exc:  # noqa: BLE001 — ver REGRA CENTRAL no topo

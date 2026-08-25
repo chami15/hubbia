@@ -220,6 +220,107 @@ def obter_saude() -> dict:
     return {"status_geral": geral, "itens": itens}
 
 
+def obter_observabilidade(horas: int = 24) -> dict:
+    """O painel de monitoramento: os quatro sinais clássicos (latência,
+    tráfego, erros, saturação) medidos em cima de `tick_execucoes`.
+
+    Saturação aqui é o ORÇAMENTO, não CPU ou memória: num hub cujo
+    gargalo real é dinheiro de LLM, "quanto do teto já foi" é a medida
+    honesta de quão perto o sistema está de parar.
+    """
+    inicio = _agora() - timedelta(hours=horas)
+
+    serie = [dict(r) for r in executar_query("tick_execucoes:serie_por_hora", params=(horas,))]
+    lat_geral_rows = executar_query("tick_execucoes:latencia_geral", params=(inicio,))
+    lat_geral = dict(lat_geral_rows[0]) if lat_geral_rows else {}
+    lat_agentes = [dict(r) for r in executar_query("tick_execucoes:latencia_por_agente", params=(inicio,))]
+    recentes = [dict(r) for r in executar_query("tick_execucoes:execucoes_recentes", params=(40,))]
+    dependencias = [dict(r) for r in executar_query("tick_execucoes:ultima_chamada_por_especialidade")]
+
+    chamadas = sum(int(p["chamadas"]) for p in serie)
+    erros = sum(int(p["erros"]) for p in serie)
+    gasto_hoje = resolver_tick.orcamento_gasto_hoje()
+    teto = settings.orcamento_diario_usd
+
+    return {
+        "janela_horas": horas,
+        "gerado_em": _agora().isoformat(),
+        # --- os quatro sinais ---
+        "latencia": {
+            "p50_ms": lat_geral.get("p50_ms"),
+            "p95_ms": lat_geral.get("p95_ms"),
+            "media_ms": lat_geral.get("media_ms"),
+            "amostras": int(lat_geral.get("amostras") or 0),
+        },
+        "trafego": {
+            "chamadas": chamadas,
+            "chamadas_por_hora": round(chamadas / horas, 2) if horas else 0.0,
+        },
+        "erros": {
+            "total": erros,
+            "taxa_sucesso": round((chamadas - erros) / chamadas, 4) if chamadas else 1.0,
+        },
+        "saturacao": {
+            "gasto_usd": round(gasto_hoje, 6),
+            "teto_usd": teto,
+            "fracao": round(gasto_hoje / teto, 4) if teto else 0.0,
+        },
+        # --- séries e listas ---
+        "serie": [
+            {
+                "hora": p["hora"].isoformat(),
+                "chamadas": int(p["chamadas"]),
+                "erros": int(p["erros"]),
+                "custo_usd": round(float(p["custo_usd"]), 6),
+                "duracao_media_ms": int(p["duracao_media_ms"]) if p["duracao_media_ms"] is not None else None,
+            }
+            for p in serie
+        ],
+        "latencia_por_agente": [
+            {
+                "agente_id": r["agente_id"],
+                "agente_nome": r["agente_nome"],
+                "especialidade": r["especialidade"],
+                "amostras": int(r["amostras"]),
+                "p50_ms": r["p50_ms"],
+                "p95_ms": r["p95_ms"],
+                "max_ms": r["max_ms"],
+            }
+            for r in lat_agentes
+        ],
+        "dependencias": [
+            {
+                "especialidade": r["especialidade"],
+                "agente_nome": r["agente_nome"],
+                "ultimo_ok": r["ultimo_ok"].isoformat() if r["ultimo_ok"] else None,
+                "ultimo_erro": r["ultimo_erro"].isoformat() if r["ultimo_erro"] else None,
+            }
+            for r in dependencias
+        ],
+        "execucoes": [
+            {
+                "id": r["id"],
+                "tick": r["tick"],
+                "agente_nome": r["agente_nome"],
+                "especialidade": r["especialidade"],
+                "modelo": r["modelo"],
+                "tokens_in": int(r["tokens_in"] or 0),
+                "tokens_out": int(r["tokens_out"] or 0),
+                "custo_usd": round(float(r["custo_usd"] or 0), 6),
+                "duracao_ms": r["duracao_ms"],
+                "erro": r["erro"],
+                "criado_em": r["criado_em"].isoformat() if r["criado_em"] else None,
+                # o prompt vai truncado de novo aqui: no banco já está
+                # cortado em 4000, e a tela mostra um resumo — quem quiser
+                # o replay inteiro consulta a linha direto
+                "contexto_prompt": (r["contexto_prompt"] or "")[:600] or None,
+                "saida_bruta": (r["saida_bruta"] or "")[:600] or None,
+            }
+            for r in recentes
+        ],
+    }
+
+
 def obter_metricas(dias: int = 1) -> dict:
     """Custo e uso a partir de `tick_execucoes`. `dias=1` é hoje."""
     inicio = _inicio_do_dia_real() - timedelta(days=max(0, dias - 1))

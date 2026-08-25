@@ -206,3 +206,80 @@ class TestMotriz:
         assert entrada["tipo"] == "trabalho"
         assert mock_social.call_count == 0
         assert tick.orcamento_gasto_hoje() == gasto_antes
+
+
+class TestObservabilidade:
+    def test_janela_tem_um_balde_por_hora(self):
+        """Hora SEM chamada precisa aparecer como zero, não sumir — buraco
+        no eixo do tempo mente sobre o formato da curva."""
+        obs = infra.obter_observabilidade(horas=6)
+
+        assert len(obs["serie"]) == 6
+        assert all(p["chamadas"] == 0 for p in obs["serie"])
+
+    def test_percentis_de_latencia(self):
+        a = _criar_agente("A", "teste")
+        for ms in [100, 200, 300, 400, 5000]:
+            registrar_gasto(a, 0.001, duracao_ms=ms)
+
+        obs = infra.obter_observabilidade(horas=24)
+
+        assert obs["latencia"]["amostras"] == 5
+        assert obs["latencia"]["p50_ms"] == 300
+        # p95 fica perto do outlier — é justamente o que a média esconderia
+        assert obs["latencia"]["p95_ms"] > 4000
+
+    def test_chamada_sem_duracao_nao_entra_no_percentil(self):
+        """Linha antiga (anterior à migration 011) ou falha que nem chegou
+        ao modelo não vira latência zero puxando a média pra baixo."""
+        a = _criar_agente("A", "teste")
+        registrar_gasto(a, 0.001, duracao_ms=500)
+        registrar_gasto(a, 0.001, duracao_ms=None)
+
+        obs = infra.obter_observabilidade(horas=24)
+
+        assert obs["latencia"]["amostras"] == 1
+        assert obs["trafego"]["chamadas"] == 2  # tráfego conta as duas
+
+    def test_saturacao_e_o_orcamento(self):
+        from config import settings
+
+        a = _criar_agente("A", "teste")
+        registrar_gasto(a, settings.orcamento_diario_usd / 2)
+
+        obs = infra.obter_observabilidade(horas=24)
+        assert round(obs["saturacao"]["fracao"], 2) == 0.5
+
+    def test_dry_run_nao_polui_nenhum_sinal(self):
+        a = _criar_agente("A", "teste")
+        registrar_gasto(a, 0.5, dry_run=True, duracao_ms=9999)
+
+        obs = infra.obter_observabilidade(horas=24)
+
+        assert obs["trafego"]["chamadas"] == 0
+        assert obs["latencia"]["amostras"] == 0
+        assert obs["saturacao"]["gasto_usd"] == 0.0
+
+    def test_dependencia_com_erro_mais_novo_que_o_sucesso(self):
+        """O 'uptime' honesto: última chamada bem-sucedida por dependência,
+        derivada do uso real — sem pingar Google/GitHub a cada tick."""
+        a = _criar_agente("Agenda", "agenda")
+        registrar_gasto(a, 0.001, duracao_ms=100)
+        registrar_gasto(a, 0.001, duracao_ms=100, erro="token expirado")
+
+        obs = infra.obter_observabilidade(horas=24)
+        dep = next(d for d in obs["dependencias"] if d["especialidade"] == "agenda")
+
+        assert dep["ultimo_ok"] is not None
+        assert dep["ultimo_erro"] is not None
+        assert dep["ultimo_erro"] > dep["ultimo_ok"]  # está falhando AGORA
+
+    def test_log_traz_as_execucoes_mais_recentes(self):
+        a = _criar_agente("A", "teste")
+        registrar_gasto(a, 0.001, duracao_ms=111, erro="algo quebrou")
+
+        obs = infra.obter_observabilidade(horas=24)
+
+        assert len(obs["execucoes"]) == 1
+        assert obs["execucoes"][0]["erro"] == "algo quebrou"
+        assert obs["execucoes"][0]["duracao_ms"] == 111

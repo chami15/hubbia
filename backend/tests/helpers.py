@@ -34,6 +34,7 @@ def registrar_gasto(
     tick: int | None = None,
     dry_run: bool = False,
     erro: str | None = None,
+    duracao_ms: int | None = None,
 ) -> None:
     """Grava uma execução direto em `tick_execucoes` — é de onde o
     orçamento diário sai desde que o UNION sobre as tabelas de domínio
@@ -45,5 +46,5 @@ def registrar_gasto(
     executar_query(
         "tick_execucoes:inserir",
         returning=True,
-        params=(tick, agente_id, "gpt-4o", None, None, None, 10, 5, custo_usd, dry_run, erro),
+        params=(tick, agente_id, "gpt-4o", None, None, None, 10, 5, custo_usd, dry_run, erro, duracao_ms),
     )

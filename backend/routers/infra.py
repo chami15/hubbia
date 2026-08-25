@@ -19,6 +19,16 @@ def obter_saude():
     return resolver.obter_saude()
 
 
+@router.get("/observabilidade")
+def obter_observabilidade(
+    horas: int = Query(24, ge=1, le=168, description="Janela da série temporal. 24 = último dia."),
+):
+    """Painel de monitoramento: latência (p50/p95), tráfego, erros e
+    saturação de orçamento, mais a série por hora, o log de execuções e
+    o frescor de cada dependência."""
+    return resolver.obter_observabilidade(horas=horas)
+
+
 @router.get("/metricas")
 def obter_metricas(
     dias: int = Query(1, ge=1, le=90, description="Janela em dias. 1 = hoje."),

@@ -17,7 +17,7 @@ from langchain.chat_models import init_chat_model
 from langgraph.errors import GraphRecursionError
 from pydantic import BaseModel, Field
 
-from agents._shared.execucoes import registrar_execucao
+from agents._shared.execucoes import cronometrar, registrar_execucao
 from agents._shared.guardrails import MAX_TOOL_CALLS, RECURSION_LIMIT, tratar_erros_tools
 from agents.agenda.tools import buscar_eventos, listar_eventos_periodo
 from config import settings
@@ -49,7 +49,7 @@ def _somar_uso(mensagens: list) -> tuple[int, int]:
     return tokens_in, tokens_out
 
 
-def _registrar(mensagens: list, prompt: str, erro: str | None = None) -> None:
+def _registrar(mensagens: list, prompt: str, erro: str | None = None, duracao_ms: int | None = None) -> None:
     tokens_in, tokens_out = _somar_uso(mensagens)
     custo = round(
         (tokens_in / 1000) * settings.preco_input_por_1k_barato
@@ -64,6 +64,7 @@ def _registrar(mensagens: list, prompt: str, erro: str | None = None) -> None:
         custo_usd=custo,
         contexto_prompt=prompt,
         erro=erro,
+        duracao_ms=duracao_ms,
     )
 
 
@@ -186,40 +187,47 @@ async def decidir(mensagem_contexto: str, agora_iso: str) -> DecisaoAgenda:
     agente = _get_agente()
     prompt_sistema = SYSTEM_PROMPT.format(agora=agora_iso, max_tool_calls=MAX_TOOL_CALLS)
 
-    try:
-        resultado = await agente.ainvoke(
-            {
-                "messages": [
-                    {"role": "system", "content": prompt_sistema},
-                    {"role": "user", "content": mensagem_contexto},
-                ]
-            },
-            config={"recursion_limit": RECURSION_LIMIT},
-        )
-    except GraphRecursionError:
-        # Esperado poder acontecer (pedido ambíguo, modelo explorando demais)
-        # — nunca deixa virar erro 500 pro chefe. Log fica pro dev investigar
-        # se acontecer direto demais; a resposta ao usuário é sempre graciosa.
-        print(
-            f"[agenda] AVISO: recursion_limit ({RECURSION_LIMIT}) estourado — "
-            f"pedido: {mensagem_contexto[:200]!r}"
-        )
-        # este é o caminho MAIS caro que existe (girou até o teto físico) e
-        # era justamente o que não aparecia em lugar nenhum. Sem as
-        # mensagens em mãos aqui, registra o evento com custo zero — o
-        # importante é a sala de máquinas ver que aconteceu.
-        _registrar([], mensagem_contexto, erro=f"recursion_limit ({RECURSION_LIMIT}) estourado")
-        return DecisaoAgenda(
-            tipo="pergunta",
-            mensagem=(
-                "Não consegui decidir uma proposta com as informações que tenho. "
-                "Pode reformular de um jeito mais direto — por exemplo, dizendo o "
-                "dia (ou período) que você quer marcar?"
-            ),
-        )
-    except Exception as exc:
-        _registrar([], mensagem_contexto, erro=f"falha na chamada: {exc}")
-        raise RuntimeError(f"Falha ao invocar o agente de agenda: {exc}") from exc
+    with cronometrar() as t:
+        try:
+            resultado = await agente.ainvoke(
+                {
+                    "messages": [
+                        {"role": "system", "content": prompt_sistema},
+                        {"role": "user", "content": mensagem_contexto},
+                    ]
+                },
+                config={"recursion_limit": RECURSION_LIMIT},
+            )
+        except GraphRecursionError:
+            # Esperado poder acontecer (pedido ambíguo, modelo explorando
+            # demais) — nunca deixa virar erro 500 pro chefe. Log fica pro dev
+            # investigar se acontecer direto demais; a resposta ao usuário é
+            # sempre graciosa.
+            print(
+                f"[agenda] AVISO: recursion_limit ({RECURSION_LIMIT}) estourado — "
+                f"pedido: {mensagem_contexto[:200]!r}"
+            )
+            # este é o caminho MAIS caro que existe (girou até o teto físico) e
+            # era justamente o que não aparecia em lugar nenhum. Sem as
+            # mensagens em mãos aqui, registra o evento com custo zero — o
+            # importante é a sala de máquinas ver que aconteceu, e QUANTO
+            # tempo levou girando antes de desistir.
+            _registrar(
+                [], mensagem_contexto,
+                erro=f"recursion_limit ({RECURSION_LIMIT}) estourado",
+                duracao_ms=t.ms,
+            )
+            return DecisaoAgenda(
+                tipo="pergunta",
+                mensagem=(
+                    "Não consegui decidir uma proposta com as informações que tenho. "
+                    "Pode reformular de um jeito mais direto — por exemplo, dizendo o "
+                    "dia (ou período) que você quer marcar?"
+                ),
+            )
+        except Exception as exc:
+            _registrar([], mensagem_contexto, erro=f"falha na chamada: {exc}", duracao_ms=t.ms)
+            raise RuntimeError(f"Falha ao invocar o agente de agenda: {exc}") from exc
 
-    _registrar(resultado.get("messages"), mensagem_contexto)
+    _registrar(resultado.get("messages"), mensagem_contexto, duracao_ms=t.ms)
     return resultado["structured_response"]

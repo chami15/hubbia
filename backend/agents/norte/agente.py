@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 
-from agents._shared.execucoes import registrar_execucao
+from agents._shared.execucoes import cronometrar, registrar_execucao
 from config import settings
 
 # Chave de junção com a linha em `agentes` — `registrar_execucao`
@@ -142,7 +142,7 @@ def _custo(tokens_in: int, tokens_out: int, barato: bool) -> float:
     return round((tokens_in / 1000) * preco_in + (tokens_out / 1000) * preco_out, 6)
 
 
-def _extrair_resultado(resultado: dict, barato: bool, prompt: str | None = None) -> dict:
+def _extrair_resultado(resultado: dict, barato: bool, prompt: str | None = None, duracao_ms: int | None = None) -> dict:
     modelo = settings.llm_model_cheap if barato else settings.llm_model_strong
 
     if resultado.get("parsing_error"):
@@ -153,6 +153,7 @@ def _extrair_resultado(resultado: dict, barato: bool, prompt: str | None = None)
             modelo=modelo,
             contexto_prompt=prompt,
             erro=f"parsing_error: {resultado['parsing_error']}",
+            duracao_ms=duracao_ms,
         )
         raise RuntimeError(f"Saída fora do formato esperado: {resultado['parsing_error']}")
 
@@ -170,6 +171,7 @@ def _extrair_resultado(resultado: dict, barato: bool, prompt: str | None = None)
         custo_usd=custo_usd,
         contexto_prompt=prompt,
         saida_bruta=str(resultado["parsed"]),
+        duracao_ms=duracao_ms,
     )
 
     return {
@@ -191,12 +193,17 @@ async def escanear_projeto(arvore_raiz: list[dict], readme: str | None, manifest
         manifests=json.dumps(manifests, ensure_ascii=False) if manifests else "(nenhum manifest conhecido encontrado, nem na raiz nem em subpastas)",
         stack_max_itens=_STACK_MAX_ITENS,
     )
-    try:
-        resultado = await modelo.ainvoke(prompt)
-    except Exception as exc:
-        raise RuntimeError(f"Falha ao chamar o modelo de escaneamento: {exc}") from exc
+    with cronometrar() as t:
+        try:
+            resultado = await modelo.ainvoke(prompt)
+        except Exception as exc:
+            registrar_execucao(
+                especialidade=_ESPECIALIDADE, modelo=settings.llm_model_cheap, contexto_prompt=prompt,
+                erro=f"falha na chamada: {exc}", duracao_ms=t.ms,
+            )
+            raise RuntimeError(f"Falha ao chamar o modelo de escaneamento: {exc}") from exc
 
-    saida = _extrair_resultado(resultado, barato=True, prompt=prompt)
+    saida = _extrair_resultado(resultado, barato=True, prompt=prompt, duracao_ms=t.ms)
     # Trunca deterministicamente — não confia só na instrução de prompt
     # pro limite de itens, mesmo espírito das outras checagens do hub.
     saida["dado"].stack = saida["dado"].stack[:_STACK_MAX_ITENS]
@@ -210,8 +217,13 @@ async def gerar_card(contexto_projeto: dict, mudancas_recentes: dict, historico_
         mudancas_recentes=json.dumps(mudancas_recentes, ensure_ascii=False, default=str),
         historico_cards=json.dumps(historico_cards, ensure_ascii=False, default=str) if historico_cards else "(nenhum card resolvido ainda)",
     )
-    try:
-        resultado = await modelo.ainvoke(prompt)
-    except Exception as exc:
-        raise RuntimeError(f"Falha ao chamar o modelo de geração de card: {exc}") from exc
-    return _extrair_resultado(resultado, barato=False, prompt=prompt)
+    with cronometrar() as t:
+        try:
+            resultado = await modelo.ainvoke(prompt)
+        except Exception as exc:
+            registrar_execucao(
+                especialidade=_ESPECIALIDADE, modelo=settings.llm_model_strong, contexto_prompt=prompt,
+                erro=f"falha na chamada: {exc}", duracao_ms=t.ms,
+            )
+            raise RuntimeError(f"Falha ao chamar o modelo de geração de card: {exc}") from exc
+    return _extrair_resultado(resultado, barato=False, prompt=prompt, duracao_ms=t.ms)

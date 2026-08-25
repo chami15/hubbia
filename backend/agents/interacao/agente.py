@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 
-from agents._shared.execucoes import registrar_execucao
+from agents._shared.execucoes import cronometrar, registrar_execucao
 from config import settings
 
 load_dotenv()
@@ -61,7 +61,7 @@ def _custo(tokens_in: int, tokens_out: int) -> float:
     return round((tokens_in / 1000) * preco_in + (tokens_out / 1000) * preco_out, 6)
 
 
-def _extrair_resultado(resultado: dict, especialidade: str, prompt: str | None = None) -> dict:
+def _extrair_resultado(resultado: dict, especialidade: str, prompt: str | None = None, duracao_ms: int | None = None) -> dict:
     """`especialidade` é de QUEM FALOU — a conta do papo social vai pro
     agente que puxou assunto, não pra um "departamento de interação"
     que não existe em `agentes`."""
@@ -73,6 +73,7 @@ def _extrair_resultado(resultado: dict, especialidade: str, prompt: str | None =
             modelo=settings.llm_model_cheap,
             contexto_prompt=prompt,
             erro=f"parsing_error: {resultado['parsing_error']}",
+            duracao_ms=duracao_ms,
         )
         raise RuntimeError(f"Saída fora do formato esperado: {resultado['parsing_error']}")
 
@@ -90,6 +91,7 @@ def _extrair_resultado(resultado: dict, especialidade: str, prompt: str | None =
         custo_usd=custo_usd,
         contexto_prompt=prompt,
         saida_bruta=str(resultado["parsed"]),
+        duracao_ms=duracao_ms,
     )
 
     return {
@@ -159,15 +161,17 @@ async def gerar_mensagem_social(
         instrucao_assunto=instrucao_assunto,
         nota_chefe=nota_chefe,
     )
-    try:
-        resultado = await modelo.ainvoke(prompt)
-    except Exception as exc:
-        registrar_execucao(
-            especialidade=especialidade_remetente,
-            modelo=settings.llm_model_cheap,
-            contexto_prompt=prompt,
-            erro=f"falha na chamada: {exc}",
-        )
-        raise RuntimeError(f"Falha ao chamar o modelo de mensagem social: {exc}") from exc
+    with cronometrar() as t:
+        try:
+            resultado = await modelo.ainvoke(prompt)
+        except Exception as exc:
+            registrar_execucao(
+                especialidade=especialidade_remetente,
+                modelo=settings.llm_model_cheap,
+                contexto_prompt=prompt,
+                erro=f"falha na chamada: {exc}",
+                duracao_ms=t.ms,
+            )
+            raise RuntimeError(f"Falha ao chamar o modelo de mensagem social: {exc}") from exc
 
-    return _extrair_resultado(resultado, especialidade_remetente, prompt)
+    return _extrair_resultado(resultado, especialidade_remetente, prompt, duracao_ms=t.ms)

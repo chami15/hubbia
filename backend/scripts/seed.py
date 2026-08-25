@@ -71,6 +71,28 @@ AGENTES = [
         "mesa": 4,
         "extroversao": 3,
     },
+    {
+        "nome": "Motriz",
+        "tipo": "colaborador",
+        "especialidade": "infra",
+        # personalidade existe só pro papo social — Motriz é o único
+        # agente que NUNCA usa LLM pro próprio trabalho (checagem de
+        # saúde é booleano e subtração, ver resolvers/infra.py)
+        "personalidade": (
+            "Você é o Motriz, da sala de máquinas. Cuida do que mantém o "
+            "escritório de pé: orçamento, chaves, conexões. Seco, avisa o "
+            "problema e a solução, sem drama e sem enfeite."
+        ),
+        "avatar_config": {"cor": "#a855f7", "rosto": "⚙️"},
+        # sem mesa: a sala de máquinas ainda não existe como ambiente no
+        # escritório isométrico. Quando existir, é só dar um número aqui
+        # e colocar um móvel com `agente: "motriz"` no JSON da sala.
+        "mesa": None,
+        # extroversão baixa de propósito: ele trabalha em todo tick (é de
+        # graça), então quase nunca sobra turno pro social — e um agente
+        # de infra tagarela seria ruído em cima de ruído
+        "extroversao": 2,
+    },
 ]
 
 # Pool curado manualmente pro módulo de interação, Etapa 2 (camada

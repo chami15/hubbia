@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import agenda, agentes, financeiro, interacao, mensagens, norte, saude, tick
+from routers import agenda, agentes, financeiro, infra, interacao, mensagens, norte, saude, tick
 from utils.connection import close_pool
 
 
@@ -43,6 +43,7 @@ app.include_router(saude.router)
 app.include_router(norte.router)
 app.include_router(tick.router)
 app.include_router(interacao.router)
+app.include_router(infra.router)
 
 
 @app.get("/health", tags=["infra"])

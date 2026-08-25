@@ -42,6 +42,17 @@ WHERE tipo = 'social'
 SELECT COUNT(*) AS total FROM mensagens
 WHERE remetente_id = %s AND tipo = 'trabalho' AND criado_em >= %s;
 
+--QUERY: ultimo_trabalho_do_agente
+-- O último aviso de trabalho que este agente mandou, de qualquer dia.
+-- Usada pelo Motriz pra só falar em MUDANÇA de estado: como o texto do
+-- aviso é derivado de forma determinística da lista de problemas, texto
+-- igual significa situação igual, e situação igual não merece um aviso
+-- novo. Aviso que se repete todo tick ensina a ignorar aviso.
+SELECT conteudo, criado_em FROM mensagens
+WHERE remetente_id = %s AND tipo = 'trabalho'
+ORDER BY criado_em DESC
+LIMIT 1;
+
 --QUERY: buscar_pendente_mais_antiga_para
 -- Mensagem social mais antiga direcionada a esse agente que ainda não
 -- recebeu resposta (nenhuma outra mensagem aponta respondendo_a_id pra

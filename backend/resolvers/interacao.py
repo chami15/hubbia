@@ -302,11 +302,80 @@ async def _executar_agenda(ctx: dict) -> str:
     return "Compromissos de hoje:\n" + "\n".join(linhas)
 
 
+_SEM_PROBLEMA = "Tudo normalizado na sala de máquinas."
+
+
+def _texto_do_aviso(problemas: list[dict]) -> str:
+    """Texto derivado DETERMINISTICAMENTE da lista de problemas — é o que
+    faz a comparação com o último aviso funcionar como detector de
+    mudança de estado (mesmo problema → mesmo texto → não repete)."""
+    if not problemas:
+        return _SEM_PROBLEMA
+    linhas = []
+    for p in problemas:
+        marca = "✕" if p["status"] == "quebrado" else "!"
+        linha = f"{marca} {p['nome']}: {p['detalhe']}"
+        if p.get("acao"):
+            linha += f"\n   → {p['acao']}"
+        linhas.append(linha)
+    return "Da sala de máquinas:\n" + "\n".join(linhas)
+
+
+def _checar_infra(agente: dict) -> dict | None:
+    """Motriz — o único handler que NÃO gasta LLM nenhum (nem no `executar`).
+
+    Por isso ele é checado em todo tick sem consultar orçamento, e
+    continua funcionando com o orçamento estourado — que é exatamente
+    quando um aviso de infra mais importa.
+
+    Só devolve trabalho quando o estado MUDA: se a situação é a mesma do
+    último aviso, fica quieto. Sem isso, um token vencido viraria a
+    mesma mensagem em todo tick até alguém consertar, e em dois dias o
+    chefe teria aprendido a não ler o Motriz."""
+    from resolvers import infra as resolver_infra
+
+    saude = resolver_infra.obter_saude()
+    problemas = [i for i in saude["itens"] if i["status"] in ("quebrado", "atencao")]
+    texto = _texto_do_aviso(problemas)
+
+    rows = executar_query("mensagens:ultimo_trabalho_do_agente", params=(agente["id"],))
+    ultimo = rows[0]["conteudo"] if rows else None
+
+    if texto == ultimo:
+        return None
+    # nada quebrado e nunca avisou nada: não existe "voltou ao normal"
+    # de um problema que nunca houve
+    if not problemas and ultimo is None:
+        return None
+
+    return {"texto": texto, "problemas": problemas}
+
+
+def _descrever_infra(ctx: dict) -> str:
+    if not ctx["problemas"]:
+        return "Infra voltou ao normal."
+    nomes = ", ".join(p["nome"] for p in ctx["problemas"])
+    return f"{len(ctx['problemas'])} ponto(s) de atenção na infra: {nomes}."
+
+
+async def _executar_infra(ctx: dict) -> str:
+    # `async` só pra casar com a assinatura dos outros handlers — não há
+    # nada pra esperar aqui, o texto já veio pronto do `checar`
+    return ctx["texto"]
+
+
+# `custa_llm` diz se o `executar` daquele handler chama modelo. É o que
+# permite o Motriz continuar rodando com o orçamento estourado: o teto
+# bloqueia o que gasta, não o que só lê arquivo e faz subtração. A
+# Agenda é o único caso de trabalho que já não custava (só lê e formata
+# o Calendar), mas a LEITURA dela bate em API externa — por isso fica
+# marcada como custosa mesmo assim, e para junto quando o teto estoura.
 _HANDLERS_TRABALHO = {
-    "norte": {"checar": _checar_norte, "descrever": _descrever_norte, "executar": _executar_norte},
-    "financeiro": {"checar": _checar_cifra, "descrever": _descrever_cifra, "executar": _executar_cifra},
-    "saude": {"checar": _checar_vita, "descrever": _descrever_vita, "executar": _executar_vita},
-    "agenda": {"checar": _checar_agenda, "descrever": _descrever_agenda, "executar": _executar_agenda},
+    "norte": {"checar": _checar_norte, "descrever": _descrever_norte, "executar": _executar_norte, "custa_llm": True},
+    "financeiro": {"checar": _checar_cifra, "descrever": _descrever_cifra, "executar": _executar_cifra, "custa_llm": True},
+    "saude": {"checar": _checar_vita, "descrever": _descrever_vita, "executar": _executar_vita, "custa_llm": True},
+    "agenda": {"checar": _checar_agenda, "descrever": _descrever_agenda, "executar": _executar_agenda, "custa_llm": True},
+    "infra": {"checar": _checar_infra, "descrever": _descrever_infra, "executar": _executar_infra, "custa_llm": False},
 }
 
 
@@ -322,9 +391,16 @@ async def processar_tick_completo(dry_run: bool = False) -> dict:
 
     orcamento_disponivel = resolver_tick.orcamento_disponivel_hoje()
     resultado["orcamento_disponivel_hoje"] = round(orcamento_disponivel, 6)
-    if orcamento_disponivel <= 0:
-        resultado["aviso"] = "Orçamento diário esgotado — nenhuma interação processada neste tick."
-        return resultado
+    # Orçamento esgotado NÃO encerra mais a rodada inteira: os handlers
+    # que não gastam LLM (hoje o Motriz) continuam rodando, porque é
+    # exatamente com o teto estourado que um aviso de infra mais serve —
+    # é ele que vai dizer POR QUE o escritório ficou quieto. O que fica
+    # bloqueado é tudo que custa: trabalho com LLM e papo social.
+    sem_orcamento = orcamento_disponivel <= 0
+    if sem_orcamento:
+        resultado["aviso"] = (
+            "Orçamento diário esgotado — só o que não gasta LLM rodou neste tick."
+        )
 
     colaboradores = executar_query("agentes:listar_colaboradores_ativos")
     if not colaboradores:
@@ -366,7 +442,9 @@ async def processar_tick_completo(dry_run: bool = False) -> dict:
         # cada agente tem fica em `_HANDLERS_TRABALHO`.
         handler = _HANDLERS_TRABALHO.get(agente["especialidade"])
         contexto_trabalho = None
-        if handler:
+        # com o teto estourado, nem checa o que custa: a checagem da
+        # Agenda, por exemplo, já bate no Google antes de qualquer coisa
+        if handler and not (sem_orcamento and handler["custa_llm"]):
             try:
                 contexto_trabalho = handler["checar"](agente)
             except Exception as exc:
@@ -400,7 +478,9 @@ async def processar_tick_completo(dry_run: bool = False) -> dict:
             resultado["interacoes"].append(entrada)
             continue
 
-        if not permite_social:
+        # social sempre custa LLM (gera a mensagem) — com o teto
+        # estourado ninguém puxa papo
+        if not permite_social or sem_orcamento:
             resultado["interacoes"].append(entrada)
             continue
 

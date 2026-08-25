@@ -16,7 +16,7 @@ import pytest
 import resolvers.interacao as interacao
 import resolvers.tick as tick
 from config import settings
-from tests.helpers import resultado_agente
+from tests.helpers import registrar_gasto, resultado_agente
 from utils.query_executor import executar_query
 
 
@@ -120,15 +120,14 @@ class TestGuardrails:
             await interacao.processar_tick_completo()
 
     async def test_orcamento_esgotado_bloqueia_tudo_sem_chamar_llm(self, mocker):
-        _criar_agente("A", extroversao=10)
+        agente_a = _criar_agente("A", extroversao=10)
         _criar_agente("B", extroversao=10)
         tick.avancar_tick()
 
-        executar_query(
-            "relatorios_financeiros:upsert",
-            returning=True,
-            params=(date(2026, 1, 1), '{"x": 1}', "gpt-4o", 1, 1, 999.0),
-        )
+        # o orçamento sai de `tick_execucoes` desde que o UNION sobre as
+        # tabelas de domínio foi aposentado — gravar um relatório não move
+        # mais o teto por si só, quem move é a execução registrada
+        registrar_gasto(agente_a, 999.0)
 
         mock_gerar = mocker.patch(
             "resolvers.interacao.agente_interacao.gerar_mensagem_social",
@@ -607,7 +606,7 @@ class TestNovoAssunto:
 
         chamada_a = next(c for c in mock_gerar.call_args_list if c.args[1] == "A")
         assert chamada_a.args[-1] is False  # pode_novo_assunto
-        assert chamada_a.args[4] is None  # evento_desc não injetado
+        assert chamada_a.args[-5] is None  # evento_desc não injetado
 
     async def test_conversa_vazia_sempre_permite_assunto_novo(self, mocker):
         _criar_agente("A", extroversao=10)

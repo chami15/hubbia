@@ -12,9 +12,14 @@ from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 
+from agents._shared.execucoes import registrar_execucao
 from config import settings
 
 load_dotenv()
+
+# Chave de junção com a linha em `agentes` (a mesma que o frontend usa
+# pra ligar crachá a agente) — `registrar_execucao` resolve o id por ela.
+_ESPECIALIDADE = "financeiro"
 
 
 class AnaliseFinanceira(BaseModel):
@@ -78,9 +83,21 @@ async def gerar_analise(dados_calculados: dict) -> dict:
     try:
         resultado = await model.ainvoke(prompt)
     except Exception as exc:
+        registrar_execucao(
+            especialidade=_ESPECIALIDADE,
+            modelo=settings.llm_model_strong,
+            contexto_prompt=prompt,
+            erro=f"falha na chamada: {exc}",
+        )
         raise RuntimeError(f"Falha ao chamar o modelo: {exc}") from exc
 
     if resultado.get("parsing_error"):
+        registrar_execucao(
+            especialidade=_ESPECIALIDADE,
+            modelo=settings.llm_model_strong,
+            contexto_prompt=prompt,
+            erro=f"parsing_error: {resultado['parsing_error']}",
+        )
         raise RuntimeError(f"Agente não retornou o formato esperado: {resultado['parsing_error']}")
 
     raw = resultado["raw"]
@@ -91,6 +108,16 @@ async def gerar_analise(dados_calculados: dict) -> dict:
         (tokens_in / 1000) * settings.preco_input_por_1k_forte
         + (tokens_out / 1000) * settings.preco_output_por_1k_forte,
         6,
+    )
+
+    registrar_execucao(
+        especialidade=_ESPECIALIDADE,
+        modelo=settings.llm_model_strong,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        custo_usd=custo_usd,
+        contexto_prompt=prompt,
+        saida_bruta=str(resultado["parsed"]),
     )
 
     return {

@@ -17,6 +17,7 @@ from langchain.chat_models import init_chat_model
 from langgraph.errors import GraphRecursionError
 from pydantic import BaseModel, Field
 
+from agents._shared.execucoes import registrar_execucao
 from agents._shared.guardrails import MAX_TOOL_CALLS, RECURSION_LIMIT, tratar_erros_tools
 from agents.agenda.tools import buscar_eventos, listar_eventos_periodo
 from config import settings
@@ -24,6 +25,46 @@ from config import settings
 load_dotenv()
 
 TOOLS = [listar_eventos_periodo, buscar_eventos]
+
+# Chave de junção com a linha em `agentes` — `registrar_execucao`
+# resolve o id numérico por ela.
+_ESPECIALIDADE = "agenda"
+
+
+def _somar_uso(mensagens: list) -> tuple[int, int]:
+    """Soma tokens de TODAS as mensagens do agente, não só da última.
+
+    É o que diferencia contabilizar um agente com tool-calling de um de
+    chamada única: um pedido ("marca dentista quinta") vira várias idas
+    e voltas ao modelo — pensar, chamar `listar_eventos_periodo`, ler o
+    resultado, decidir. Olhar só a resposta final subestimaria o custo
+    real, que é justamente o motivo de este ser o agente mais caro do
+    hub por interação.
+    """
+    tokens_in = tokens_out = 0
+    for msg in mensagens or []:
+        uso = getattr(msg, "usage_metadata", None) or {}
+        tokens_in += uso.get("input_tokens", 0) or 0
+        tokens_out += uso.get("output_tokens", 0) or 0
+    return tokens_in, tokens_out
+
+
+def _registrar(mensagens: list, prompt: str, erro: str | None = None) -> None:
+    tokens_in, tokens_out = _somar_uso(mensagens)
+    custo = round(
+        (tokens_in / 1000) * settings.preco_input_por_1k_barato
+        + (tokens_out / 1000) * settings.preco_output_por_1k_barato,
+        6,
+    )
+    registrar_execucao(
+        especialidade=_ESPECIALIDADE,
+        modelo=settings.llm_model_cheap,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        custo_usd=custo,
+        contexto_prompt=prompt,
+        erro=erro,
+    )
 
 
 class DecisaoAgenda(BaseModel):
@@ -163,6 +204,11 @@ async def decidir(mensagem_contexto: str, agora_iso: str) -> DecisaoAgenda:
             f"[agenda] AVISO: recursion_limit ({RECURSION_LIMIT}) estourado — "
             f"pedido: {mensagem_contexto[:200]!r}"
         )
+        # este é o caminho MAIS caro que existe (girou até o teto físico) e
+        # era justamente o que não aparecia em lugar nenhum. Sem as
+        # mensagens em mãos aqui, registra o evento com custo zero — o
+        # importante é a sala de máquinas ver que aconteceu.
+        _registrar([], mensagem_contexto, erro=f"recursion_limit ({RECURSION_LIMIT}) estourado")
         return DecisaoAgenda(
             tipo="pergunta",
             mensagem=(
@@ -172,6 +218,8 @@ async def decidir(mensagem_contexto: str, agora_iso: str) -> DecisaoAgenda:
             ),
         )
     except Exception as exc:
+        _registrar([], mensagem_contexto, erro=f"falha na chamada: {exc}")
         raise RuntimeError(f"Falha ao invocar o agente de agenda: {exc}") from exc
 
+    _registrar(resultado.get("messages"), mensagem_contexto)
     return resultado["structured_response"]

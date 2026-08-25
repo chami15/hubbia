@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 
+from agents._shared.execucoes import registrar_execucao
 from config import settings
 
 load_dotenv()
@@ -60,27 +61,50 @@ def _custo(tokens_in: int, tokens_out: int) -> float:
     return round((tokens_in / 1000) * preco_in + (tokens_out / 1000) * preco_out, 6)
 
 
-def _extrair_resultado(resultado: dict) -> dict:
+def _extrair_resultado(resultado: dict, especialidade: str, prompt: str | None = None) -> dict:
+    """`especialidade` é de QUEM FALOU — a conta do papo social vai pro
+    agente que puxou assunto, não pra um "departamento de interação"
+    que não existe em `agentes`."""
     if resultado.get("parsing_error"):
+        # registra ANTES de levantar: chamada que falhou no parsing
+        # gastou token igual, e o orçamento precisa saber disso
+        registrar_execucao(
+            especialidade=especialidade,
+            modelo=settings.llm_model_cheap,
+            contexto_prompt=prompt,
+            erro=f"parsing_error: {resultado['parsing_error']}",
+        )
         raise RuntimeError(f"Saída fora do formato esperado: {resultado['parsing_error']}")
 
     raw = resultado["raw"]
     usage = getattr(raw, "usage_metadata", None) or {}
     tokens_in = usage.get("input_tokens", 0)
     tokens_out = usage.get("output_tokens", 0)
+    custo_usd = _custo(tokens_in, tokens_out)
+
+    registrar_execucao(
+        especialidade=especialidade,
+        modelo=settings.llm_model_cheap,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        custo_usd=custo_usd,
+        contexto_prompt=prompt,
+        saida_bruta=str(resultado["parsed"]),
+    )
 
     return {
         "dado": resultado["parsed"],
         "modelo": settings.llm_model_cheap,
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
-        "custo_usd": _custo(tokens_in, tokens_out),
+        "custo_usd": custo_usd,
     }
 
 
 async def gerar_mensagem_social(
     personalidade: str,
     nome_remetente: str,
+    especialidade_remetente: str,
     nome_destinatario: str,
     historico_recente: list[dict],
     evento_mundo: str | None,
@@ -138,6 +162,12 @@ async def gerar_mensagem_social(
     try:
         resultado = await modelo.ainvoke(prompt)
     except Exception as exc:
+        registrar_execucao(
+            especialidade=especialidade_remetente,
+            modelo=settings.llm_model_cheap,
+            contexto_prompt=prompt,
+            erro=f"falha na chamada: {exc}",
+        )
         raise RuntimeError(f"Falha ao chamar o modelo de mensagem social: {exc}") from exc
 
-    return _extrair_resultado(resultado)
+    return _extrair_resultado(resultado, especialidade_remetente, prompt)

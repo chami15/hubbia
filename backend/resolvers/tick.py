@@ -43,14 +43,17 @@ def _calcular_proximo_tick() -> dict:
 
 
 def orcamento_gasto_hoje() -> float:
-    """Soma o custo_usd de hoje em todas as tabelas de domínio que já
-    rastreiam gasto de LLM (relatorios_financeiros, refeicoes,
-    planos_dieta, relatorios_saude, cards). Etapa 1 do tick ainda não
-    gasta nada por conta própria — isso é a base do guardrail de
-    orçamento diário que as próximas etapas (social, proatividade) vão
-    checar ANTES de qualquer chamada de LLM."""
+    """Soma o custo_usd de hoje em `tick_execucoes` — a tabela por onde
+    TODA chamada de LLM do hub passa (ver agents/_shared/execucoes.py).
+
+    Antes isto era um UNION escrito à mão sobre 5 tabelas de domínio, o
+    que tinha dois furos: domínio novo que gastasse LLM e não fosse
+    adicionado ali gastava invisível ao guardrail, e a Agenda — o agente
+    mais caro do hub, o único com tool-calling — nunca gravou custo em
+    tabela nenhuma, então nunca entrou na conta. Com uma tabela só,
+    agente novo entra na contabilidade sem editar SQL de ninguém."""
     inicio = _inicio_do_dia()
-    rows = executar_query("ticks:custo_gasto_hoje", params=(inicio, inicio, inicio, inicio, inicio))
+    rows = executar_query("tick_execucoes:custo_gasto_hoje", params=(inicio,))
     return float(rows[0]["total"])
 
 

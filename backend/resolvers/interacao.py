@@ -461,6 +461,7 @@ async def processar_tick_completo(dry_run: bool = False) -> dict:
                     resposta = await agente_interacao.gerar_mensagem_social(
                         agente["personalidade"],
                         agente["nome"],
+                        agente["especialidade"],
                         destinatario["nome"],
                         historico,
                         evento_desc,

@@ -26,3 +26,24 @@ def resultado_agente(dado, modelo: str = "gpt-4o-mini", tokens_in: int = 10, tok
     `resolvers.saude.agente_saude.estimar_macros_texto`), não o modelo por
     dentro dela."""
     return {"dado": dado, "modelo": modelo, "tokens_in": tokens_in, "tokens_out": tokens_out, "custo_usd": custo_usd}
+
+
+def registrar_gasto(
+    agente_id: int,
+    custo_usd: float,
+    tick: int | None = None,
+    dry_run: bool = False,
+    erro: str | None = None,
+) -> None:
+    """Grava uma execução direto em `tick_execucoes` — é de onde o
+    orçamento diário sai desde que o UNION sobre as tabelas de domínio
+    foi aposentado (ver agents/_shared/execucoes.py). Usar isto em vez
+    de inserir numa tabela de domínio: gravar um relatório/card já NÃO
+    move o orçamento por si só, quem move é a execução registrada."""
+    from utils.query_executor import executar_query
+
+    executar_query(
+        "tick_execucoes:inserir",
+        returning=True,
+        params=(tick, agente_id, "gpt-4o", None, None, None, 10, 5, custo_usd, dry_run, erro),
+    )

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { AGENTES } from './agentes'
 import { RetratoAgente, corCss } from '../agentes/RetratoAgente'
 import { IconeAvancarTick, IconeConfiguracoes, IconeMensagens } from './icones'
+import type { ModoParedesSims } from './moveis3d'
+import type { ProjecaoSimTela } from './cena3d'
 import {
   calcularCorPlumbBob,
   formatarRelogioSim,
@@ -12,24 +14,13 @@ import {
   type VelocidadeTempo,
 } from './simulacao-sims'
 
-// ---------------------------------------------------------------------------
-// HUD COMPLETO ESTILO THE SIMS 4 PARA O HUBBIA
-//
-// Combina a ergonomia clássica do Modo Simulação (Live Mode) do The Sims 4:
-//   - Canto Inferior Esquerdo: Seletor de Sims (Skewer), Cartão de Humor
-//     (Emotion), Modificadores (Buffs) e Fila de Ações (SIState Queue).
-//   - Centro Inferior: Relógio Sim, Velocidades (0/1x/2x/3x), Simoleons (§)
-//     e botão integrado de Avançar Tick IA do Hubbia.
-//   - Canto Inferior Direito: Inspetor de Abas (Necessidades com auto-resolver,
-//     Carreira Hubbia, Habilidades e Relacionamentos).
-//   - Topo Direito: Alternador Modo Vida vs Modo Construir, Salas, Câmera
-//     (Zoom, Centralizar, Seguir Sim), Autonomia, Mensagens e Configurações.
-// ---------------------------------------------------------------------------
-
 type AbaInspetor = 'necessidades' | 'carreira' | 'habilidades' | 'relacionamentos'
 
 interface Props {
   mundo: EstadoMundoSims
+  modo3DAtivo: boolean
+  modoParedes: ModoParedesSims
+  projecoes3D: Record<string, ProjecaoSimTela>
   modoConstruirAtivo: boolean
   salasAbertas: boolean
   mensagensAbertas: boolean
@@ -43,7 +34,9 @@ interface Props {
   aoMudarVelocidade: (v: VelocidadeTempo) => void
   aoAlternarAutonomia: () => void
   aoAlternarSeguirSim: () => void
-  aoAlternarCorpoInteiro: () => void
+  aoAlternarModo3D: () => void
+  aoCiclarModoParedes: () => void
+  aoGirarCamera3D: (direcao: -1 | 1) => void
   aoZoom: (fator: number) => void
   aoCentralizarCamera: () => void
   aoCancelarInteracao: (indice: number | 'atual') => void
@@ -97,6 +90,9 @@ function PlumbBobSvg({ cor, tamanho = 16 }: { cor: string; tamanho?: number }) {
 
 export function HudTheSims({
   mundo,
+  modo3DAtivo,
+  modoParedes,
+  projecoes3D,
   modoConstruirAtivo,
   salasAbertas,
   mensagensAbertas,
@@ -110,7 +106,9 @@ export function HudTheSims({
   aoMudarVelocidade,
   aoAlternarAutonomia,
   aoAlternarSeguirSim,
-  aoAlternarCorpoInteiro,
+  aoAlternarModo3D,
+  aoCiclarModoParedes,
+  aoGirarCamera3D,
   aoZoom,
   aoCentralizarCamera,
   aoCancelarInteracao,
@@ -132,10 +130,104 @@ export function HudTheSims({
   const infoHumor = INFO_HUMORES[simAtivo.humor]
   const plumbAtivo = calcularCorPlumbBob(simAtivo.necessidades)
 
+  const rotuloParedes =
+    modoParedes === 'cortadas'
+      ? '🧱 Paredes: Cortadas'
+      : modoParedes === 'altas'
+        ? '🏠 Paredes: Altas'
+        : '📐 Paredes: Baixas'
+
   return (
     <>
       {/* =====================================================================
-          TOPO DIREITO — BARRA DE MODO VIDA / CONSTRUIR, CÂMERA E UTILIDADES
+          OVERLAY DE BALÕES DE FALA / PENSAMENTO E NOMES SOBRE OS SIMS 3D
+          ===================================================================== */}
+      {modo3DAtivo && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 40,
+            overflow: 'hidden',
+          }}
+        >
+          {AGENTES.map((ag) => {
+            const proj = projecoes3D[ag.id]
+            const s = mundo.sims[ag.id]
+            if (!proj || !proj.visivel || !s) return null
+            const ativo = ag.id === simAtivo.id
+            const hInfo = INFO_HUMORES[s.humor]
+            const prog = s.interacaoAtual?.progresso ?? 0
+
+            return (
+              <div
+                key={ag.id}
+                style={{
+                  position: 'absolute',
+                  left: proj.x,
+                  top: proj.y,
+                  transform: 'translate(-50%, -100%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                {/* Balão de pensamento / fala estilo The Sims 4 */}
+                {s.balao && (
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      padding: '5px 12px',
+                      borderRadius: 16,
+                      border: `2px solid ${s.balao.tipo === 'fala' ? '#38bdf8' : '#84cc16'}`,
+                      boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      maxWidth: 220,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {s.balao.icone} {s.balao.texto}
+                  </div>
+                )}
+
+                {/* Etiqueta flutuante com nome, emoção e barra de progresso da ação */}
+                <div
+                  style={{
+                    background: ativo ? 'rgba(15, 23, 42, 0.9)' : 'rgba(15, 23, 42, 0.72)',
+                    border: `1.5px solid ${ativo ? '#6ec71f' : corCss(ag.cor)}`,
+                    borderRadius: 999,
+                    padding: '2px 9px',
+                    color: '#f8fafc',
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.45)',
+                  }}
+                >
+                  <span>{hInfo.icone}</span>
+                  <span>{ag.nome}</span>
+                  {prog > 0.02 && (
+                    <span style={{ color: '#a3e635', fontSize: 9.5 }}>
+                      {Math.round(prog * 100)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* =====================================================================
+          TOPO DIREITO — BARRA DE MODO VIDA / CONSTRUIR, CÂMERA 3D E PAREDES
           ===================================================================== */}
       <div
         style={{
@@ -191,7 +283,19 @@ export function HudTheSims({
           🏠 Salas
         </button>
 
-        {/* Controles de Câmera (Camera.ini) */}
+        {/* Modo de Paredes do The Sims 4 (Cortadas / Altas / Baixas) */}
+        {modo3DAtivo && (
+          <button
+            type="button"
+            onClick={aoCiclarModoParedes}
+            title="Alternar corte das paredes (Paredes Cortadas / Paredes Altas / Paredes Baixas)"
+            style={estiloPilulaTopo(true)}
+          >
+            {rotuloParedes}
+          </button>
+        )}
+
+        {/* Controles de Câmera 3D (Órbita + Zoom + Seguir Sim) */}
         <div
           style={{
             display: 'flex',
@@ -202,6 +306,26 @@ export function HudTheSims({
             borderRight: '1px solid rgba(255,255,255,0.12)',
           }}
         >
+          {modo3DAtivo && (
+            <>
+              <button
+                type="button"
+                onClick={() => aoGirarCamera3D(-1)}
+                title="Girar Câmera 3D para a Esquerda (ou arraste com o botão direito do mouse)"
+                style={estiloBotaoMiniTopo(false)}
+              >
+                ↺
+              </button>
+              <button
+                type="button"
+                onClick={() => aoGirarCamera3D(1)}
+                title="Girar Câmera 3D para a Direita (ou arraste com o botão direito do mouse)"
+                style={estiloBotaoMiniTopo(false)}
+              >
+                ↻
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => aoZoom(1 / 1.2)}
@@ -213,7 +337,7 @@ export function HudTheSims({
           <button
             type="button"
             onClick={aoCentralizarCamera}
-            title="Centralizar Sala na Tela"
+            title="Centralizar Lote na Tela"
             style={estiloBotaoMiniTopo(false)}
           >
             ⌂
@@ -236,14 +360,14 @@ export function HudTheSims({
           </button>
         </div>
 
-        {/* Alternador Corpo Inteiro (Sims) vs Crachá */}
+        {/* Alternador Mundo 3D (The Sims 4) vs Maquete 2D (Habbo) */}
         <button
           type="button"
-          onClick={aoAlternarCorpoInteiro}
-          title="Alternar entre Sims de Corpo Inteiro e Crachás Clássicos"
-          style={estiloPilulaTopo(mundo.modoCorpoInteiro)}
+          onClick={aoAlternarModo3D}
+          title="Alternar entre o Mundo 3D Real (The Sims 4) e a Maquete 2D Isométrica (Habbo)"
+          style={estiloPilulaTopo(modo3DAtivo)}
         >
-          {mundo.modoCorpoInteiro ? '🧍 Sims' : '⭕ Crachá'}
+          {modo3DAtivo ? '🌍 Mundo 3D' : '📐 Maquete 2D'}
         </button>
 
         {/* Alternador de Autonomia */}
@@ -303,8 +427,6 @@ export function HudTheSims({
         </button>
       </div>
 
-      {/* No Modo Construir, ocultamos a parte inferior do HUD Sims para deixar
-          o catálogo de móveis e o painel de edição livres */}
       {modoConstruirAtivo ? null : (
         <>
           {/* =================================================================
@@ -329,7 +451,7 @@ export function HudTheSims({
                 titulo={simAtivo.interacaoAtual.opcao.titulo}
                 subtitulo={
                   simAtivo.interacaoAtual.fase === 'indo'
-                    ? 'Caminhando até lá...'
+                    ? 'Caminhando em 3D...'
                     : `${Math.round(simAtivo.interacaoAtual.progresso * 100)}% concluído`
                 }
                 progresso={simAtivo.interacaoAtual.progresso}
@@ -432,7 +554,6 @@ export function HudTheSims({
                 minWidth: 370,
               }}
             >
-              {/* Retrato com PlumbBob */}
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <div
                   style={{
@@ -449,7 +570,6 @@ export function HudTheSims({
                 </div>
               </div>
 
-              {/* Nome, Emoção Atual e Modificadores (Buffs) */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 15, fontWeight: 800, color: '#f8fafc' }}>
@@ -475,10 +595,9 @@ export function HudTheSims({
                 <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>
                   {simAtivo.interacaoAtual
                     ? `${simAtivo.interacaoAtual.opcao.icone} ${simAtivo.interacaoAtual.opcao.titulo}`
-                    : `Postura: ${rotuloPostura(simAtivo.postura.corpo)}`}
+                    : `Postura 3D: ${rotuloPostura(simAtivo.postura.corpo)}`}
                 </div>
 
-                {/* Pílulas de Buffs / Modificadores ativos (`buffs/buff.pyc`) */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
                   {simAtivo.modificadores.slice(0, 3).map((mod) => (
                     <span
@@ -503,7 +622,6 @@ export function HudTheSims({
                 </div>
               </div>
 
-              {/* Botão Direto para Abrir o Painel de Domínio Hubbia do Agente */}
               <button
                 type="button"
                 onClick={() => aoAbrirPainelAgente(simAtivo.id)}
@@ -552,7 +670,6 @@ export function HudTheSims({
               userSelect: 'none',
             }}
           >
-            {/* Controles de Velocidade de Simulação (`adaptive_clock_speed.pyc`) */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {(
                 [
@@ -588,7 +705,6 @@ export function HudTheSims({
               })}
             </div>
 
-            {/* Relógio Sim + Ambiente */}
             <div
               style={{
                 padding: '0 10px',
@@ -608,11 +724,10 @@ export function HudTheSims({
                 {formatarRelogioSim(mundo.minutosDoDia, mundo.diaDaSemana)}
               </div>
               <div style={{ fontSize: 10, color: '#a3e635', fontWeight: 600 }}>
-                { orcamentoTexto ?? '§ 12.450' } · 🌿 Amb {mundo.pontuacaoAmbienteSala}
+                {orcamentoTexto ?? '§ 12.450'} · 🌿 Amb {mundo.pontuacaoAmbienteSala}
               </div>
             </div>
 
-            {/* Botão Avançar 1 Tick IA do Servidor Hubbia */}
             <button
               type="button"
               onClick={aoClicarAvancarTick}
@@ -645,7 +760,6 @@ export function HudTheSims({
 
           {/* =================================================================
               CANTO INFERIOR DIREITO — INSPETOR THE SIMS 4 (ABAS)
-              Necessidades · Carreira & Hubbia · Habilidades · Relacionamentos
               ================================================================= */}
           <div
             style={{
@@ -664,7 +778,6 @@ export function HudTheSims({
               userSelect: 'none',
             }}
           >
-            {/* Cabeçalho de Abas */}
             <div
               style={{
                 display: 'flex',
@@ -738,7 +851,6 @@ export function HudTheSims({
               </button>
             </div>
 
-            {/* Corpo da Aba Selecionada */}
             {inspetorAberto && (
               <div style={{ padding: '10px 12px' }}>
                 {abaAtiva === 'necessidades' && (
@@ -858,7 +970,6 @@ export function HudTheSims({
                       </button>
                     </div>
 
-                    {/* Barra de Desempenho de Carreira */}
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 3 }}>
                         <span style={{ color: '#cbd5e1' }}>Desempenho no Expediente</span>
@@ -877,7 +988,6 @@ export function HudTheSims({
                       </div>
                     </div>
 
-                    {/* Traços de Personalidade (`traits.pyc`) */}
                     <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', marginTop: 2 }}>
                       Traços de Personalidade
                     </div>
@@ -1123,7 +1233,7 @@ function rotuloPostura(corpo: string): string {
     case 'andando':
       return 'Caminhando pela sala'
     case 'sentado_cadeira':
-      return 'Sentado na estação'
+      return 'Digitando na estação'
     case 'sentado_sofa':
       return 'Relaxando no estofado'
     case 'interagindo_em_pe':

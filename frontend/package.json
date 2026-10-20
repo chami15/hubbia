@@ -13,10 +13,12 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
+    "@types/three": "^0.186.0",
     "axios": "^1.18.1",
     "pixi.js": "^8.19.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

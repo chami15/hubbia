@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Application, Container } from 'pixi.js'
 import { criarCena, type Cena } from './cena'
 import { criarEditor, type Editor, type EstadoEditor } from './edicao'
-import { carregarSala, todasAsSalasComRascunho } from './persistencia'
+import { carregarSala, definirSalaAtual, recarregarDeProposito, todasAsSalasComRascunho } from './persistencia'
 import { PALETAS } from './sala'
 import { AGENTES } from './agentes'
+import { rotuloDe } from './catalogo'
 import { conferirConjuntoDeSalas } from './sala-conferir'
 import { PainelEdicao } from './PainelEdicao'
 import { PainelCatalogo } from './PainelCatalogo'
@@ -14,7 +15,25 @@ import { PopupPorta } from './PopupPorta'
 import { PainelDoAgente } from '../agentes/PainelDoAgente'
 import { PainelMensagens } from '../agentes/PainelMensagens'
 import { PainelConfiguracoes } from './PainelConfiguracoes'
-import { IconeAvancarTick, IconeConfiguracoes, IconeMensagens } from './icones'
+import { HudTheSims } from './HudTheSims'
+import { MenuPie, type EstadoMenuPie } from './MenuPie'
+import {
+  aplicarInteracoesBackendNoMundo,
+  avancarSimulacaoSims,
+  calcularCorPlumbBob,
+  cancelarInteracaoSim,
+  criarEstadoMundoSims,
+  enfileirarInteracaoSim,
+  escolherInteracaoParaNecessidade,
+  obterInteracoesDoChao,
+  obterInteracoesDoMovel,
+  obterInteracoesDoSim,
+  type ChaveNecessidade,
+  type EstadoMundoSims,
+  type OpcaoPieMenu,
+  type VelocidadeTempo,
+} from './simulacao-sims'
+import { criarControladorCamera, pontoMundoDoSim, type ControladorCamera } from './camera'
 import { Toasts, useToasts } from './Toasts'
 import { useAvancarMundo, type ResultadoAvancoMundo } from '../../hooks/useMundo'
 import { useContagemNaoLidas } from '../../hooks/useMensagens'
@@ -26,39 +45,34 @@ import { mensagemDeErro } from '../../api/client'
 import type { EstadoAgente } from '../../types/agente'
 import type { RodadaProcessada } from '../../types/interacao'
 
-// Hospeda o mundo isométrico. React cuida do ciclo de vida do canvas e
-// dos painéis; tudo que é desenho mora em cena.ts / maquete.ts. O
-// `mundo` é o container que vai levar câmera (pan/zoom) quando a gente
-// chegar lá — por isso a cena entra dentro dele, e não direto no palco.
+// Hospeda o mundo isométrico estilo The Sims 4 no Hubbia.
+// React cuida do ciclo de vida do canvas, do HUD The Sims, do Pie Menu
+// radial e dos painéis de domínio; cena.ts / maquete.ts cuidam da
+// renderização PixiJS v8 e simulacao-sims.ts roda a inteligência de
+// autonomia, necessidades (commodities), posturas e emoções.
 export function Escritorio() {
   const hospedeiroRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<Editor | null>(null)
-  // referência à cena (fora do estado do React de propósito — é um
-  // ponteiro pro objeto imperativo do Pixi, não dado que precise
-  // re-renderizar nada quando muda) — usada só pra empurrar o estado
-  // vivo dos agentes (falando/pensando/...) pro anel do crachá
   const cenaRef = useRef<Cena | null>(null)
+  const cameraRef = useRef<ControladorCamera | null>(null)
+
   const [estado, setEstado] = useState<EstadoEditor | null>(null)
   const [catalogoAberto, setCatalogoAberto] = useState(false)
+  const [salasAbertas, setSalasAbertas] = useState(false)
   const [problemas, setProblemas] = useState<string[]>([])
-  // qual painel de agente está aberto (id local: cifra/agenda/vita/norte).
-  // Um por vez: abrir outro troca o conteúdo, nunca empilha. Não persiste
-  // entre reloads de propósito — é estado de tela, não dado.
   const [agenteAberto, setAgenteAberto] = useState<string | null>(null)
-  // o painel de mensagens (conversas do chefe + mural geral) não é de
-  // nenhum agente — cruza os quatro. Mutuamente exclusivo com o painel
-  // de agente (mesma regra de "um painel de cada vez" que já valia só
-  // entre agentes)
   const [mensagensAbertas, setMensagensAbertas] = useState(false)
-  // configurações (relógio/orçamento/dry_run/eventos do mundo) — mesma
-  // regra de exclusividade que mensagens, só que abre pela ESQUERDA
-  // (decisão do chefe: as duas em lados opostos, pra não parecerem "a
-  // mesma janela reaparecendo")
   const [configuracoesAbertas, setConfiguracoesAbertas] = useState(false)
-  // dry_run é um MODO, não uma ação — liga/desliga e persiste (mesmo
-  // espírito do rascunho de sala): enquanto ligado, o ícone de avançar
-  // só confere, nunca gasta nem grava. Lazy init lê do localStorage uma
-  // vez só, na montagem (ver dry-run.ts)
+  const [menuPie, setMenuPie] = useState<EstadoMenuPie | null>(null)
+
+  // Inicializa o estado do mundo Sims a partir da sala atual
+  const [mundoSims, setMundoSims] = useState<EstadoMundoSims>(() => {
+    const { sala } = carregarSala()
+    return criarEstadoMundoSims(sala)
+  })
+  const mundoSimsRef = useRef<EstadoMundoSims>(mundoSims)
+  mundoSimsRef.current = mundoSims
+
   const [dryRunAtivo, setDryRunAtivoState] = useState(dryRunEstaAtivo)
   const [ultimoResultado, setUltimoResultado] = useState<ResultadoAvancoMundo | null>(() =>
     dryRunEstaAtivo() ? lerPreviewSalva() : null,
@@ -66,14 +80,7 @@ export function Escritorio() {
   const avancar = useAvancarMundo()
   const contagemNaoLidas = useContagemNaoLidas()
   const { toasts, notificar, fechar } = useToasts()
-  // estado vivo (idle/falando/pensando/executando) pro anel do crachá
-  // na cena isométrica — mesmo dado que já existia (GET /agentes),
-  // só nunca tinha chegado até o desenho antes deste redesenho
   const { data: agentesAoVivo } = useAgentes()
-  // ref (não state) porque `aplicarEstados` também é chamada de dentro
-  // do efeito de montagem (deps `[]`), que capturou uma closure velha —
-  // ler de uma ref sempre pega o valor mais novo, sem precisar recriar
-  // o efeito de montagem inteiro por causa disso
   const agentesAoVivoRef = useRef<typeof agentesAoVivo>(undefined)
   agentesAoVivoRef.current = agentesAoVivo
 
@@ -86,30 +93,32 @@ export function Escritorio() {
       if (aoVivo) estados.set(local.id, aoVivo.estado)
     }
     cenaRef.current.definirEstadosAgentes(estados)
+    setMundoSims((anterior) => {
+      const novosSims = { ...anterior.sims }
+      for (const local of AGENTES) {
+        const aoVivo = dados.find((a) => a.nome === local.nome)
+        if (aoVivo && novosSims[local.id]) {
+          novosSims[local.id] = {
+            ...novosSims[local.id],
+            estadoBackend: aoVivo.estado,
+          }
+        }
+      }
+      return { ...anterior, sims: novosSims }
+    })
   }, [])
 
   function aoAlternarDryRun(ativo: boolean) {
     definirDryRunAtivo(ativo)
     setDryRunAtivoState(ativo)
-    // desligar é o "volta a como era antes": a prévia local some, e a
-    // tela volta a ler o estado real (que dry_run nunca tocou)
     setUltimoResultado(ativo ? lerPreviewSalva() : null)
   }
 
-  // cor de identidade do agente, pro toast tingir a borda do mesmo jeito
-  // que o card do Norte e a bolha de proposta da Agenda já tingem — vem
-  // do config LOCAL da cena (AGENTES), não da lista ao vivo, porque é só
-  // aparência e mesmo um agente ainda não carregado tem cor definida
   function corDoAgente(nome: string): string | undefined {
     const local = AGENTES.find((a) => a.nome === nome)
     return local ? corCss(local.cor) : undefined
   }
 
-  // Traduz o resultado de uma rodada real (nunca dry_run — prévia não
-  // avisa nada) em notificações passageiras: hoje `rodada.interacoes` só
-  // aparecia pra quem tivesse o painel de configurações aberto na hora
-  // certa. Sem isso, um card gerado pelo Norte ou um alerta do Cifra
-  // passava batido até o chefe abrir aquele painel por acaso.
   function notificarResultadoDaRodada(rodada: RodadaProcessada | null, avisoRodada?: string) {
     if (!rodada) {
       if (avisoRodada) notificar({ tipo: 'aviso', texto: avisoRodada })
@@ -119,14 +128,16 @@ export function Escritorio() {
 
     const chefeId = agentesAoVivoRef.current?.find((a) => a.tipo === 'chefe')?.id
 
+    if (rodada.interacoes.length > 0) {
+      setMundoSims((atual) => aplicarInteracoesBackendNoMundo(atual, rodada.interacoes))
+    }
+
     for (const interacao of rodada.interacoes) {
       const cor = corDoAgente(interacao.agente_nome)
       if (interacao.aviso) {
         notificar({ tipo: 'aviso', titulo: interacao.agente_nome, texto: interacao.aviso, cor })
       } else if (interacao.tipo === 'trabalho' && interacao.motivo) {
         notificar({ tipo: 'info', titulo: interacao.agente_nome, texto: interacao.motivo, cor })
-        // som só pra trabalho proativo — é o evento raro/relevante; um
-        // "bipe" a cada papo social do tick ia virar ruído rapidinho
         if (somAtivo()) tocarSom()
       } else if (
         interacao.tipo === 'social' &&
@@ -153,6 +164,51 @@ export function Escritorio() {
     })
   }
 
+  // Executa uma opção escolhida no Pie Menu Radial
+  const executarOpcaoPieMenu = useCallback((opcao: OpcaoPieMenu) => {
+    const mAtual = mundoSimsRef.current
+    if (opcao.acaoEspecial === 'selecionar_sim' && opcao.alvoSimId) {
+      setMundoSims((ant) => ({ ...ant, simAtivoId: opcao.alvoSimId! }))
+      return
+    }
+    if (opcao.acaoEspecial === 'abrir_painel_hubbia') {
+      const idPainel = opcao.alvoSimId ?? mAtual.simAtivoId
+      setAgenteAberto(idPainel)
+      setMensagensAbertas(false)
+      setConfiguracoesAbertas(false)
+      return
+    }
+    if (opcao.acaoEspecial === 'trocar_sala' && opcao.salaDestino) {
+      definirSalaAtual(opcao.salaDestino)
+      recarregarDeProposito()
+      return
+    }
+    if (opcao.acaoEspecial === 'chamar_todos' && opcao.alvoPosicao) {
+      setMundoSims((ant) => {
+        let novo = ant
+        AGENTES.forEach((ag, idx) => {
+          const offsetCol = opcao.alvoPosicao!.coluna + (idx % 2 === 0 ? -0.35 : 0.35)
+          const offsetLin = opcao.alvoPosicao!.linha + (idx < 2 ? -0.35 : 0.35)
+          novo = enfileirarInteracaoSim(
+            novo,
+            ag.id,
+            {
+              ...opcao,
+              acaoEspecial: undefined,
+              alvoPosicao: { coluna: offsetCol, linha: offsetLin },
+            },
+            true,
+          )
+        })
+        return novo
+      })
+      return
+    }
+
+    setMundoSims((ant) => enfileirarInteracaoSim(ant, ant.simAtivoId, opcao))
+  }, [])
+
+  // Montagem do PixiJS, Cena, Editor e Câmera The Sims 4
   useEffect(() => {
     const hospedeiro = hospedeiroRef.current
     if (!hospedeiro) return
@@ -161,9 +217,6 @@ export function Escritorio() {
     let app: Application | null = null
 
     async function montar() {
-      // a sala carrega ANTES do Pixi iniciar, pra pintar o fundo com a
-      // cor certa desde o primeiro frame — cada sala tem sua própria
-      // paleta agora, não existe mais uma cor de fundo global
       const { sala, idSala } = carregarSala()
       const corFundo = typeof sala.paleta?.vazio === 'number' ? sala.paleta.vazio : PALETAS.neutra.vazio
 
@@ -176,7 +229,6 @@ export function Escritorio() {
         autoDensity: true,
       })
 
-      // o componente pode ter desmontado enquanto o init rodava
       if (desmontado) {
         aplicacao.destroy(true, { children: true })
         return
@@ -188,29 +240,58 @@ export function Escritorio() {
       const mundo = new Container()
       aplicacao.stage.addChild(mundo)
 
-      // as texturas do pack são carregadas antes da cena existir
       const cena = await criarCena(sala, {
-        aoClicarAgente: (id) => {
+        aoClicarAgente: (id, telaX, telaY) => {
+          // Se as coordenadas de tela vieram do clique na cena, abre o Pie Menu radial
+          if (typeof telaX === 'number' && typeof telaY === 'number') {
+            const m = mundoSimsRef.current
+            const alvo = m.sims[id]
+            const ativo = m.sims[m.simAtivoId]
+            if (alvo && ativo) {
+              setMenuPie({
+                x: telaX,
+                y: telaY,
+                tituloAlvo: `${alvo.nome} (${alvo.funcao})`,
+                opcoes: obterInteracoesDoSim(alvo, ativo),
+              })
+              return
+            }
+          }
           setAgenteAberto(id)
           setMensagensAbertas(false)
           setConfiguracoesAbertas(false)
+        },
+        aoClicarMovelSimulacao: (movel, telaX, telaY) => {
+          const m = mundoSimsRef.current
+          const ativo = m.sims[m.simAtivoId]
+          if (!ativo) return
+          const opcoes = obterInteracoesDoMovel(
+            movel,
+            cenaRef.current?.maquete.moveis ?? sala.moveis,
+            ativo,
+          )
+          setMenuPie({
+            x: telaX,
+            y: telaY,
+            tituloAlvo: rotuloDe(movel.peca),
+            opcoes,
+          })
+        },
+        aoClicarPiso: (coluna, linha, telaX, telaY) => {
+          setMenuPie({
+            x: telaX,
+            y: telaY,
+            tituloAlvo: `Piso (${coluna.toFixed(1)}, ${linha.toFixed(1)})`,
+            opcoes: obterInteracoesDoChao(coluna, linha),
+          })
         },
       })
       if (desmontado) return
       mundo.addChild(cena.raiz)
       cenaRef.current = cena
-      // o fetch de /agentes pode ter chegado ANTES da cena terminar de
-      // carregar (texturas são assíncronas) — sem isto, o efeito lá
-      // embaixo já teria rodado com cenaRef.current ainda nulo, e o
-      // primeiro estado vivo nunca apareceria até o próximo avanço
+      cena.sincronizarMundoSims(mundoSimsRef.current)
       aplicarEstadosNaCena()
 
-      // defeitos da sala sozinha (cena.problemas) + defeitos que só
-      // aparecem olhando o conjunto — nome duplicado, agente já usado
-      // em outra sala, porta pra sala que não existe. Cada sala entra
-      // com o próprio rascunho quando existe (não com a fonte crua) —
-      // senão um defeito já corrigido em algum rascunho local
-      // apareceria denunciado mesmo assim.
       const problemasConjunto = conferirConjuntoDeSalas(todasAsSalasComRascunho())
       setProblemas([...cena.problemas, ...problemasConjunto])
 
@@ -221,78 +302,87 @@ export function Escritorio() {
         () => {
           const atual = editorRef.current?.estado() ?? null
           setEstado(atual)
-          // em edição o crachá deixa de ser botão e o clique passa
-          // pro móvel embaixo — senão a cadeira do agente ficaria
-          // impossível de arrastar
           cena.definirAgentesClicaveis(!atual?.ativo)
+          if (atual?.ativo) setMenuPie(null)
         },
         idSala,
       )
       editorRef.current = editor
       setEstado(editor.estado())
 
-      // Encaixa a maquete inteira na tela, com uma margem, e centraliza.
-      // Quando a câmera com pan/zoom entrar, isso vira só o estado inicial.
-      const MARGEM = 0.88
-
-      function centralizar() {
-        const limites = mundo.getLocalBounds()
-        const escala = Math.min(
-          (aplicacao.screen.width * MARGEM) / limites.width,
-          (aplicacao.screen.height * MARGEM) / limites.height,
-        )
-        mundo.scale.set(escala)
-        mundo.x = aplicacao.screen.width / 2 - (limites.x + limites.width / 2) * escala
-        mundo.y = aplicacao.screen.height / 2 - (limites.y + limites.height / 2) * escala
-      }
-
-      centralizar()
-      aplicacao.renderer.on('resize', centralizar)
+      // Controlador de câmera com pan, zoom suave e modo Seguir Sim (Camera.ini)
+      cameraRef.current = criarControladorCamera(
+        aplicacao,
+        mundo,
+        () => !(editorRef.current?.estado().ativo ?? false),
+        () => {
+          setMundoSims((ant) => (ant.seguirSimAtivo ? { ...ant, seguirSimAtivo: false } : ant))
+        },
+      )
     }
 
     void montar()
 
     return () => {
       desmontado = true
+      cameraRef.current?.destruir()
+      cameraRef.current = null
       editorRef.current?.destruir()
       editorRef.current = null
       cenaRef.current?.destruirAnimacoes()
       cenaRef.current = null
       app?.destroy(true, { children: true })
     }
+  }, [aplicarEstadosNaCena])
+
+  // Loop de simulação The Sims (roda a 4Hz para atualizar motivos, caminhada e autonomia)
+  useEffect(() => {
+    const intervalo = window.setInterval(() => {
+      if (editorRef.current?.estado().ativo) return
+      const salaAtual = cenaRef.current?.maquete.sala
+      if (!salaAtual) return
+      setMundoSims((anterior) => avancarSimulacaoSims(anterior, salaAtual, 0.25))
+    }, 250)
+    return () => window.clearInterval(intervalo)
   }, [])
 
-  // Ponte entre o dado (GET /agentes, por nome) e a cena (AGENTES[].id
-  // local, ex: 'cifra') — os dois só têm o NOME em comum. Roda de novo
-  // sempre que `agentesAoVivo` muda (avançar o tick invalida a query),
-  // e é barato: só troca visibilidade/estilo do anel, nunca redesenha
-  // o crachá inteiro.
+  // Sincroniza estado do mundo Sims com a cena PixiJS e com a câmera FollowSim
+  useEffect(() => {
+    cenaRef.current?.sincronizarMundoSims(mundoSims)
+    if (mundoSims.seguirSimAtivo) {
+      const ativo = mundoSims.sims[mundoSims.simAtivoId]
+      if (ativo) {
+        cameraRef.current?.definirSeguirPonto(pontoMundoDoSim(ativo.coluna, ativo.linha))
+      }
+    } else {
+      cameraRef.current?.definirSeguirPonto(null)
+    }
+  }, [mundoSims])
+
   useEffect(() => {
     aplicarEstadosNaCena()
   }, [agentesAoVivo, aplicarEstadosNaCena])
 
   useEffect(() => {
     function aoTeclar(e: KeyboardEvent) {
-      // Esc fecha o painel aberto — checado ANTES do filtro de campo de
-      // texto logo abaixo, porque é justamente dentro do campo que a mão
-      // está quando se quer fechar
-      if (e.key === 'Escape' && (agenteAberto || mensagensAbertas || configuracoesAbertas)) {
-        setAgenteAberto(null)
-        setMensagensAbertas(false)
-        setConfiguracoesAbertas(false)
-        return
+      if (e.key === 'Escape') {
+        if (menuPie) {
+          setMenuPie(null)
+          return
+        }
+        if (agenteAberto || mensagensAbertas || configuracoesAbertas || salasAbertas) {
+          setAgenteAberto(null)
+          setMensagensAbertas(false)
+          setConfiguracoesAbertas(false)
+          setSalasAbertas(false)
+          return
+        }
       }
-      // com um painel de agente, mensagens ou configurações aberto o
-      // teclado é dele: sem isso, um "e" digitado fora do campo ligaria
-      // o modo de edição por baixo do painel (ou pior, editaria a sala
-      // ÀS CEGAS por baixo do painel de configurações, que cobre o
-      // mesmo canto esquerdo onde o HUD de edição vive)
-      if (mensagensAbertas || configuracoesAbertas) return
-      if (agenteAberto) return
+
+      if (mensagensAbertas || configuracoesAbertas || agenteAberto) return
 
       const editor = editorRef.current
       if (!editor) return
-      // não sequestrar o teclado enquanto o chefe digita num campo
       const alvo = e.target as HTMLElement | null
       if (alvo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(alvo.tagName)) return
 
@@ -300,10 +390,40 @@ export function Escritorio() {
         editor.alternar()
         return
       }
-      if (!editor.estado().ativo) return
 
-      // Ctrl+Z desfaz, Ctrl+Shift+Z refaz (Cmd no mac). Ctrl+Y também
-      // refaz, que é o costume de quem vem do Windows.
+      // Atalhos do Modo Simulação (The Sims 4):
+      // 0/Espaço = Pausar, 1/2/3 = Velocidades, WASD = Mover Câmera
+      if (!editor.estado().ativo) {
+        if (e.key === '0' || e.key === ' ') {
+          e.preventDefault()
+          setMundoSims((ant) => ({ ...ant, velocidade: ant.velocidade === 0 ? 1 : 0 }))
+          return
+        }
+        if (e.key === '1' || e.key === '2' || e.key === '3') {
+          const v = Number(e.key) as VelocidadeTempo
+          setMundoSims((ant) => ({ ...ant, velocidade: v }))
+          return
+        }
+        if (e.key === 'w' || e.key === 'W') {
+          cameraRef.current?.deslocarPorTeclado(0, 42)
+          return
+        }
+        if (e.key === 's' || e.key === 'S') {
+          cameraRef.current?.deslocarPorTeclado(0, -42)
+          return
+        }
+        if (e.key === 'a' || e.key === 'A') {
+          cameraRef.current?.deslocarPorTeclado(42, 0)
+          return
+        }
+        if (e.key === 'd' || e.key === 'D') {
+          cameraRef.current?.deslocarPorTeclado(-42, 0)
+          return
+        }
+        return
+      }
+
+      // Atalhos do Modo Construir/Edição
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault()
         if (e.shiftKey) editor.refazer()
@@ -315,10 +435,6 @@ export function Escritorio() {
         editor.refazer()
         return
       }
-
-      // Ctrl+C / Ctrl+V da peça selecionada. Só chega aqui fora de campo
-      // de texto (filtrado lá em cima), então copiar texto de um input
-      // continua funcionando normalmente.
       if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault()
         editor.copiar()
@@ -330,9 +446,6 @@ export function Escritorio() {
         return
       }
 
-      // as setas andam nas 4 direções nomeadas: a tela sobe = fundo da
-      // sala = PARA_TRAS (−1,−1); desce = PARA_FRENTE (1,1); direita =
-      // PARA_DIREITA (1,−1); esquerda = PARA_ESQUERDA (−1,1)
       const setas: Record<string, [number, number]> = {
         ArrowUp: [-1, -1],
         ArrowDown: [1, 1],
@@ -359,10 +472,6 @@ export function Escritorio() {
         case 'W':
           editor.girar(1)
           break
-        // altura: A sobe, Z desce (logo abaixo no teclado — e
-        // presente em qualquer layout, ao contrário de PgUp/PgDn, que
-        // faltam em teclado compacto). PgUp/PgDn seguem valendo pra
-        // quem tiver.
         case 'a':
         case 'A':
         case 'PageUp':
@@ -391,23 +500,114 @@ export function Escritorio() {
 
     window.addEventListener('keydown', aoTeclar)
     return () => window.removeEventListener('keydown', aoTeclar)
-    // re-registra ao abrir/fechar painel: o atalho precisa enxergar o
-    // valor atual de `agenteAberto`/`mensagensAbertas`/`configuracoesAbertas`,
-    // não o da montagem
-  }, [agenteAberto, mensagensAbertas, configuracoesAbertas])
+  }, [agenteAberto, mensagensAbertas, configuracoesAbertas, salasAbertas, menuPie])
 
   const chamar = useCallback((f: (e: Editor) => void) => {
     const editor = editorRef.current
     if (editor) f(editor)
   }, [])
 
+  const simAtivo = mundoSims.sims[mundoSims.simAtivoId] ?? Object.values(mundoSims.sims)[0]
+  const plumbAtivo = simAtivo
+    ? calcularCorPlumbBob(simAtivo.necessidades)
+    : { corHex: '#6ec71f', corNum: 0x6ec71f, nivelCritico: 'verde' as const }
+
   return (
     <div style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
       <div ref={hospedeiroRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Menu Radial Pie Menu (The Sims 4) */}
+      <MenuPie
+        menu={menuPie}
+        simAtivoId={mundoSims.simAtivoId}
+        corPlumbBobHex={plumbAtivo.corHex}
+        aoEscolher={executarOpcaoPieMenu}
+        aoFechar={() => setMenuPie(null)}
+      />
+
+      {/* HUD Principal Estilo The Sims 4 */}
+      <HudTheSims
+        mundo={mundoSims}
+        modoConstruirAtivo={Boolean(estado?.ativo)}
+        salasAbertas={salasAbertas}
+        mensagensAbertas={mensagensAbertas}
+        configuracoesAbertas={configuracoesAbertas}
+        contagemNaoLidas={contagemNaoLidas}
+        dryRunAtivo={dryRunAtivo}
+        avancandoTick={avancar.isPending}
+        aoSelecionarSim={(simId) => {
+          setMundoSims((ant) => ({ ...ant, simAtivoId: simId }))
+        }}
+        aoAbrirPainelAgente={(simId) => {
+          setAgenteAberto(simId)
+          setMensagensAbertas(false)
+          setConfiguracoesAbertas(false)
+        }}
+        aoMudarVelocidade={(velocidade) => {
+          setMundoSims((ant) => ({ ...ant, velocidade }))
+        }}
+        aoAlternarAutonomia={() => {
+          setMundoSims((ant) => ({ ...ant, autonomiaAtiva: !ant.autonomiaAtiva }))
+        }}
+        aoAlternarSeguirSim={() => {
+          setMundoSims((ant) => ({ ...ant, seguirSimAtivo: !ant.seguirSimAtivo }))
+        }}
+        aoAlternarCorpoInteiro={() => {
+          setMundoSims((ant) => ({ ...ant, modoCorpoInteiro: !ant.modoCorpoInteiro }))
+        }}
+        aoZoom={(fator) => {
+          cameraRef.current?.aplicarZoom(fator)
+        }}
+        aoCentralizarCamera={() => {
+          setMundoSims((ant) => ({ ...ant, seguirSimAtivo: false }))
+          cameraRef.current?.centralizarSala(false)
+        }}
+        aoCancelarInteracao={(indice) => {
+          setMundoSims((ant) => cancelarInteracaoSim(ant, ant.simAtivoId, indice))
+        }}
+        aoAutoResolverNecessidade={(chave: ChaveNecessidade) => {
+          const salaAtual = cenaRef.current?.maquete.sala
+          if (!salaAtual) return
+          setMundoSims((ant) => {
+            const s = ant.sims[ant.simAtivoId]
+            if (!s) return ant
+            const op = escolherInteracaoParaNecessidade(s, chave, ant, salaAtual)
+            if (!op) return ant
+            return enfileirarInteracaoSim(ant, ant.simAtivoId, op, true)
+          })
+        }}
+        aoInteragirComColega={(alvoSimId, tipo) => {
+          setMundoSims((ant) => {
+            const s = ant.sims[ant.simAtivoId]
+            const alvo = ant.sims[alvoSimId]
+            if (!s || !alvo) return ant
+            const opcoes = obterInteracoesDoSim(alvo, s)
+            const escolhida = opcoes.find((o) =>
+              tipo === 'papo' ? o.id.startsWith('social-papo-') : o.id.startsWith('social-projeto-'),
+            )
+            if (!escolhida) return ant
+            return enfileirarInteracaoSim(ant, ant.simAtivoId, escolhida, true)
+          })
+        }}
+        aoAlternarModoConstruir={() => chamar((e) => e.alternar())}
+        aoAlternarSalas={() => setSalasAbertas((v) => !v)}
+        aoAlternarMensagens={() => {
+          setMensagensAbertas((v) => !v)
+          setAgenteAberto(null)
+          setConfiguracoesAbertas(false)
+        }}
+        aoAlternarConfiguracoes={() => {
+          setConfiguracoesAbertas((v) => !v)
+          setAgenteAberto(null)
+          setMensagensAbertas(false)
+        }}
+        aoClicarAvancarTick={aoClicarAvancar}
+      />
+
       {estado && (
         <PainelEdicao
           estado={estado}
-          mostrarDica={!agenteAberto && !mensagensAbertas && !configuracoesAbertas}
+          mostrarDica={false}
           aoGirar={() => chamar((e) => e.girar(1))}
           aoDesfazer={() => chamar((e) => e.desfazer())}
           aoRefazer={() => chamar((e) => e.refazer())}
@@ -422,85 +622,10 @@ export function Escritorio() {
         />
       )}
       <PainelProblemas problemas={problemas} aoFechar={() => setProblemas([])} />
-      {/* o menu de salas some com um agente (ou mensagens/configurações)
-          aberto: trocar de sala no meio de uma conversa não faz sentido,
-          mesma regra que já vale pro modo de edição */}
-      {!estado?.ativo && !agenteAberto && !mensagensAbertas && !configuracoesAbertas && <PainelSalas />}
+      {!estado?.ativo && salasAbertas && !agenteAberto && !mensagensAbertas && !configuracoesAbertas && (
+        <PainelSalas />
+      )}
       {!estado?.ativo && <PopupPorta popup={estado?.popupPorta ?? null} />}
-
-      {/* Mensagens + configurações — canto inferior ESQUERDO. Sempre
-          visível, em qualquer modo (inclusive edição, inclusive com um
-          painel aberto): zIndex 65, ACIMA dos próprios painéis (60), não
-          só do backdrop deles (55) — os dois painéis abrem pela
-          esquerda também, então este canto fica GEOMETRICAMENTE por
-          baixo deles; bater só o backdrop não bastava. */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 16,
-          bottom: 16,
-          zIndex: 65,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          alignItems: 'center',
-          background: 'rgba(27, 30, 37, 0.55)',
-          backdropFilter: 'blur(18px) saturate(160%)',
-          WebkitBackdropFilter: 'blur(18px) saturate(160%)',
-          border: '1px solid rgba(255,255,255,0.14)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 18px 40px -18px rgba(0,0,0,0.6)',
-          borderRadius: 14,
-          padding: 8,
-        }}
-      >
-        <BotaoIcone
-          titulo="mensagens"
-          ativo={mensagensAbertas}
-          badge={contagemNaoLidas > 0}
-          onClick={() => {
-            setMensagensAbertas((v) => !v)
-            setAgenteAberto(null)
-            setConfiguracoesAbertas(false)
-          }}
-        >
-          <IconeMensagens />
-        </BotaoIcone>
-
-        <BotaoIcone
-          titulo="configurações"
-          ativo={configuracoesAbertas}
-          onClick={() => {
-            setConfiguracoesAbertas((v) => !v)
-            setAgenteAberto(null)
-            setMensagensAbertas(false)
-          }}
-        >
-          <IconeConfiguracoes />
-        </BotaoIcone>
-      </div>
-
-      {/* Avançar tick — canto inferior DIREITO, sozinho (decisão do
-          chefe: é a ação mais frequente, fica isolada e em destaque do
-          lado oposto ao menu de mensagens/configurações). Mesma razão
-          de zIndex acima: um painel de agente ("largo") também abre
-          pela direita e cobriria este canto sem o 65. */}
-      <div
-        style={{
-          position: 'absolute',
-          right: 16,
-          bottom: 16,
-          zIndex: 65,
-        }}
-      >
-        <BotaoIcone
-          titulo={dryRunAtivo ? 'conferir 1 tick (modo simulado ligado)' : 'avançar 1 tick'}
-          destaque
-          carregando={avancar.isPending}
-          onClick={aoClicarAvancar}
-        >
-          <IconeAvancarTick />
-        </BotaoIcone>
-      </div>
 
       {agenteAberto && <PainelDoAgente agenteId={agenteAberto} aoFechar={() => setAgenteAberto(null)} />}
       {mensagensAbertas && <PainelMensagens aoFechar={() => setMensagensAbertas(false)} />}
@@ -522,79 +647,5 @@ export function Escritorio() {
 
       <Toasts toasts={toasts} aoFechar={fechar} />
     </div>
-  )
-}
-
-function BotaoIcone({
-  children,
-  titulo,
-  onClick,
-  ativo = false,
-  destaque = false,
-  badge = false,
-  carregando = false,
-}: {
-  children: React.ReactNode
-  titulo: string
-  onClick: () => void
-  ativo?: boolean
-  destaque?: boolean
-  badge?: boolean
-  carregando?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={titulo}
-      aria-label={titulo}
-      disabled={carregando}
-      style={{
-        position: 'relative',
-        width: 40,
-        height: 40,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: 10,
-        border: '1px solid rgba(255,255,255,0.14)',
-        background: ativo
-          ? 'rgba(255,255,255,0.16)'
-          : destaque
-            ? 'rgba(74,222,128,0.16)'
-            : 'rgba(255,255,255,0.06)',
-        color: destaque ? '#4ade80' : '#e6e1d6',
-        cursor: carregando ? 'default' : 'pointer',
-        opacity: carregando ? 0.6 : 1,
-        // o glow "respirando" só faz sentido parado (carregando já tem
-        // seu próprio feedback visual — opacidade reduzida)
-        animation: destaque && !carregando ? 'consoleGoGlow 2.6s ease-in-out infinite' : undefined,
-      }}
-    >
-      {children}
-      {badge && (
-        <span style={{ position: 'absolute', top: -3, right: -3, width: 10, height: 10 }} aria-label="mensagens não lidas">
-          <span
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '50%',
-              background: '#ef4444',
-              border: '2px solid rgba(27,30,37,0.9)',
-            }}
-          />
-          {/* anel expandindo — achado em designspells.com (várias telas
-              usam "ping" pra pendência viva, não só uma bolinha estática) */}
-          <span
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '50%',
-              background: '#ef4444',
-              animation: 'consolePing 1.8s cubic-bezier(.4,0,.6,1) infinite',
-            }}
-          />
-        </span>
-      )}
-    </button>
   )
 }

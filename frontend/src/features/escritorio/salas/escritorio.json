@@ -191,6 +191,36 @@
       "direcao": "NE",
       "coluna": 0.415,
       "linha": 1.423
+    },
+    {
+      "id": "kitchenCabinet-1",
+      "peca": "kitchenCabinet",
+      "direcao": "NW",
+      "coluna": 2.6,
+      "linha": 0.25
+    },
+    {
+      "id": "kitchenCoffeeMachine-1",
+      "peca": "kitchenCoffeeMachine",
+      "direcao": "NW",
+      "coluna": 2.6,
+      "linha": 0.25,
+      "altura": 0.18,
+      "sobre": "kitchenCabinet-1"
+    },
+    {
+      "id": "bookcaseOpen-1",
+      "peca": "bookcaseOpen",
+      "direcao": "NE",
+      "coluna": 0.25,
+      "linha": 2.6
+    },
+    {
+      "id": "loungeDesignSofa-1",
+      "peca": "loungeDesignSofa",
+      "direcao": "NE",
+      "coluna": 0.65,
+      "linha": 4.4
     }
   ]
 }

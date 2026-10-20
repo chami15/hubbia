@@ -1,5 +1,16 @@
-import { Assets, Container, FillGradient, Graphics, Sprite, Ticker, type Texture } from 'pixi.js'
-import { paraTela, TILE_W, TILE_H } from './iso'
+import {
+  Assets,
+  Container,
+   type FederatedPointerEvent,
+  FillGradient,
+  Graphics,
+  Sprite,
+  Text,
+  TextStyle,
+  Ticker,
+  type Texture,
+} from 'pixi.js'
+import { paraTela, profundidade, TILE_W, TILE_H } from './iso'
 import {
   ESPESSURA_LAJE,
   ALTURA_PAREDE,
@@ -12,22 +23,26 @@ import {
 } from './sala'
 import { AGENTES, PASTA_AGENTES, RECORTES } from './agentes'
 import { Maquete } from './maquete'
-import { conferirSala, type SalaDados } from './sala-dados'
+import { conferirSala, type MovelSala, type SalaDados } from './sala-dados'
 import { CHAVES_PALETA } from './sala-conferir'
+import {
+  calcularCorPlumbBob,
+  COR_PLUMBBOB_VERDE,
+  INFO_HUMORES,
+  type EstadoMundoSims,
+  type EstadoSim,
+} from './simulacao-sims'
 import type { EstadoAgente } from '../../types/agente'
 
 // Abordagem combinada:
 //   - piso, laje e paredes são DESENHADOS (Graphics) → cor 100% livre,
 //     nenhuma emenda entre tiles, e a laje grossa que dá o ar de maquete
 //   - móveis são SPRITES do pack → arte de verdade
-//
-// O que faz os dois conversarem é a geometria: o piso é desenhado no
-// mesmo ângulo dos sprites do Kenney (208x146, medido nos PNGs), então
-// móvel e chão parecem estar sob a mesma câmera.
-//
-// Camadas, de trás pra frente:
-//   paredes → laje → piso → tapetes → móveis (estes ordenados por
-//   profundidade entre si).
+//   - Sims (agentes) vivem na camada de móveis com ordenação isométrica
+//     dinâmica por profundidade (coluna + linha), suportando tanto o
+//     modo Corpo Inteiro (The Sims 4, com PlumbBob 3D giratório,
+//     caminhada, posturas e balões de pensamento/fala) quanto o modo
+//     Crachá clássico.
 
 async function carregarRetratos(): Promise<Map<string, Texture>> {
   const mapa = new Map<string, Texture>()
@@ -39,27 +54,10 @@ async function carregarRetratos(): Promise<Map<string, Texture>> {
   return mapa
 }
 
-// O "crachá" do agente: o retrato recortado em círculo (via mask do
-// Pixi) + um anel na cor de identidade dele. O recorte usa o CENTRO do
-// retrato calibrado em RECORTES como âncora do sprite — assim a
-// escala coloca exatamente aquele ponto na posição pedida, e a mask
-// (mesmo centro/raio, já em pixel de tela) recorta o círculo certo.
 const DIAMETRO_CRACHA = 84
 const ESPESSURA_ANEL = 5
+const ALTURA_CORPO_SIM = 158
 
-// Estado vivo do agente (idle/falando/pensando/executando) — antes o
-// anel era só a cor de identidade, parada, sem ligação nenhuma com
-// `agentes.estado` (GET /agentes). Redesenho "Console": cada estado
-// ganha uma linguagem de movimento PRÓPRIA, pra dar pra "sentir" o
-// escritório funcionando sem abrir painel nenhum:
-//   idle       — anel parado, como sempre foi.
-//   falando    — glow pulsando (mesmo "ar de online" do HUD).
-//   pensando   — anel pontilhado + o MESMO pulso de falando (só o
-//                traço muda; girar era o design original mas confundia
-//                com "executando" — decisão do chefe).
-//   executando — anel sólido parado + um traço curto ORBITANDO em
-//                volta, linguagem de movimento diferente de "pulsar",
-//                pra nunca ser confundido com "falando".
 interface ControladorAnel {
   definirEstado(estado: EstadoAgente): void
   animar(deltaMS: number, tempoTotalMS: number): void
@@ -69,15 +67,19 @@ const DURACAO_PULSO_MS = 2400
 const VELOCIDADE_COMETA = 0.0035 // rad/ms
 const LARGURA_COMETA = Math.PI * 2 * 0.1
 
-// Mistura uma cor 0xRRGGBB com branco — é o que faz o cometa "acender"
-// de verdade em cima do anel de base da MESMA cor; sem isto, o traço
-// que gira fica invisível por cima do próprio anel (mesma cor, mesma
-// espessura, mesmo lugar — nada pra diferenciar visualmente).
 function clarear(cor: number, quantidade: number): number {
   const r = (cor >> 16) & 0xff
   const g = (cor >> 8) & 0xff
   const b = cor & 0xff
   const misturar = (canal: number) => Math.round(canal + (255 - canal) * quantidade)
+  return (misturar(r) << 16) | (misturar(g) << 8) | misturar(b)
+}
+
+function escurecer(cor: number, quantidade: number): number {
+  const r = (cor >> 16) & 0xff
+  const g = (cor >> 8) & 0xff
+  const b = cor & 0xff
+  const misturar = (canal: number) => Math.round(canal * (1 - quantidade))
   return (misturar(r) << 16) | (misturar(g) << 8) | misturar(b)
 }
 
@@ -98,9 +100,6 @@ function criarAnelAnimado(cor: number, raioTela: number): { grafico: Container; 
       anelBase.stroke({ width: ESPESSURA_ANEL, color: cor })
       return
     }
-    // pontilhado: poucos traços LARGOS com vão bem visível — muitos
-    // traços finos somem no anti-aliasing na escala que o crachá
-    // aparece na tela (a maquete inteira cabe numa janela só)
     const TRACOS = 6
     for (let i = 0; i < TRACOS; i++) {
       const a0 = (i / TRACOS) * Math.PI * 2
@@ -110,8 +109,6 @@ function criarAnelAnimado(cor: number, raioTela: number): { grafico: Container; 
     anelBase.stroke({ width: ESPESSURA_ANEL, color: cor })
   }
 
-  // traço curto e BRILHANTE (cor clareada, mais grosso que o anel)
-  // orbitando — precisa se destacar do anel de base, não só girar
   function desenharCometa() {
     cometa.clear()
     cometa.arc(0, 0, raioAnel, anguloCometa, anguloCometa + LARGURA_COMETA)
@@ -120,9 +117,6 @@ function criarAnelAnimado(cor: number, raioTela: number): { grafico: Container; 
 
   desenharAnelBase(false)
   halo.circle(0, 0, raioAnel + 5)
-  // sem alpha aqui — quem controla o alpha é `animar()`, no objeto
-  // (container.alpha), não no traçado; dar alpha nos dois multiplica
-  // e o pulso vinha saindo bem mais apagado do que o previsto
   halo.stroke({ width: 4, color: cor })
   halo.visible = false
   desenharCometa()
@@ -152,44 +146,313 @@ function criarAnelAnimado(cor: number, raioTela: number): { grafico: Container; 
   return { grafico: grupo, controlador: { definirEstado, animar } }
 }
 
-// Desenha tudo na ORIGEM do container — quem posiciona é o chamador,
-// via container.x/y. Assim o crachá pode acompanhar a cadeira quando
-// ela é arrastada no modo de edição (se as formas fossem desenhadas
-// já nas coordenadas finais, mover o container somaria duas vezes).
-function criarAvatar(
+// ---------------------------------------------------------------------------
+// PLUMBBOB 3D FACETADO GIRATÓRIO (`Default.ini` [PlumbBob])
+// Desenha uma bipirâmide hexagonal com iluminação por faceta que gira no eixo Y.
+// ---------------------------------------------------------------------------
+function desenharPlumbBob3D(
+  g: Graphics,
+  corBase: number,
+  faseGiro: number,
+  escala = 1,
+  progressoInteracao = 0,
+) {
+  g.clear()
+  const h = 24 * escala
+  const r = 11.5 * escala
+  const corClara = clarear(corBase, 0.45)
+  const corMedia = corBase
+  const corEscura = escurecer(corBase, 0.28)
+  const corBorda = clarear(corBase, 0.72)
+
+  // Halo suave ao redor do PlumbBob
+  g.circle(0, 0, 17 * escala).fill({ color: corBase, alpha: 0.18 })
+
+  // Anel circular de progresso quando o Sim está executando uma interação
+  if (progressoInteracao > 0.01) {
+    const raioProg = 21 * escala
+    g.circle(0, 0, raioProg).stroke({ width: 2.5, color: 0xffffff, alpha: 0.2 })
+    g.arc(
+      0,
+      0,
+      raioProg,
+      -Math.PI / 2,
+      -Math.PI / 2 + Math.PI * 2 * Math.min(1, progressoInteracao),
+    ).stroke({ width: 3, color: corClara, cap: 'round' })
+  }
+
+  // Vértices do equador da bipirâmide girando
+  const N = 4
+  const angulos: number[] = []
+  for (let i = 0; i < N; i++) {
+    angulos.push(faseGiro + (i * Math.PI * 2) / N)
+  }
+
+  for (let i = 0; i < N; i++) {
+    const a0 = angulos[i]
+    const a1 = angulos[(i + 1) % N]
+    const x0 = Math.sin(a0) * r
+    const z0 = Math.cos(a0)
+    const x1 = Math.sin(a1) * r
+    const z1 = Math.cos(a1)
+
+    // Só desenha as faces voltadas para a câmera (back-face culling)
+    if (z0 + z1 < -0.25 && x1 <= x0) continue
+
+    const iluminacao = (z0 + z1) / 2
+    const corFaceSuperior = iluminacao > 0.2 ? corClara : iluminacao > -0.2 ? corMedia : corEscura
+    const corFaceInferior = iluminacao > 0.2 ? corMedia : escurecer(corEscura, 0.15)
+
+    // Metade superior (ponta de cima até o equador)
+    g.poly([0, -h, x0, 0, x1, 0]).fill(corFaceSuperior)
+    g.poly([0, -h, x0, 0, x1, 0]).stroke({ width: 1, color: corBorda, alpha: 0.65 })
+
+    // Metade inferior (equador até a ponta de baixo)
+    g.poly([0, h, x1, 0, x0, 0]).fill(corFaceInferior)
+    g.poly([0, h, x1, 0, x0, 0]).stroke({ width: 1, color: corBorda, alpha: 0.5 })
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AVATAR COMPLETO DO SIM (Corpo Inteiro + Crachá + PlumbBob + Balão)
+// ---------------------------------------------------------------------------
+interface AvatarSimVisual {
+  container: Container
+  controladorAnel: ControladorAnel
+  atualizarSim: (
+    sim: EstadoSim | undefined,
+    ativo: boolean,
+    modoCorpoInteiro: boolean,
+    tempoTotalMS: number,
+    deltaMS: number,
+  ) => void
+}
+
+function criarAvatarSim(
+  agenteId: string,
+  nomeAgente: string,
   retrato: Texture,
   recorte: { cx: number; cy: number; raio: number },
-  cor: number,
-): { container: Container; controlador: ControladorAnel } {
+  corIdentidade: number,
+): AvatarSimVisual {
   const container = new Container()
   const raioTela = DIAMETRO_CRACHA / 2
 
-  const sprite = new Sprite(retrato)
-  sprite.anchor.set(recorte.cx, recorte.cy)
-  const escala = raioTela / (recorte.raio * retrato.width)
-  sprite.scale.set(escala)
+  // --- 1. Sub-container do modo CORPO INTEIRO (The Sims 4) ---
+  const grupoCorpo = new Container()
 
-  const mascara = new Graphics()
-  mascara.circle(0, 0, raioTela).fill(0xffffff)
-  sprite.mask = mascara
+  // Sombra elíptica no piso isométrico + anel de seleção no chão
+  const sombraChao = new Graphics()
+  const anelChao = new Graphics()
 
-  const { grafico: anel, controlador } = criarAnelAnimado(cor, raioTela)
+  // Sprite de corpo inteiro do personagem (as artes em /agentes/*2dSemfundo.png
+  // são personagens completos em fundo transparente!)
+  const spriteCorpo = new Sprite(retrato)
+  spriteCorpo.anchor.set(0.5, 0.92)
+  const escalaCorpo = ALTURA_CORPO_SIM / retrato.height
+  spriteCorpo.scale.set(escalaCorpo)
 
-  const sombra = new Graphics()
-  sombra.circle(0, raioTela * 0.15, raioTela * 0.9)
-  sombra.fill({ color: 0x000000, alpha: 0.18 })
+  // Etiqueta discreta com nome e humor logo abaixo dos pés
+  const estiloEtiqueta = new TextStyle({
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: 11,
+    fontWeight: '700',
+    fill: 0xf8fafc,
+  })
+  const textoEtiqueta = new Text({ text: nomeAgente, style: estiloEtiqueta })
+  textoEtiqueta.anchor.set(0.5, 0.5)
+  const fundoEtiqueta = new Graphics()
+  const grupoEtiqueta = new Container()
+  grupoEtiqueta.y = 16
+  grupoEtiqueta.addChild(fundoEtiqueta, textoEtiqueta)
 
-  // a mask PRECISA estar na árvore de cena (senão a transform dela não
-  // acompanha a câmera/zoom do container pai e o recorte desalinha) —
-  // mas o Pixi não desenha normalmente um objeto que está sendo usado
-  // como .mask de outro, então ela não aparece como um círculo branco.
-  container.addChild(sombra, sprite, mascara, anel)
-  return { container, controlador }
+  // Indicador do item na mão (xícara de café, livro, tablet)
+  const estiloItemMao = new TextStyle({ fontSize: 18 })
+  const textoItemMao = new Text({ text: '', style: estiloItemMao })
+  textoItemMao.anchor.set(0.5, 0.5)
+  textoItemMao.x = 28
+  textoItemMao.y = -62
+  textoItemMao.visible = false
+
+  grupoCorpo.addChild(sombraChao, anelChao, spriteCorpo, textoItemMao, grupoEtiqueta)
+
+  // --- 2. Sub-container do modo CRACHÁ CLÁSSICO ---
+  const grupoCracha = new Container()
+  const spriteCracha = new Sprite(retrato)
+  spriteCracha.anchor.set(recorte.cx, recorte.cy)
+  const escalaCracha = raioTela / (recorte.raio * retrato.width)
+  spriteCracha.scale.set(escalaCracha)
+
+  const mascaraCracha = new Graphics()
+  mascaraCracha.circle(0, 0, raioTela).fill(0xffffff)
+  spriteCracha.mask = mascaraCracha
+
+  const { grafico: anelCracha, controlador: controladorAnel } = criarAnelAnimado(corIdentidade, raioTela)
+  const sombraCracha = new Graphics()
+  sombraCracha.circle(0, raioTela * 0.15, raioTela * 0.9).fill({ color: 0x000000, alpha: 0.18 })
+  grupoCracha.addChild(sombraCracha, spriteCracha, mascaraCracha, anelCracha)
+  grupoCracha.visible = false
+
+  // --- 3. PlumbBob 3D flutuando acima da cabeça ---
+  const graficoPlumbBob = new Graphics()
+  graficoPlumbBob.y = -ALTURA_CORPO_SIM - 26
+
+  // --- 4. Balão de Pensamento / Fala (`balloon_request.pyc`) ---
+  const grupoBalao = new Container()
+  grupoBalao.y = -ALTURA_CORPO_SIM - 66
+  grupoBalao.visible = false
+  const fundoBalao = new Graphics()
+  const estiloTextoBalao = new TextStyle({
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontSize: 11.5,
+    fontWeight: '600',
+    fill: 0x0f172a,
+  })
+  const textoBalao = new Text({ text: '', style: estiloTextoBalao })
+  textoBalao.anchor.set(0.5, 0.5)
+  grupoBalao.addChild(fundoBalao, textoBalao)
+
+  container.addChild(grupoCorpo, grupoCracha, graficoPlumbBob, grupoBalao)
+
+  let faseGiroPlumbBob = (agenteId.charCodeAt(0) % 7) * 0.8
+  let chaveBalaoAnterior = ''
+  let chaveEtiquetaAnterior = ''
+
+  function desenharBalao(tipo: 'pensamento' | 'fala', icone: string, texto: string) {
+    const chave = `${tipo}:${icone}:${texto}`
+    if (chave === chaveBalaoAnterior) return
+    chaveBalaoAnterior = chave
+
+    const completo = `${icone} ${texto}`
+    textoBalao.text = completo.length > 36 ? `${completo.slice(0, 35)}…` : completo
+    const larg = Math.max(84, textoBalao.width + 24)
+    const alt = 30
+
+    fundoBalao.clear()
+    // Sombra e corpo branco estilo The Sims 4
+    fundoBalao.roundRect(-larg / 2, -alt / 2 + 2, larg, alt, 14).fill({ color: 0x000000, alpha: 0.22 })
+    fundoBalao.roundRect(-larg / 2, -alt / 2, larg, alt, 14).fill(0xffffff)
+    fundoBalao
+      .roundRect(-larg / 2, -alt / 2, larg, alt, 14)
+      .stroke({ width: 2, color: tipo === 'fala' ? 0x38bdf8 : 0x84cc16, alpha: 0.9 })
+
+    if (tipo === 'pensamento') {
+      // Bolinhas de pensamento descendo até a cabeça
+      fundoBalao.circle(-4, alt / 2 + 5, 3.5).fill(0xffffff)
+      fundoBalao.circle(2, alt / 2 + 11, 2.2).fill(0xffffff)
+    } else {
+      // Rabicho de fala
+      fundoBalao.poly([-6, alt / 2 - 1, 6, alt / 2 - 1, 0, alt / 2 + 9]).fill(0xffffff)
+    }
+  }
+
+  function atualizarSim(
+    sim: EstadoSim | undefined,
+    ativo: boolean,
+    modoCorpoInteiro: boolean,
+    tempoTotalMS: number,
+    deltaMS: number,
+  ) {
+    controladorAnel.animar(deltaMS, tempoTotalMS)
+    grupoCorpo.visible = modoCorpoInteiro
+    grupoCracha.visible = !modoCorpoInteiro
+
+    const faseTempo = tempoTotalMS * 0.004 + (agenteId.charCodeAt(0) % 5)
+    const posturaCorpo = sim?.postura.corpo ?? 'sentado_cadeira'
+
+    // Animação de caminhada / postura / respiração no modo Corpo Inteiro
+    if (modoCorpoInteiro) {
+      let offsetY = 0
+      let rotacao = 0
+      if (posturaCorpo === 'andando') {
+        offsetY = -Math.abs(Math.sin(tempoTotalMS * 0.014)) * 9
+        rotacao = Math.sin(tempoTotalMS * 0.014) * 0.055
+      } else if (posturaCorpo === 'sentado_cadeira' || posturaCorpo === 'sentado_sofa') {
+        offsetY = 14 + Math.sin(faseTempo) * 1.6
+      } else if (posturaCorpo === 'interagindo_em_pe') {
+        offsetY = Math.sin(tempoTotalMS * 0.008) * 3
+        rotacao = Math.sin(tempoTotalMS * 0.006) * 0.025
+      } else {
+        offsetY = Math.sin(faseTempo) * 2
+      }
+
+      spriteCorpo.y = offsetY
+      spriteCorpo.rotation = rotacao
+      const respiracaoEscala = 1 + Math.sin(faseTempo) * 0.014
+      spriteCorpo.scale.set(escalaCorpo, escalaCorpo * respiracaoEscala)
+
+      // Sombra no chão + anel de Sim ativo
+      sombraChao.clear()
+      sombraChao.ellipse(0, 0, 28, 13).fill({ color: 0x000000, alpha: 0.28 })
+
+      anelChao.clear()
+      const corPlumb = sim ? calcularCorPlumbBob(sim.necessidades).corNum : COR_PLUMBBOB_VERDE
+      if (ativo) {
+        anelChao.ellipse(0, 0, 34, 16).stroke({ width: 3, color: corPlumb, alpha: 0.92 })
+        anelChao.ellipse(0, 0, 39, 19).stroke({
+          width: 1.5,
+          color: corPlumb,
+          alpha: 0.35 + 0.25 * Math.sin(tempoTotalMS * 0.005),
+        })
+      } else {
+        anelChao.ellipse(0, 0, 30, 14).stroke({ width: 2, color: corIdentidade, alpha: 0.55 })
+      }
+
+      // Objeto carregado na mão (PostureAspectCarry)
+      const carregando = sim?.postura.carregando ?? 'nada'
+      if (carregando !== 'nada') {
+        textoItemMao.visible = true
+        textoItemMao.text =
+          carregando === 'xicara_cafe' ? '☕' : carregando === 'livro' ? '📖' : '📱'
+        textoItemMao.y = -58 + offsetY
+      } else {
+        textoItemMao.visible = false
+      }
+
+      // Etiqueta de nome + ícone de humor
+      const infoHumor = sim ? INFO_HUMORES[sim.humor] : INFO_HUMORES.feliz
+      const novaChaveEtiqueta = `${nomeAgente}:${infoHumor.icone}:${ativo}`
+      if (novaChaveEtiqueta !== chaveEtiquetaAnterior) {
+        chaveEtiquetaAnterior = novaChaveEtiqueta
+        textoEtiqueta.text = `${infoHumor.icone} ${nomeAgente}`
+        const largEtiq = textoEtiqueta.width + 14
+        fundoEtiqueta.clear()
+        fundoEtiqueta.roundRect(-largEtiq / 2, -10, largEtiq, 20, 10).fill({
+          color: 0x0f172a,
+          alpha: ativo ? 0.88 : 0.72,
+        })
+        fundoEtiqueta.roundRect(-largEtiq / 2, -10, largEtiq, 20, 10).stroke({
+          width: ativo ? 1.5 : 1,
+          color: ativo ? corPlumb : corIdentidade,
+          alpha: 0.85,
+        })
+      }
+    }
+
+    // PlumbBob 3D giratório (grande para o Sim ativo, compacto para os outros)
+    faseGiroPlumbBob += deltaMS * 0.0026
+    const corPlumb = sim ? calcularCorPlumbBob(sim.necessidades).corNum : COR_PLUMBBOB_VERDE
+    const progresso = sim?.interacaoAtual?.progresso ?? 0
+    const escalaPlumb = ativo ? 1.05 : 0.52
+    const basePlumbY = modoCorpoInteiro ? -ALTURA_CORPO_SIM - (ativo ? 22 : 10) : -raioTela - 24
+    graficoPlumbBob.y = basePlumbY + Math.sin(tempoTotalMS * 0.0045) * 4.5
+    graficoPlumbBob.alpha = ativo ? 1 : 0.78
+    desenharPlumbBob3D(graficoPlumbBob, corPlumb, faseGiroPlumbBob, escalaPlumb, progresso)
+
+    // Balão de pensamento / fala
+    if (sim?.balao) {
+      grupoBalao.visible = true
+      grupoBalao.y = basePlumbY - (ativo ? 38 : 26) + Math.sin(tempoTotalMS * 0.005) * 2.5
+      desenharBalao(sim.balao.tipo, sim.balao.icone, sim.balao.texto)
+    } else {
+      grupoBalao.visible = false
+    }
+  }
+
+  return { container, controladorAnel, atualizarSim }
 }
 
-// Os 4 cantos externos da planta. paraTela(c - 0.5, l - 0.5) devolve o
-// vértice de cima do tile (c, l), então meio tile em cada eixo chega
-// nas quinas do retângulo inteiro.
+// Os 4 cantos externos da planta.
 function cantos(colunas: number, linhas: number) {
   return {
     norte: paraTela(-0.5, -0.5),
@@ -222,7 +485,12 @@ function desenharLaje(colunas: number, linhas: number, paleta: Paleta): Graphics
   return g
 }
 
-function desenharPiso(colunas: number, linhas: number, paleta: Paleta): Graphics {
+function desenharPiso(
+  colunas: number,
+  linhas: number,
+  paleta: Paleta,
+  aoClicarPiso?: (coluna: number, linha: number, telaX: number, telaY: number) => void,
+): Graphics {
   const g = new Graphics()
   const hw = TILE_W / 2
   const hh = TILE_H / 2
@@ -236,18 +504,27 @@ function desenharPiso(colunas: number, linhas: number, paleta: Paleta): Graphics
     }
   }
 
+  if (aoClicarPiso) {
+    g.eventMode = 'static'
+    g.cursor = 'pointer'
+    g.on('pointertap', (e: FederatedPointerEvent) => {
+      const local = g.toLocal(e.global)
+      // Inversa exata de paraTela(coluna, linha, 0):
+      const coluna = local.x / TILE_W + local.y / TILE_H
+      const linha = local.y / TILE_H - local.x / TILE_W
+      if (coluna >= -0.4 && coluna <= colunas - 0.4 && linha >= -0.4 && linha <= linhas - 0.4) {
+        const cLimpo = Math.max(0, Math.min(colunas - 1, coluna))
+        const lLimpo = Math.max(0, Math.min(linhas - 1, linha))
+        aoClicarPiso(cLimpo, lLimpo, e.global.x, e.global.y)
+      }
+    })
+  }
+
   return g
 }
 
-// Uma parede: corre da quina `de` até a quina `ate` (as duas na linha do
-// piso) e sobe. Ganha uma faixa clara no topo (a espessura da parede
-// vista de cima) e um rodapé mais escuro embaixo.
 type Ponto2 = { x: number; y: number }
 
-// Um ponto na FACE da parede, em coordenadas próprias dela:
-//   t = 0..1 ao longo do comprimento (0 na quina do fundo)
-//   h = 0..1 na altura (0 no chão, 1 no topo)
-// Isso deixa desenhar janela/quadro na parede sem repetir trigonometria.
 function naParede(de: Ponto2, ate: Ponto2, t: number, h: number): Ponto2 {
   return {
     x: de.x + (ate.x - de.x) * t,
@@ -273,10 +550,6 @@ function quadNaParede(
   g.fill(cor)
 }
 
-// Vidro com gradiente (céu) + um brilho diagonal, em vez de cor
-// chapada — é a "textura" possível sem sair de Graphics: gradiente de
-// verdade (FillGradient do Pixi) simulando profundidade/céu, mais uma
-// faixa translúcida na diagonal simulando reflexo de vidro.
 function desenharVidro(
   g: Graphics,
   de: Ponto2,
@@ -307,7 +580,6 @@ function desenharVidro(
   g.poly([a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y])
   g.fill(ceu)
 
-  // reflexo: uma faixa clara e translúcida cruzando na diagonal
   const rt0 = t0 + (t1 - t0) * 0.08
   const rt1 = t0 + (t1 - t0) * 0.32
   const p1 = naParede(de, ate, rt0, h1)
@@ -320,7 +592,6 @@ function desenharVidro(
 
 function desenharJanela(g: Graphics, de: Ponto2, ate: Ponto2, janela: Janela, paleta: Paleta) {
   const { inicio, fim, base, topo } = janela
-  // moldura por fora, vidro por dentro
   quadNaParede(g, de, ate, inicio, fim, base, topo, paleta.janelaMoldura)
 
   const margemT = (fim - inicio) * 0.12
@@ -332,19 +603,12 @@ function desenharJanela(g: Graphics, de: Ponto2, ate: Ponto2, janela: Janela, pa
 
   desenharVidro(g, de, ate, vt0, vt1, vh0, vh1, paleta)
 
-  // caixilho central, dividindo em duas folhas
   const meio = (vt0 + vt1) / 2
   const larguraCaixilho = (fim - inicio) * 0.035
   quadNaParede(g, de, ate, meio - larguraCaixilho, meio + larguraCaixilho, vh0, vh1, paleta.janelaMoldura)
-  // peitoril, uma faixa fina logo abaixo da janela
   quadNaParede(g, de, ate, inicio - margemT, fim + margemT, base - 0.035, base, paleta.paredeTopo)
 }
 
-// Espessura lateral, vista na ponta externa da parede (a quina da
-// sala). É o mesmo espírito da faixa de cima, só que na ponta: sem
-// isso a parede parece uma folha de papel, sem volume nenhum na quina.
-// Mesma proporção da faixa de cima — o vetor "fora" é normalizado pro
-// comprimento de ESPESSURA_PAREDE, não uma fração arbitrária de tile.
 function normalizarParaEspessura(v: Ponto2): Ponto2 {
   const comprimento = Math.hypot(v.x, v.y)
   const escala = ESPESSURA_PAREDE / comprimento
@@ -385,8 +649,6 @@ function desenharParede(
 
   for (const janela of janelas) desenharJanela(g, de, ate, janela, paleta)
 
-  // topo da parede por último, pra cobrir qualquer sobra da janela e
-  // fechar a espessura
   g.poly([
     de.x, de.y - ALTURA_PAREDE,
     ate.x, ate.y - ALTURA_PAREDE,
@@ -395,8 +657,6 @@ function desenharParede(
   ])
   g.fill(paleta.paredeTopo)
 
-  // espessura lateral, só na ponta externa (a ponta interna encosta na
-  // outra parede e fica escondida)
   desenharPontaLateral(g, ate, foraNaPonta, cor, paleta)
 
   return g
@@ -404,33 +664,20 @@ function desenharParede(
 
 export interface Cena {
   raiz: Container
-  // a maquete é dona da mobília (dados + sprites). O modo de edição
-  // fala com ela, nunca com os sprites direto.
   maquete: Maquete
-  // recoloca os crachás depois que a maquete mexeu nos móveis
   redesenharAgentes: () => void
-  // defeitos do JSON que não impedem de rodar — quem exibe é a
-  // interface, porque console.warn se ignora
   problemas: string[]
-  // a cor de fundo desta sala (pro app pintar o canvas antes do
-  // primeiro frame, e pro menu entre salas usar como amostra)
   paleta: Paleta
-  // liga/desliga o clique no crachá. Desligado em modo de edição: lá o
-  // crachá tem que deixar o clique PASSAR pro móvel embaixo, senão a
-  // cadeira em que o agente senta viraria impossível de arrastar.
   definirAgentesClicaveis: (podem: boolean) => void
-  // reflete `agentes.estado` (GET /agentes) no anel de cada crachá —
-  // chave é o id LOCAL (AGENTES[].id, ex: 'cifra'), não o id numérico
-  // do backend (quem faz essa ponte é o chamador, via nome do agente)
   definirEstadosAgentes: (estados: Map<string, EstadoAgente>) => void
-  // para o ticker de animação dos anéis — chamar no cleanup de quem
-  // criou a cena, senão ele segue tentando desenhar em Graphics já
-  // destruídos depois que o Pixi Application for destruído
+  sincronizarMundoSims: (mundo: EstadoMundoSims) => void
   destruirAnimacoes: () => void
 }
 
 export interface OpcoesCena {
-  aoClicarAgente?: (agenteId: string) => void
+  aoClicarAgente?: (agenteId: string, telaX?: number, telaY?: number) => void
+  aoClicarMovelSimulacao?: (movel: MovelSala, telaX: number, telaY: number) => void
+  aoClicarPiso?: (coluna: number, linha: number, telaX: number, telaY: number) => void
 }
 
 function paletaValida(p: unknown): p is Paleta {
@@ -440,15 +687,9 @@ function paletaValida(p: unknown): p is Paleta {
 }
 
 export async function criarCena(dados: SalaDados, opcoes: OpcoesCena = {}): Promise<Cena> {
-  // Falhas silenciosas são levantadas antes de desenhar qualquer
-  // coisa. Vão pro console E pra tela: todas fazem a sala carregar
-  // "quase certa", que é o pior tipo de defeito pra deixar escondido.
   const problemas = conferirSala(dados, AGENTES.map((a) => a.id))
   for (const problema of problemas) console.warn(`[sala] ${problema}`)
 
-  // Tamanho/cor inválidos já foram denunciados acima — aqui só evitam
-  // que a cena quebre por completo (NaN de tile, undefined de cor) e
-  // o painel de aviso nem chegue a aparecer na tela.
   const colunas = typeof dados.colunas === 'number' && dados.colunas > 0 ? dados.colunas : 7
   const linhas = typeof dados.linhas === 'number' && dados.linhas > 0 ? dados.linhas : 7
   const paleta = paletaValida(dados.paleta) ? dados.paleta : PALETAS.neutra
@@ -461,7 +702,6 @@ export async function criarCena(dados: SalaDados, opcoes: OpcoesCena = {}): Prom
 
   const { norte, leste, oeste } = cantos(colunas, linhas)
 
-  // aprovada — a mesma janela nas duas paredes, mesma posição relativa
   const janelaEsquerda: Janela[] = [
     { inicio: 0.36, fim: 0.6, base: JANELA_BASE, topo: JANELA_TOPO },
   ]
@@ -469,106 +709,178 @@ export async function criarCena(dados: SalaDados, opcoes: OpcoesCena = {}): Prom
     { inicio: 0.36, fim: 0.6, base: JANELA_BASE, topo: JANELA_TOPO },
   ]
 
-  // vetores "pra fora" da sala, perpendiculares a cada parede — pra
-  // fora é o oposto do eixo que a OUTRA parede percorre
   const foraEsquerda = normalizarParaEspessura({ x: -TILE_W / 2, y: -TILE_H / 2 })
   const foraDireita = normalizarParaEspessura({ x: TILE_W / 2, y: -TILE_H / 2 })
+
+  let agentesClicaveis = true
+
+  const pisoGrafico = desenharPiso(colunas, linhas, paleta, (c, l, tx, ty) => {
+    if (!agentesClicaveis) return
+    opcoes.aoClicarPiso?.(c, l, tx, ty)
+  })
 
   cena.addChild(
     desenharParede(norte, oeste, paleta.paredeEsquerda, janelaEsquerda, foraEsquerda, paleta),
     desenharParede(norte, leste, paleta.paredeDireita, janelaDireita, foraDireita, paleta),
     desenharLaje(colunas, linhas, paleta),
-    desenharPiso(colunas, linhas, paleta),
+    pisoGrafico,
   )
 
   cena.addChild(camadaMoveis)
 
-  // Crachá do agente: fica na posição do móvel que ele ocupa,
-  // "levantado" (altura) pra ficar por cima do encosto, como se fosse
-  // a cabeça de quem senta ali.
-  //
-  // Quem responde "onde está a Cifra?" é o índice da maquete, nunca a
-  // posição — por isso o agente pode estar em qualquer móvel, em
-  // qualquer sala, sem nada aqui mudar.
-  // Vão direto na camada dos móveis (e não num sub-container), senão
-  // ficariam todos na profundidade do container e não se intercalariam
-  // com a mobília — um agente do fundo apareceria na frente de uma
-  // mesa da frente.
+  // Marca de destino no chão quando o Sim ativo está caminhando até um tile
+  const marcadorDestino = new Graphics()
+  marcadorDestino.zIndex = 5
+  marcadorDestino.visible = false
+  camadaMoveis.addChild(marcadorDestino)
+
   const ALTURA_CRACHA = 0.62
-  let crachas: Container[] = []
-  // controlador do anel por agente — sobrevive a redesenharAgentes()
-  // recriando o crachá, então o estado (falando/pensando/...) precisa
-  // ser reaplicado depois de cada redesenho (linha "reaplica estado")
-  const controladores = new Map<string, ControladorAnel>()
+  const avatares = new Map<string, AvatarSimVisual>()
   const estadosAtuais = new Map<string, EstadoAgente>()
-  // Começa clicável porque a sala nasce fora do modo de edição — o
-  // editor desliga isso ao entrar em edição.
-  let agentesClicaveis = true
+  let mundoSimsAtual: EstadoMundoSims | null = null
+  const moveisComHandlerSimulacao = new Set<string>()
+
+  function ligarCliquesMoveisSimulacao() {
+    for (const m of maquete.moveis) {
+      const sprite = maquete.spriteDe(m.id)
+      if (!sprite) continue
+      if (agentesClicaveis) {
+        sprite.eventMode = 'static'
+        sprite.cursor = 'pointer'
+      }
+      if (moveisComHandlerSimulacao.has(m.id)) continue
+      moveisComHandlerSimulacao.add(m.id)
+      sprite.on('pointertap', (e: FederatedPointerEvent) => {
+        if (!agentesClicaveis) return
+        // Se for porta válida, o handler do editor já cuida ou o Pie Menu oferece viajar
+        const movelAtual = maquete.movel(m.id)
+        if (!movelAtual) return
+        if (movelAtual.leva) return
+        e.stopPropagation()
+        opcoes.aoClicarMovelSimulacao?.(movelAtual, e.global.x, e.global.y)
+      })
+    }
+  }
+
+  function posicionarAvatarNaCena(agenteId: string, av: AvatarSimVisual) {
+    const sim = mundoSimsAtual?.sims[agenteId]
+    const modoCorpo = mundoSimsAtual?.modoCorpoInteiro ?? true
+    const movelAssento = maquete.agentes().get(agenteId)
+
+    const col = sim ? sim.coluna : (movelAssento?.coluna ?? 2)
+    const lin = sim ? sim.linha : (movelAssento?.linha ?? 2)
+    const altura = modoCorpo ? 0.04 : ALTURA_CRACHA
+
+    const { x, y } = paraTela(col, lin, altura)
+    av.container.x = x
+    av.container.y = y
+
+    // Ordenação de profundidade isométrica: se o Sim está sentado num móvel,
+    // desenha logo à frente dele; se está andando pela sala, usa a profundidade
+    // real (coluna + linha) para passar atrás das mesas da frente!
+    const superficieId = sim?.postura.superficieId ?? movelAssento?.id
+    const spriteSuperficie = superficieId ? maquete.spriteDe(superficieId) : undefined
+    if (spriteSuperficie && sim?.postura.corpo !== 'andando') {
+      av.container.zIndex = spriteSuperficie.zIndex + 50
+    } else {
+      av.container.zIndex = profundidade(col, lin) * 1000 + 250
+    }
+  }
 
   function redesenharAgentes() {
-    for (const c of crachas) c.destroy({ children: true })
-    crachas = []
-    controladores.clear()
+    for (const av of avatares.values()) av.container.destroy({ children: true })
+    avatares.clear()
 
-    for (const [agenteId, movel] of maquete.agentes()) {
+    // Desenha os Sims que possuem assento na sala ou estão no estado do mundo Sims
+    const agentesDaSala = maquete.agentes()
+    const idsParaRenderizar =
+      agentesDaSala.size > 0
+        ? Array.from(agentesDaSala.keys())
+        : AGENTES.map((a) => a.id)
+
+    for (const agenteId of idsParaRenderizar) {
       const agente = AGENTES.find((a) => a.id === agenteId)
       const retrato = retratos.get(agenteId)
       const recorte = RECORTES[agenteId]
       if (!agente || !retrato || !recorte) continue
 
-      const { x, y } = paraTela(movel.coluna, movel.linha, ALTURA_CRACHA)
-      const { container: avatar, controlador } = criarAvatar(retrato, recorte, agente.cor)
-      avatar.x = x
-      avatar.y = y
-      controladores.set(agenteId, controlador)
-      // reaplica estado (o crachá acabou de nascer com o anel parado)
+      const av = criarAvatarSim(agenteId, agente.nome, retrato, recorte, agente.cor)
       const estado = estadosAtuais.get(agenteId)
-      if (estado) controlador.definirEstado(estado)
+      if (estado) av.controladorAnel.definirEstado(estado)
 
-      // O crachá é recriado a cada redesenho, então o handler é ligado
-      // aqui e não uma vez só. Ele consulta `agentesClicaveis` na HORA
-      // do clique (em vez de ser montado/desmontado a cada troca de
-      // modo) — mesmo padrão dos handlers de porta em edicao.ts.
       if (opcoes.aoClicarAgente) {
-        avatar.eventMode = agentesClicaveis ? 'static' : 'none'
-        avatar.cursor = agentesClicaveis ? 'pointer' : 'default'
-        avatar.on('pointertap', () => {
+        av.container.eventMode = agentesClicaveis ? 'static' : 'none'
+        av.container.cursor = agentesClicaveis ? 'pointer' : 'default'
+        av.container.on('pointertap', (e: FederatedPointerEvent) => {
           if (!agentesClicaveis) return
-          opcoes.aoClicarAgente?.(agenteId)
+          e.stopPropagation()
+          opcoes.aoClicarAgente?.(agenteId, e.global.x, e.global.y)
         })
       }
-      // logo à frente do móvel que o agente ocupa, pra ficar por cima
-      // do encosto da cadeira
-      avatar.zIndex = (maquete.spriteDe(movel.id)?.zIndex ?? 0) + 50
-      camadaMoveis.addChild(avatar)
-      crachas.push(avatar)
+
+      posicionarAvatarNaCena(agenteId, av)
+      camadaMoveis.addChild(av.container)
+      avatares.set(agenteId, av)
     }
+
+    ligarCliquesMoveisSimulacao()
   }
 
   function definirAgentesClicaveis(podem: boolean) {
     agentesClicaveis = podem
-    for (const cracha of crachas) {
-      cracha.eventMode = podem && opcoes.aoClicarAgente ? 'static' : 'none'
-      cracha.cursor = podem && opcoes.aoClicarAgente ? 'pointer' : 'default'
+    pisoGrafico.eventMode = podem ? 'static' : 'none'
+    pisoGrafico.cursor = podem ? 'pointer' : 'default'
+    for (const av of avatares.values()) {
+      av.container.eventMode = podem && opcoes.aoClicarAgente ? 'static' : 'none'
+      av.container.cursor = podem && opcoes.aoClicarAgente ? 'pointer' : 'default'
     }
+    if (podem) ligarCliquesMoveisSimulacao()
   }
 
   function definirEstadosAgentes(estados: Map<string, EstadoAgente>) {
     for (const [agenteId, estado] of estados) {
       estadosAtuais.set(agenteId, estado)
-      controladores.get(agenteId)?.definirEstado(estado)
+      avatares.get(agenteId)?.controladorAnel.definirEstado(estado)
     }
   }
 
-  // ticker próprio (não o do Pixi.Application) — a cena não precisa
-  // saber que existe uma Application por trás, só precisa de "um
-  // relógio rodando"; `Ticker.shared` já está ativo assim que qualquer
-  // parte do Pixi é usada.
+  function sincronizarMundoSims(mundo: EstadoMundoSims) {
+    mundoSimsAtual = mundo
+    for (const [agenteId, av] of avatares.entries()) {
+      posicionarAvatarNaCena(agenteId, av)
+    }
+  }
+
   let tempoAcumuladoMS = 0
   function aoTick(t: Ticker) {
     tempoAcumuladoMS += t.deltaMS
-    for (const controlador of controladores.values()) controlador.animar(t.deltaMS, tempoAcumuladoMS)
+    const simAtivoId = mundoSimsAtual?.simAtivoId ?? AGENTES[0].id
+    const modoCorpo = mundoSimsAtual?.modoCorpoInteiro ?? true
+
+    for (const [agenteId, av] of avatares.entries()) {
+      const sim = mundoSimsAtual?.sims[agenteId]
+      posicionarAvatarNaCena(agenteId, av)
+      av.atualizarSim(sim, agenteId === simAtivoId, modoCorpo, tempoAcumuladoMS, t.deltaMS)
+    }
+
+    // Desenha marcador no chão quando o Sim ativo está indo para um destino
+    const simAtivo = mundoSimsAtual?.sims[simAtivoId]
+    if (simAtivo && simAtivo.destinoColuna !== null && simAtivo.destinoLinha !== null) {
+      const { x, y } = paraTela(simAtivo.destinoColuna, simAtivo.destinoLinha, 0.01)
+      const raioPulso = 16 + Math.sin(tempoAcumuladoMS * 0.008) * 4
+      marcadorDestino.clear()
+      marcadorDestino.ellipse(x, y, raioPulso, raioPulso * 0.5).stroke({
+        width: 2.5,
+        color: COR_PLUMBBOB_VERDE,
+        alpha: 0.85,
+      })
+      marcadorDestino.circle(x, y, 4).fill({ color: COR_PLUMBBOB_VERDE, alpha: 0.9 })
+      marcadorDestino.visible = true
+    } else {
+      marcadorDestino.visible = false
+    }
   }
+
   Ticker.shared.add(aoTick)
   function destruirAnimacoes() {
     Ticker.shared.remove(aoTick)
@@ -584,6 +896,7 @@ export async function criarCena(dados: SalaDados, opcoes: OpcoesCena = {}): Prom
     paleta,
     definirAgentesClicaveis,
     definirEstadosAgentes,
+    sincronizarMundoSims,
     destruirAnimacoes,
   }
 }

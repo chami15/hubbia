@@ -21,54 +21,105 @@
   },
   "moveis": [
     {
-      "id": "sideTable-1",
-      "peca": "sideTable",
-      "direcao": "NE",
-      "coluna": 2.5,
-      "linha": 2.5
-    },
-    {
-      "id": "bench-1",
-      "peca": "bench",
-      "direcao": "SW",
-      "coluna": 1.5,
-      "linha": 1.5
-    },
-    {
-      "id": "bench-2",
-      "peca": "bench",
-      "direcao": "SW",
-      "coluna": 3.5,
-      "linha": 3.5
-    },
-    {
-      "id": "bench-3",
-      "peca": "bench",
-      "direcao": "SW",
-      "coluna": 1.5,
-      "linha": 3.5
-    },
-    {
-      "id": "bench-4",
-      "peca": "bench",
-      "direcao": "SW",
-      "coluna": 3.5,
-      "linha": 1.5
-    },
-    {
-      "id": "plantSmall1-1",
-      "peca": "plantSmall1",
-      "direcao": "NE",
-      "coluna": 0.5,
-      "linha": 0.5
-    },
-    {
       "id": "doorway-espelho-1",
       "peca": "doorway",
       "direcao": "SW",
       "coluna": 4.804,
       "linha": -0.449,
       "leva": "escritorio"
+    },
+    {
+      "id": "loungeDesignSofaCorner-1",
+      "peca": "loungeDesignSofaCorner",
+      "direcao": "NE",
+      "coluna": 4.816,
+      "linha": 4.855
+    },
+    {
+      "id": "tableGlass-1",
+      "peca": "tableGlass",
+      "direcao": "NW",
+      "coluna": 1.993,
+      "linha": 2.494
+    },
+    {
+      "id": "tableGlass-2",
+      "peca": "tableGlass",
+      "direcao": "NW",
+      "coluna": 1.989,
+      "linha": 2.04
+    },
+    {
+      "id": "tableGlass-3",
+      "peca": "tableGlass",
+      "direcao": "NW",
+      "coluna": 2.834,
+      "linha": 2.037
+    },
+    {
+      "id": "tableGlass-4",
+      "peca": "tableGlass",
+      "direcao": "NW",
+      "coluna": 2.838,
+      "linha": 2.491
+    },
+    {
+      "id": "chairModernFrameCushion-1",
+      "peca": "chairModernFrameCushion",
+      "direcao": "NW",
+      "coluna": 3.056,
+      "linha": 2.786
+    },
+    {
+      "id": "chairModernFrameCushion-2",
+      "peca": "chairModernFrameCushion",
+      "direcao": "NW",
+      "coluna": 1.785,
+      "linha": 2.775
+    },
+    {
+      "id": "chairModernFrameCushion-3",
+      "peca": "chairModernFrameCushion",
+      "direcao": "SW",
+      "coluna": 2.98,
+      "linha": 1.745
+    },
+    {
+      "id": "chairModernFrameCushion-4",
+      "peca": "chairModernFrameCushion",
+      "direcao": "NW",
+      "coluna": 2.746,
+      "linha": 2.785
+    },
+    {
+      "id": "chairModernFrameCushion-5",
+      "peca": "chairModernFrameCushion",
+      "direcao": "SW",
+      "coluna": 2.635,
+      "linha": 1.761
+    },
+    {
+      "id": "chairModernFrameCushion-6",
+      "peca": "chairModernFrameCushion",
+      "direcao": "SW",
+      "coluna": 1.772,
+      "linha": 1.708
+    },
+    {
+      "id": "laptop-1",
+      "peca": "laptop",
+      "direcao": "SW",
+      "coluna": 3.146,
+      "linha": 2.568,
+      "altura": 0.44
+    },
+    {
+      "id": "laptop-2",
+      "peca": "laptop",
+      "direcao": "NW",
+      "coluna": 1.999,
+      "linha": 2.14,
+      "altura": 0.4
     }
   ]
 }

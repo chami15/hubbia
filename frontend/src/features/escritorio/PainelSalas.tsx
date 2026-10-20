@@ -26,7 +26,8 @@ const MONO = 'var(--fonte-display), ui-monospace, SFMono-Regular, Menlo, monospa
 const CARTAO: React.CSSProperties = {
   position: 'absolute',
   right: 16,
-  top: 16,
+  top: 64,
+  zIndex: 65,
   width: 240,
   fontFamily: MONO,
   fontSize: 12,

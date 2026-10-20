@@ -1,0 +1,23 @@
+{
+  "nome": "recepcao",
+  "colunas": 6,
+  "linhas": 6,
+  "paleta": {
+    "nome": "recepcao",
+    "vazio": 2631184,
+    "pisoClaro": 3226569,
+    "pisoEscuro": 3094713,
+    "pisoJunta": 2699414,
+    "lajeFrente": 2040672,
+    "lajeLado": 1579847,
+    "paredeEsquerda": 2962856,
+    "paredeDireita": 2764944,
+    "paredeTopo": 3226573,
+    "rodape": 1645644,
+    "janelaMoldura": 5200353,
+    "janelaVidro": 10470614,
+    "janelaVidroBase": 7315384,
+    "janelaBrilho": 14216436
+  },
+  "moveis": []
+}

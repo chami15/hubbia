@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { AGENTES } from './agentes'
+import type { AparenciaSimCAS } from './cas-sims'
 import { PALETAS } from './sala'
 import type { MovelSala, SalaDados } from './sala-dados'
 import {
@@ -15,14 +15,12 @@ import { COR_PLUMBBOB_VERDE, type EstadoMundoSims } from './simulacao-sims'
 // ---------------------------------------------------------------------------
 // MOTOR 3D WEBGL COMPLETO ESTILO THE SIMS 4 (`cena3d.ts`)
 //
-// Implementa a perspectiva 3D real extraída de `Camera.ini` e
-// `ThumbnailConfig.ini`:
-//   - PerspectiveCamera (FOV 38°, TargetHeight 1.05m)
-//   - Órbita 360° livre (Yaw) + Inclinação vertical (Pitch 18°..78°)
+// Inclui:
+//   - PerspectiveCamera (FOV 38°, TargetHeight 1.05m) extraída de `Camera.ini`
+//   - Órbita 360° livre (Yaw) + Inclinação vertical (Pitch)
 //   - Modos de Parede do The Sims 4 ('cortadas', 'altas', 'baixas')
-//   - Vizinhança viva 3D (céu dinâmico conforme hora do dia, sol com sombras
-//     suaves, gramado, rua, árvores e calçada)
-//   - Personagens Sims 3D articulados + Móveis 3D com Raycasting interativo
+//   - Portas 3D com abertura automática por proximidade (`portal_visualizer.pyc`)
+//   - Criação dinâmica de Sims customizados do Create-A-Sim (CAS)
 // ---------------------------------------------------------------------------
 
 export interface ProjecaoSimTela {
@@ -46,6 +44,7 @@ export interface OpcoesCena3D {
 export interface ControladorCena3D {
   sincronizarMundoSims: (mundo: EstadoMundoSims) => void
   sincronizarSala: (sala: SalaDados, selecionadoId: string | null, modoConstruir: boolean) => void
+  atualizarAparenciaSim3D: (simId: string, novaAparencia: AparenciaSimCAS) => void
   definirModoParedes: (modo: ModoParedesSims) => void
   centralizarCamera: () => void
   aplicarZoom: (fator: number) => void
@@ -63,12 +62,11 @@ export function criarCena3D(
 ): ControladorCena3D {
   const cena = new THREE.Scene()
   cena.background = new THREE.Color(0x87ceeb)
-  cena.fog = new THREE.FogExp2(0x87ceeb, 0.018)
+  cena.fog = new THREE.FogExp2(0x87ceeb, 0.016)
 
   const larguraInicial = hospedeiro.clientWidth || window.innerWidth
   const alturaInicial = hospedeiro.clientHeight || window.innerHeight
 
-  // PerspectiveCamera calibrada com Camera.ini (FOV = 38°)
   const camera = new THREE.PerspectiveCamera(38, larguraInicial / alturaInicial, 0.1, 120)
 
   const renderizador = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
@@ -81,7 +79,7 @@ export function criarCena3D(
   hospedeiro.appendChild(renderizador.domElement)
 
   // --- Iluminação Solar e Hemisférica (`LightPitch = 50, LightYaw = -75`) ---
-  const luzHemisferica = new THREE.HemisphereLight(0xdbeafe, 0x4d7c3f, 0.85)
+  const luzHemisferica = new THREE.HemisphereLight(0xdbeafe, 0x4d7c3f, 0.88)
   cena.add(luzHemisferica)
 
   const luzSol = new THREE.DirectionalLight(0xfffbeb, 1.55)
@@ -89,8 +87,8 @@ export function criarCena3D(
   luzSol.castShadow = true
   luzSol.shadow.mapSize.set(2048, 2048)
   luzSol.shadow.camera.near = 0.5
-  luzSol.shadow.camera.far = 38
-  const dSombra = 10
+  luzSol.shadow.camera.far = 42
+  const dSombra = 11
   luzSol.shadow.camera.left = -dSombra
   luzSol.shadow.camera.right = dSombra
   luzSol.shadow.camera.top = dSombra
@@ -98,7 +96,7 @@ export function criarCena3D(
   luzSol.shadow.bias = -0.0005
   cena.add(luzSol)
 
-  const luzPreenchimento = new THREE.DirectionalLight(0x93c5fd, 0.4)
+  const luzPreenchimento = new THREE.DirectionalLight(0x93c5fd, 0.42)
   luzPreenchimento.position.set(-8, 7, -6)
   cena.add(luzPreenchimento)
 
@@ -121,12 +119,10 @@ export function criarCena3D(
   const malhasMoveis = new Map<string, THREE.Group>()
   let assinaturaMoveisAnterior = ''
 
-  // Caixa de seleção verde 3D para o Modo Construir/Comprar
   const caixaSelecao3D = new THREE.BoxHelper(new THREE.Mesh(), 0x4ade80)
   caixaSelecao3D.visible = false
   cena.add(caixaSelecao3D)
 
-  // Marcador de destino no chão quando o Sim ativo caminha
   const geoDestino = new THREE.RingGeometry(0.18, 0.25, 28)
   geoDestino.rotateX(-Math.PI / 2)
   const matDestino = new THREE.MeshBasicMaterial({
@@ -140,13 +136,27 @@ export function criarCena3D(
   marcadorDestino3D.visible = false
   cena.add(marcadorDestino3D)
 
-  // Cria os 4 Personagens Sims 3D Articulados
+  // Gerencia dinamicamente todos os Personagens Sims 3D (incluindo os criados no CAS)
   const personagens = new Map<string, PersonagemSim3D>()
-  for (const ag of AGENTES) {
-    const p3d = criarPersonagemSim3D(ag.id, ag.cor)
-    personagens.set(ag.id, p3d)
-    cena.add(p3d.grupoRaiz)
+
+  function garantirPersonagensSims(mundo: EstadoMundoSims) {
+    for (const [id, sim] of Object.entries(mundo.sims)) {
+      if (!personagens.has(id)) {
+        const p3d = criarPersonagemSim3D(id, sim.cor)
+        personagens.set(id, p3d)
+        cena.add(p3d.grupoRaiz)
+      }
+    }
+    for (const [id, p3d] of Array.from(personagens.entries())) {
+      if (!mundo.sims[id]) {
+        cena.remove(p3d.grupoRaiz)
+        p3d.destruir()
+        personagens.delete(id)
+      }
+    }
   }
+
+  garantirPersonagensSims(mundoSims)
 
   function reconstruirMoveis3D(sala: SalaDados) {
     const novaAssinatura = JSON.stringify(sala.moveis)
@@ -190,8 +200,8 @@ export function criarCena3D(
   const alvoCamera = centroPadrao.clone()
   const alvoCameraDesejado = centroPadrao.clone()
 
-  let yawAlvo = Math.PI * 0.23   // ~41° diagonal clássica The Sims
-  let pitchAlvo = 0.62          // ~35° de inclinação
+  let yawAlvo = Math.PI * 0.23
+  let pitchAlvo = 0.62
   let distanciaAlvo = Math.max(colunas, linhas) * 1.45
 
   let yawAtual = yawAlvo
@@ -206,7 +216,7 @@ export function criarCena3D(
   }
 
   function aplicarZoom(fator: number) {
-    distanciaAlvo = Math.max(3.4, Math.min(22, distanciaAlvo / fator))
+    distanciaAlvo = Math.max(3.4, Math.min(24, distanciaAlvo / fator))
   }
 
   function girarCameraHorizontal(deltaRad: number) {
@@ -218,7 +228,6 @@ export function criarCena3D(
   }
 
   function deslocarCameraTeclado(dx: number, dz: number) {
-    // Desloca no plano XZ relativo à orientação horizontal (yaw) da câmera!
     const frenteX = -Math.sin(yawAtual)
     const frenteZ = -Math.cos(yawAtual)
     const direitaX = Math.cos(yawAtual)
@@ -228,7 +237,7 @@ export function criarCena3D(
     alvoCameraDesejado.z += direitaZ * dx + frenteZ * dz
   }
 
-  // --- Interação de Mouse (Órbita 3D, Pan, Raycasting e Drag de Móveis) ---
+  // --- Interação de Mouse ---
   const raycaster = new THREE.Raycaster()
   const mouseNDC = new THREE.Vector2()
   const planoChao = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
@@ -275,7 +284,6 @@ export function criarCena3D(
     inicioMouseY = e.clientY
     moveuSignificativo = false
 
-    // Botão direito (2) ou do meio (1) ou Alt+Clique -> Órbita 3D (Yaw + Pitch)
     if (e.button === 2 || e.button === 1 || (e.button === 0 && e.altKey)) {
       modoArrasteMouse = 'orbita'
       return
@@ -283,7 +291,6 @@ export function criarCena3D(
 
     if (e.button !== 0) return
 
-    // No Modo Construir, clicar num móvel 3D seleciona e permite arrastá-lo no piso
     if (modoConstruirAtivo) {
       const mId = encontrarMovelSobRay()
       if (mId) {
@@ -339,7 +346,6 @@ export function criarCena3D(
       return
     }
 
-    // Atualiza cursor em hover
     atualizarMouseNDC(e)
     raycaster.setFromCamera(mouseNDC, camera)
     if (!modoConstruirAtivo) {
@@ -359,39 +365,32 @@ export function criarCena3D(
 
     if (moveuSignificativo || eraModo === 'orbita') return
 
-    // Foi um clique limpo (tap)! Fazemos raycast na cena 3D:
     atualizarMouseNDC(e)
     raycaster.setFromCamera(mouseNDC, camera)
 
     if (modoConstruirAtivo) return
 
-    // 1. Prioridade: Clicou num Sim 3D?
     const simClicado = encontrarSimSobRay()
     if (simClicado) {
       opcoes.aoClicarSim?.(simClicado, e.clientX, e.clientY)
       return
     }
 
-    // 2. Clicou num Móvel / Objeto 3D?
     const movelClicadoId = encontrarMovelSobRay()
     if (movelClicadoId) {
       const movelDados = dadosSala.moveis.find((m) => m.id === movelClicadoId)
       if (movelDados) {
-        if (movelDados.leva) {
-          opcoes.aoClicarPorta?.(movelDados.leva)
-        } else {
-          opcoes.aoClicarMovelSimulacao?.(movelDados, e.clientX, e.clientY)
-        }
+        // Abre o Pie Menu mesmo para portas (permitindo escolher entre viajar de sala ou sair para a rua!)
+        opcoes.aoClicarMovelSimulacao?.(movelDados, e.clientX, e.clientY)
         return
       }
     }
 
-    // 3. Clicou no Piso 3D?
     const hitPiso = raycaster.intersectObject(loteVizinhanca.pisoInterativo, false)
     if (hitPiso.length > 0) {
       const pt = hitPiso[0].point
-      const c = Math.max(0, Math.min(colunas - 1, pt.x))
-      const l = Math.max(0, Math.min(linhas - 1, pt.z))
+      const c = Math.max(-0.8, Math.min(colunas + 0.8, pt.x))
+      const l = Math.max(-0.8, Math.min(linhas + 1.8, pt.z))
       opcoes.aoClicarPiso?.(c, l, e.clientX, e.clientY)
     }
   }
@@ -430,7 +429,6 @@ export function criarCena3D(
 
   function atualizarIluminacaoRelogio(minutosDoDia: number) {
     const hora = (minutosDoDia / 60) % 24
-    // Ciclo suave de cor do céu e intensidade solar
     let corCeu = 0x87ceeb
     let intensidadeSol = 1.55
     if (hora < 6 || hora >= 20.5) {
@@ -450,19 +448,34 @@ export function criarCena3D(
     luzSol.intensity += (intensidadeSol - luzSol.intensity) * 0.05
   }
 
+  function animarPortasProximidade(dt: number) {
+    const listaSims = Object.values(mundoSims.sims)
+    for (const movel of dadosSala.moveis) {
+      if (!movel.peca.startsWith('doorway') && !movel.leva) continue
+      const m3d = malhasMoveis.get(movel.id)
+      if (!m3d) continue
+      const pivo = m3d.getObjectByName('folhaPortaPivo')
+      if (!pivo) continue
+
+      const algumPerto = listaSims.some(
+        (s) => Math.hypot(s.coluna - movel.coluna, s.linha - movel.linha) < 1.35,
+      )
+      const angAlvo = algumPerto ? -Math.PI * 0.62 : 0
+      pivo.rotation.y += (angAlvo - pivo.rotation.y) * Math.min(1, dt * 8)
+    }
+  }
+
   function animar(agoraMS: number) {
     rafId = window.requestAnimationFrame(animar)
     const dt = Math.min(0.1, (agoraMS - ultimoTempoMS) / 1000)
     ultimoTempoMS = agoraMS
     const tempoSeg = agoraMS / 1000
 
-    // 1. Se FollowCamera estiver ativo, segue suavemente o Sim ativo
     const simAtivo = mundoSims.sims[mundoSims.simAtivoId]
     if (mundoSims.seguirSimAtivo && simAtivo && !modoConstruirAtivo) {
       alvoCameraDesejado.set(simAtivo.coluna, 0.85, simAtivo.linha)
     }
 
-    // 2. Interpola câmera (órbita esférica suave estilo Camera.ini)
     yawAtual += (yawAlvo - yawAtual) * 0.14
     pitchAtual += (pitchAlvo - pitchAtual) * 0.14
     distanciaAtual += (distanciaAlvo - distanciaAtual) * 0.14
@@ -476,27 +489,22 @@ export function criarCena3D(
     )
     camera.lookAt(alvoCamera)
 
-    // 3. Atualiza corte automático das paredes (The Sims 4 Cutaway Walls)
     loteVizinhanca.atualizarModoParedes(modoParedes, camera.position, centroPadrao)
     loteVizinhanca.animarVizinhanca(tempoSeg)
     atualizarIluminacaoRelogio(mundoSims.minutosDoDia)
+    animarPortasProximidade(dt)
 
-    // 4. Atualiza todos os Personagens Sims 3D e suas posturas / ossos
     for (const [id, p3d] of personagens.entries()) {
       const sim = mundoSims.sims[id]
-      const movelAssento = dadosSala.moveis.find((m) => m.agente === id)
-      const col = sim ? sim.coluna : (movelAssento?.coluna ?? 2)
-      const lin = sim ? sim.linha : (movelAssento?.linha ?? 2)
+      if (!sim) continue
 
-      // Descobre para onde o Sim deve olhar (para outro Sim numa conversa, ou para a mesa/objeto)
       let olharPara: { x: number; z: number } | null = null
-      if (sim?.interacaoAtual?.opcao.alvoSimId) {
+      if (sim.interacaoAtual?.opcao.alvoSimId) {
         const outro = mundoSims.sims[sim.interacaoAtual.opcao.alvoSimId]
         if (outro) olharPara = { x: outro.coluna, z: outro.linha }
-      } else if (sim?.postura.superficieId) {
+      } else if (sim.postura.superficieId) {
         const sup = dadosSala.moveis.find((m) => m.id === sim.postura.superficieId)
         if (sup) {
-          // Olha na direção para a qual a cadeira/móvel aponta ou para a mesa próxima
           const mesaProxima = dadosSala.moveis.find(
             (m) =>
               m.peca.startsWith('desk') &&
@@ -506,7 +514,7 @@ export function criarCena3D(
             olharPara = { x: mesaProxima.coluna, z: mesaProxima.linha }
           } else {
             const ang = direcaoParaAnguloY(sup.direcao)
-            olharPara = { x: col + Math.sin(ang), z: lin + Math.cos(ang) }
+            olharPara = { x: sim.coluna + Math.sin(ang), z: sim.linha + Math.cos(ang) }
           }
         }
       }
@@ -516,12 +524,11 @@ export function criarCena3D(
         id === mundoSims.simAtivoId,
         tempoSeg,
         dt,
-        { x: col, z: lin },
+        { x: sim.coluna, z: sim.linha },
         olharPara,
       )
     }
 
-    // 5. Marcador de destino 3D no chão
     if (simAtivo && simAtivo.destinoColuna !== null && simAtivo.destinoLinha !== null) {
       marcadorDestino3D.visible = true
       marcadorDestino3D.position.set(simAtivo.destinoColuna, 0.025, simAtivo.destinoLinha)
@@ -532,7 +539,6 @@ export function criarCena3D(
 
     renderizador.render(cena, camera)
 
-    // 6. Projeta a posição da cabeça 3D de cada Sim para coordenadas de tela (para balões HTML)
     if (opcoes.aoAtualizarProjecoes && agoraMS - ultimoEnvioProjecaoMS > 50) {
       ultimoEnvioProjecaoMS = agoraMS
       const rect = renderizador.domElement.getBoundingClientRect()
@@ -546,7 +552,12 @@ export function criarCena3D(
           id,
           x: Math.round(x),
           y: Math.round(y),
-          visivel: vetorTemp.z < 1 && x >= -100 && x <= rect.width + 100 && y >= -100 && y <= rect.height + 100,
+          visivel:
+            vetorTemp.z < 1 &&
+            x >= -100 &&
+            x <= rect.width + 100 &&
+            y >= -100 &&
+            y <= rect.height + 100,
         }
       }
       opcoes.aoAtualizarProjecoes(projecoes)
@@ -558,6 +569,7 @@ export function criarCena3D(
   return {
     sincronizarMundoSims(novoMundo) {
       mundoSims = novoMundo
+      garantirPersonagensSims(novoMundo)
     },
     sincronizarSala(novaSala, selecionadoId, modoConstruir) {
       dadosSala = novaSala
@@ -569,6 +581,10 @@ export function criarCena3D(
         if (m3d) posicionarMovel3D(m3d, m)
       }
       atualizarCaixaSelecao()
+    },
+    atualizarAparenciaSim3D(simId, novaAparencia) {
+      const p3d = personagens.get(simId)
+      if (p3d) p3d.aplicarAparenciaCAS(novaAparencia)
     },
     definirModoParedes(modo) {
       modoParedes = modo

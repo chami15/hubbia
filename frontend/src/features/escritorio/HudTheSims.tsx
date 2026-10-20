@@ -47,6 +47,7 @@ interface Props {
   aoAlternarMensagens: () => void
   aoAlternarConfiguracoes: () => void
   aoClicarAvancarTick: () => void
+  aoAbrirCriadorCAS?: () => void
 }
 
 const CHAVES_NECESSIDADES: ChaveNecessidade[] = [
@@ -119,6 +120,7 @@ export function HudTheSims({
   aoAlternarMensagens,
   aoAlternarConfiguracoes,
   aoClicarAvancarTick,
+  aoAbrirCriadorCAS,
 }: Props) {
   const [abaAtiva, setAbaAtiva] = useState<AbaInspetor>('necessidades')
   const [inspetorAberto, setInspetorAberto] = useState(true)
@@ -126,7 +128,15 @@ export function HudTheSims({
   const simAtivo = mundo.sims[mundo.simAtivoId] ?? Object.values(mundo.sims)[0]
   if (!simAtivo) return null
 
-  const agenteVisualAtivo = AGENTES.find((a) => a.id === simAtivo.id) ?? AGENTES[0]
+  const listaSimsMundo = Object.values(mundo.sims)
+  const agenteVisualAtivo = AGENTES.find((a) => a.id === simAtivo.id) ?? {
+    id: simAtivo.id,
+    nome: simAtivo.nome,
+    cor: simAtivo.cor,
+    arquivo: 'norte2dSemfundo.png',
+    especialidade: simAtivo.especialidade,
+    funcao: simAtivo.funcao,
+  }
   const infoHumor = INFO_HUMORES[simAtivo.humor]
   const plumbAtivo = calcularCorPlumbBob(simAtivo.necessidades)
 
@@ -152,17 +162,16 @@ export function HudTheSims({
             overflow: 'hidden',
           }}
         >
-          {AGENTES.map((ag) => {
-            const proj = projecoes3D[ag.id]
-            const s = mundo.sims[ag.id]
-            if (!proj || !proj.visivel || !s) return null
-            const ativo = ag.id === simAtivo.id
+          {listaSimsMundo.map((s) => {
+            const proj = projecoes3D[s.id]
+            if (!proj || !proj.visivel) return null
+            const ativo = s.id === simAtivo.id
             const hInfo = INFO_HUMORES[s.humor]
             const prog = s.interacaoAtual?.progresso ?? 0
 
             return (
               <div
-                key={ag.id}
+                key={s.id}
                 style={{
                   position: 'absolute',
                   left: proj.x,
@@ -200,7 +209,7 @@ export function HudTheSims({
                 <div
                   style={{
                     background: ativo ? 'rgba(15, 23, 42, 0.9)' : 'rgba(15, 23, 42, 0.72)',
-                    border: `1.5px solid ${ativo ? '#6ec71f' : corCss(ag.cor)}`,
+                    border: `1.5px solid ${ativo ? '#6ec71f' : corCss(s.cor)}`,
                     borderRadius: 999,
                     padding: '2px 9px',
                     color: '#f8fafc',
@@ -213,7 +222,10 @@ export function HudTheSims({
                   }}
                 >
                   <span>{hInfo.icone}</span>
-                  <span>{ag.nome}</span>
+                  <span>{s.nome}</span>
+                  {s.foraDoLote && (
+                    <span style={{ color: '#38bdf8', fontSize: 9.5 }}>🌳 Calçada</span>
+                  )}
                   {prog > 0.02 && (
                     <span style={{ color: '#a3e635', fontSize: 9.5 }}>
                       {Math.round(prog * 100)}%
@@ -282,6 +294,18 @@ export function HudTheSims({
         >
           🏠 Salas
         </button>
+
+        {/* Botão Estúdio Create-A-Sim (CAS 3D) */}
+        {aoAbrirCriadorCAS && (
+          <button
+            type="button"
+            onClick={aoAbrirCriadorCAS}
+            title="Abrir Estúdio Create-A-Sim 3D (Criar ou Personalizar Agentes)"
+            style={estiloPilulaTopo(false)}
+          >
+            🧬 Criar Sim
+          </button>
+        )}
 
         {/* Modo de Paredes do The Sims 4 (Cortadas / Altas / Baixas) */}
         {modo3DAtivo && (
@@ -489,20 +513,27 @@ export function HudTheSims({
               userSelect: 'none',
             }}
           >
-            {/* Fileira dos 4 Sims (Skewer) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              {AGENTES.map((ag) => {
-                const s = mundo.sims[ag.id]
-                const selecionado = ag.id === simAtivo.id
-                const plumb = s ? calcularCorPlumbBob(s.necessidades) : plumbAtivo
-                const humorAg = s ? INFO_HUMORES[s.humor] : infoHumor
+            {/* Fileira dos Sims (Skewer) + Botão Criar Sim */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+              {listaSimsMundo.map((s) => {
+                const ag = AGENTES.find((a) => a.id === s.id) ?? {
+                  id: s.id,
+                  nome: s.nome,
+                  cor: s.cor,
+                  arquivo: 'norte2dSemfundo.png',
+                  especialidade: s.especialidade,
+                  funcao: s.funcao,
+                }
+                const selecionado = s.id === simAtivo.id
+                const plumb = calcularCorPlumbBob(s.necessidades)
+                const humorAg = INFO_HUMORES[s.humor]
                 return (
                   <button
-                    key={ag.id}
+                    key={s.id}
                     type="button"
-                    onClick={() => aoSelecionarSim(ag.id)}
-                    onDoubleClick={() => aoAbrirPainelAgente(ag.id)}
-                    title={`${ag.nome} (${humorAg.titulo}) — Clique para controlar · Duplo clique para abrir painel`}
+                    onClick={() => aoSelecionarSim(s.id)}
+                    onDoubleClick={() => aoAbrirPainelAgente(s.id)}
+                    title={`${s.nome} (${humorAg.titulo}) — Clique para controlar · Duplo clique para abrir painel`}
                     style={{
                       position: 'relative',
                       display: 'flex',
@@ -527,9 +558,9 @@ export function HudTheSims({
                   >
                     <RetratoAgente agente={ag} tamanho={32} />
                     <div style={{ textAlign: 'left' }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 700, lineHeight: 1.1 }}>{ag.nome}</div>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, lineHeight: 1.1 }}>{s.nome}</div>
                       <div style={{ fontSize: 9.5, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <span>{s?.interacaoAtual?.opcao.icone ?? humorAg.icone}</span>
+                        <span>{s.interacaoAtual?.opcao.icone ?? humorAg.icone}</span>
                         <span>{humorAg.titulo}</span>
                       </div>
                     </div>
@@ -537,6 +568,30 @@ export function HudTheSims({
                   </button>
                 )
               })}
+
+              {aoAbrirCriadorCAS && (
+                <button
+                  type="button"
+                  onClick={aoAbrirCriadorCAS}
+                  title="Criar Novo Agente Sim ou Personalizar Roupas/Rosto em 3D (Create-A-Sim)"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '7px 11px',
+                    borderRadius: 12,
+                    border: '1.5px dashed rgba(110, 199, 31, 0.65)',
+                    background: 'rgba(15, 23, 42, 0.86)',
+                    color: '#a3e635',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span>🧬</span>
+                  <span>+ Sim</span>
+                </button>
+              )}
             </div>
 
             {/* Cartão Principal do Sim Ativo + Emoção + Modificadores (Buffs) */}

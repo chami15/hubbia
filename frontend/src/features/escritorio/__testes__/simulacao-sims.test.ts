@@ -1,7 +1,15 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
+import { obterMetadadosPecaSims } from '../CatalogoTheSims'
+import { REGISTROS_PADRAO_POR_SIM, type RegistroSimCAS } from '../cas-sims'
 import { criarPersonagemSim3D } from '../personagem3d'
 import { criarLoteVizinhanca3D, criarMovel3D } from '../moveis3d'
+import {
+  calcularCaminhoAEstrela,
+  calcularPosicaoJigSocial,
+  escolherSlotLivreDoMovel,
+  obterSlotsDeInteracaoMovel,
+} from '../roteamento-sims'
 import { PALETAS } from '../sala'
 import {
   avancarSimulacaoSims,
@@ -17,6 +25,7 @@ import {
   escolherInteracaoAutonoma,
   escolherInteracaoParaNecessidade,
   formatarRelogioSim,
+  integrarSimDoCASNoMundo,
   obterInteracoesDoChao,
   obterInteracoesDoMovel,
   obterInteracoesDoSim,
@@ -185,5 +194,61 @@ describe('simulacao-sims (motor The Sims 4)', () => {
       const m3d = criarMovel3D(m)
       expect(m3d.children.length).toBeGreaterThan(0)
     }
+  })
+
+  it('evita colisão com mobília via A* e separa Sims em slots distintos e Jigs Sociais', () => {
+    const sofa = {
+      id: 'sofa-teste',
+      peca: 'loungeSofa',
+      coluna: 3,
+      linha: 3,
+      direcao: 'NE' as const,
+    }
+    const slotsSofa = obterSlotsDeInteracaoMovel(sofa)
+    expect(slotsSofa).toHaveLength(3)
+
+    // Se o slot 0 já está ocupado por Cifra, Agenda recebe o slot 1 sem sobrepor!
+    const slotAgenda = escolherSlotLivreDoMovel(sofa, 'agenda', [
+      { id: 'cifra', coluna: slotsSofa[0].coluna, linha: slotsSofa[0].linha, movelOcupadoId: 'sofa-teste', indiceSlotOcupado: 0 },
+    ])
+    expect(slotAgenda.indiceSlot).toBe(1)
+
+    // Jig Social garante distância saudável (~0.72m) ao conversar
+    const posJig = calcularPosicaoJigSocial(
+      { coluna: 1, linha: 1 },
+      { coluna: 3, linha: 3 },
+      SALA_TESTE,
+      [],
+      'cifra',
+    )
+    expect(Math.hypot(posJig.coluna - 3, posJig.linha - 3)).toBeGreaterThan(0.5)
+
+    // Rota A* calcula caminho entre pontos da sala
+    const rota = calcularCaminhoAEstrela({ coluna: 0.5, linha: 0.5 }, { coluna: 5.5, linha: 5.5 }, SALA_TESTE)
+    expect(rota.length).toBeGreaterThan(0)
+    expect(rota[rota.length - 1]).toEqual({ coluna: 5.5, linha: 5.5 })
+  })
+
+  it('permite criar novos Sims no Create-A-Sim (CAS) chegando pelo portal da rua e catálogo com preços §', () => {
+    let mundo = criarEstadoMundoSims(SALA_TESTE)
+    const novoSimCAS: RegistroSimCAS = {
+      ...REGISTROS_PADRAO_POR_SIM.norte,
+      id: 'sim_iris_novo',
+      nome: 'Íris',
+      funcao: 'Marketing & Growth',
+      especialidade: 'marketing',
+      customizado: true,
+    }
+
+    mundo = integrarSimDoCASNoMundo(mundo, novoSimCAS, SALA_TESTE, true)
+    expect(mundo.sims.sim_iris_novo).toBeDefined()
+    expect(mundo.sims.sim_iris_novo.nome).toBe('Íris')
+    expect(mundo.sims.sim_iris_novo.foraDoLote).toBe(true)
+    expect(mundo.sims.sim_iris_novo.interacaoAtual?.opcao.acaoEspecial).toBe('entrar_lote')
+
+    // Metadados do catálogo Build/Buy The Sims 4
+    const metaCafe = obterMetadadosPecaSims('kitchenCoffeeMachine')
+    expect(metaCafe.precoSimoleons).toBeGreaterThan(0)
+    expect(metaCafe.atributos.length).toBeGreaterThan(0)
   })
 })

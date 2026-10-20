@@ -10,7 +10,8 @@ import { AGENTES } from './agentes'
 import { rotuloDe } from './catalogo'
 import { conferirConjuntoDeSalas } from './sala-conferir'
 import { PainelEdicao } from './PainelEdicao'
-import { PainelCatalogo } from './PainelCatalogo'
+import { CatalogoTheSims } from './CatalogoTheSims'
+import { CriadorSimCAS } from './CriadorSimCAS'
 import { PainelProblemas } from './PainelProblemas'
 import { PainelSalas } from './PainelSalas'
 import { PopupPorta } from './PopupPorta'
@@ -27,6 +28,7 @@ import {
   criarEstadoMundoSims,
   enfileirarInteracaoSim,
   escolherInteracaoParaNecessidade,
+  integrarSimDoCASNoMundo,
   obterInteracoesDoChao,
   obterInteracoesDoMovel,
   obterInteracoesDoSim,
@@ -62,7 +64,8 @@ export function Escritorio() {
   const [modoParedes, setModoParedes] = useState<ModoParedesSims>('cortadas')
   const [projecoes3D, setProjecoes3D] = useState<Record<string, ProjecaoSimTela>>({})
   const [estado, setEstado] = useState<EstadoEditor | null>(null)
-  const [catalogoAberto, setCatalogoAberto] = useState(false)
+  const [catalogoAberto, setCatalogoAberto] = useState(true)
+  const [criadorCASAberto, setCriadorCASAberto] = useState(false)
   const [salasAbertas, setSalasAbertas] = useState(false)
   const [problemas, setProblemas] = useState<string[]>([])
   const [agenteAberto, setAgenteAberto] = useState<string | null>(null)
@@ -183,26 +186,23 @@ export function Escritorio() {
       setConfiguracoesAbertas(false)
       return
     }
-    if (opcao.acaoEspecial === 'trocar_sala' && opcao.salaDestino) {
-      definirSalaAtual(opcao.salaDestino)
-      recarregarDeProposito()
-      return
-    }
+    const salaAtual = cenaRef.current?.maquete.sala ?? carregarSala().sala
     if (opcao.acaoEspecial === 'chamar_todos' && opcao.alvoPosicao) {
       setMundoSims((ant) => {
         let novo = ant
-        AGENTES.forEach((ag, idx) => {
-          const offsetCol = opcao.alvoPosicao!.coluna + (idx % 2 === 0 ? -0.35 : 0.35)
-          const offsetLin = opcao.alvoPosicao!.linha + (idx < 2 ? -0.35 : 0.35)
+        Object.keys(ant.sims).forEach((simId, idx) => {
+          const offsetCol = opcao.alvoPosicao!.coluna + (idx % 2 === 0 ? -0.45 : 0.45)
+          const offsetLin = opcao.alvoPosicao!.linha + (idx < 2 ? -0.45 : 0.45)
           novo = enfileirarInteracaoSim(
             novo,
-            ag.id,
+            simId,
             {
               ...opcao,
               acaoEspecial: undefined,
               alvoPosicao: { coluna: offsetCol, linha: offsetLin },
             },
             true,
+            salaAtual,
           )
         })
         return novo
@@ -210,7 +210,7 @@ export function Escritorio() {
       return
     }
 
-    setMundoSims((ant) => enfileirarInteracaoSim(ant, ant.simAtivoId, opcao))
+    setMundoSims((ant) => enfileirarInteracaoSim(ant, ant.simAtivoId, opcao, true, salaAtual))
   }, [])
 
   // Monta tanto o Motor 3D WebGL (Three.js) quanto a Maquete/Editor 2D (PixiJS)
@@ -259,8 +259,10 @@ export function Escritorio() {
         setMenuPie({
           x: telaX,
           y: telaY,
-          tituloAlvo: `Piso 3D (${coluna.toFixed(1)}, ${linha.toFixed(1)})`,
-          opcoes: obterInteracoesDoChao(coluna, linha),
+          tituloAlvo: linha > (sala.linhas || 7) - 0.5
+            ? `Calçada / Vizinhança (${coluna.toFixed(1)}, ${linha.toFixed(1)})`
+            : `Piso 3D (${coluna.toFixed(1)}, ${linha.toFixed(1)})`,
+          opcoes: obterInteracoesDoChao(coluna, linha, sala.linhas || 7),
         })
       },
       aoSelecionarMovelConstrucao: (movelId) => {
@@ -421,8 +423,13 @@ export function Escritorio() {
     return () => window.clearInterval(intervalo)
   }, [])
 
-  // Sincroniza mundo Sims com as cenas 3D e 2D
+  // Sincroniza mundo Sims com as cenas 3D e 2D e processa viagem por porta
   useEffect(() => {
+    if (mundoSims.salaPendenteViagem) {
+      definirSalaAtual(mundoSims.salaPendenteViagem)
+      recarregarDeProposito()
+      return
+    }
     cena3DRef.current?.sincronizarMundoSims(mundoSims)
     cenaRef.current?.sincronizarMundoSims(mundoSims)
     if (mundoSims.seguirSimAtivo) {
@@ -722,7 +729,39 @@ export function Escritorio() {
           setMensagensAbertas(false)
         }}
         aoClicarAvancarTick={aoClicarAvancar}
+        aoAbrirCriadorCAS={() => setCriadorCASAberto(true)}
       />
+
+      {criadorCASAberto && (
+        <CriadorSimCAS
+          simInicialId={mundoSims.simAtivoId}
+          aoSalvarSim={(registro, ehNovo) => {
+            const salaAtual = cenaRef.current?.maquete.sala ?? carregarSala().sala
+            setMundoSims((ant) => integrarSimDoCASNoMundo(ant, registro, salaAtual, ehNovo))
+            cena3DRef.current?.atualizarAparenciaSim3D(registro.id, registro.aparencia)
+            setCriadorCASAberto(false)
+            notificar({
+              tipo: 'info',
+              titulo: registro.nome,
+              texto: ehNovo
+                ? `${registro.nome} chegou pela calçada e entrou para a equipe do Hubbia!`
+                : `Visual 3D e traços de ${registro.nome} atualizados com sucesso!`,
+            })
+          }}
+          aoRemoverSim={(simIdRemovido) => {
+            setMundoSims((ant) => {
+              const copia = { ...ant.sims }
+              delete copia[simIdRemovido]
+              return {
+                ...ant,
+                simAtivoId: 'cifra',
+                sims: copia,
+              }
+            })
+          }}
+          aoFechar={() => setCriadorCASAberto(false)}
+        />
+      )}
 
       {estado && (
         <PainelEdicao
@@ -758,7 +797,7 @@ export function Escritorio() {
         />
       )}
       {estado?.ativo && (
-        <PainelCatalogo
+        <CatalogoTheSims
           aberto={catalogoAberto}
           aoAlternar={() => setCatalogoAberto((v) => !v)}
           aoAdicionar={(peca) => chamar((e) => e.adicionar(peca))}

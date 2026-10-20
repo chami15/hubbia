@@ -1,21 +1,27 @@
 import * as THREE from 'three'
+import { obterAparenciaSim, type AparenciaSimCAS } from './cas-sims'
 import {
   calcularCorPlumbBob,
   COR_PLUMBBOB_VERDE,
   type EstadoSim,
 } from './simulacao-sims'
+import { texturaTecido } from './texturas3d'
 
 // ---------------------------------------------------------------------------
-// PERSONAGEM 3D ARTICULADO ESTILO THE SIMS 4
+// PERSONAGEM 3D ARTICULADO ORGÂNICO COM BLENDING SUAVE (ARB / THE SIMS 4)
 //
-// Substitui as fotos 2D estáticas por um modelo humanoide 3D completo com
-// esqueleto hierárquico (inspirado no rig de The Sims 4: Pelvis -> Spine ->
-// Chest -> Neck -> Head + Clavicles/UpperArms/Forearms/Hands + Thighs/Calves/Feet),
-// expressões faciais (piscar, boca articulada na fala, sobrancelhas por humor),
-// acessórios 3D na mão (xícara de café, livro aberto, tablet luminoso),
-// cristal PlumbBob 3D facetado com PointLight e máquina de estados de animação
-// corporal (caminhada bípede, digitação sentado, descanso no sofá, gole de café,
-// leitura, gesticulação social e reações emocionais).
+// Evolução do modelo 3D inspirada nos subsistemas reais de The Sims 4:
+//   - `native/animation/arb.pyc` (Animation Result Buffer): em vez de zerar e
+//     trocar rotações de forma mecânica/abrupta entre estados, todas as 18
+//     articulações do esqueleto passam por amortecimento exponencial contínuo
+//     (`damp`), gerando transições 100% fluidas entre caminhar, sentar,
+//     digitar, beber café, ler e gesticular!
+//   - `routing/walkstyle/walkstyle_behavior.pyc`: 4 estilos de caminhada
+//     ('padrao', 'energizado', 'confiante', 'sereno') + articulação de
+//     tornozelo/pé (heel-to-toe roll) sincronizada com a velocidade real.
+//   - `cas/cas.pyc`: suporte completo a Create-A-Sim (tons de pele, íris dos
+//     olhos com esclera e brilho especular, 7 cortes de cabelo, 4 estilos de
+//     roupa com textura de tecido, 3 portes físicos, óculos e headset).
 // ---------------------------------------------------------------------------
 
 export interface ArticulacoesSim3D {
@@ -25,8 +31,8 @@ export interface ArticulacoesSim3D {
   peito: THREE.Group
   pescoco: THREE.Group
   cabeca: THREE.Group
-  olhoEsq: THREE.Mesh
-  olhoDir: THREE.Mesh
+  olhoEsq: THREE.Group
+  olhoDir: THREE.Group
   sobrancelhaEsq: THREE.Mesh
   sobrancelhaDir: THREE.Mesh
   boca: THREE.Mesh
@@ -38,8 +44,10 @@ export interface ArticulacoesSim3D {
   maoDir: THREE.Group
   coxaEsq: THREE.Group
   panturrilhaEsq: THREE.Group
+  peEsq: THREE.Group
   coxaDir: THREE.Group
   panturrilhaDir: THREE.Group
+  peDir: THREE.Group
   propCafe: THREE.Group
   propLivro: THREE.Group
   propTablet: THREE.Group
@@ -63,67 +71,9 @@ export interface PersonagemSim3D {
     posicaoMundo: { x: number; z: number },
     direcaoOlhar?: { x: number; z: number } | null,
   ) => void
+  aplicarAparenciaCAS: (novaAparencia: AparenciaSimCAS) => void
   obterPosicaoCabecaMundo: (alvo: THREE.Vector3) => THREE.Vector3
   destruir: () => void
-}
-
-interface EstiloVisualSim3D {
-  tomPele: number
-  corCabelo: number
-  corRoupaPrincipal: number
-  corRoupaSecundaria: number
-  corCalca: number
-  corSapato: number
-  estiloCabelo: 'executivo' | 'coque' | 'rabo_cavalo' | 'moderno'
-  oculos: boolean
-  headset: boolean
-}
-
-const ESTILOS_POR_SIM: Record<string, EstiloVisualSim3D> = {
-  cifra: {
-    tomPele: 0xf1c29b,
-    corCabelo: 0x271c15,
-    corRoupaPrincipal: 0x16a34a, // Blazer verde esmeralda Cifra
-    corRoupaSecundaria: 0xf8fafc, // Camisa social clara
-    corCalca: 0x1e293b,
-    corSapato: 0x0f172a,
-    estiloCabelo: 'executivo',
-    oculos: true,
-    headset: false,
-  },
-  agenda: {
-    tomPele: 0xf5cba7,
-    corCabelo: 0x5c3317,
-    corRoupaPrincipal: 0x2563eb, // Cardigã/blazer azul Agenda
-    corRoupaSecundaria: 0xe0f2fe,
-    corCalca: 0x334155,
-    corSapato: 0x1e293b,
-    estiloCabelo: 'coque',
-    oculos: false,
-    headset: false,
-  },
-  vita: {
-    tomPele: 0xe5a97c,
-    corCabelo: 0x3b1f12,
-    corRoupaPrincipal: 0xf97316, // Jaqueta esportiva coral Vita
-    corRoupaSecundaria: 0xffedd5,
-    corCalca: 0x1f2937,
-    corSapato: 0xf8fafc,
-    estiloCabelo: 'rabo_cavalo',
-    oculos: false,
-    headset: false,
-  },
-  norte: {
-    tomPele: 0xebbd96,
-    corCabelo: 0x18181b,
-    corRoupaPrincipal: 0x0891b2, // Moletom tech ciano Norte
-    corRoupaSecundaria: 0x0f172a,
-    corCalca: 0x1e293b,
-    corSapato: 0x0f172a,
-    estiloCabelo: 'moderno',
-    oculos: false,
-    headset: true,
-  },
 }
 
 function habilitarSombraRecursivo(obj: THREE.Object3D) {
@@ -135,33 +85,71 @@ function habilitarSombraRecursivo(obj: THREE.Object3D) {
   })
 }
 
-export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): PersonagemSim3D {
-  const estilo = ESTILOS_POR_SIM[agenteId] ?? {
-    tomPele: 0xf1c29b,
-    corCabelo: 0x271c15,
-    corRoupaPrincipal: corIdentidade,
-    corRoupaSecundaria: 0xf8fafc,
-    corCalca: 0x1e293b,
-    corSapato: 0x0f172a,
-    estiloCabelo: 'executivo',
-    oculos: false,
-    headset: false,
-  }
+function amortecerValor(atual: number, alvo: number, velocidade: number, dt: number): number {
+  const fator = 1 - Math.exp(-velocidade * Math.min(dt, 0.1))
+  return atual + (alvo - atual) * fator
+}
 
-  const matPele = new THREE.MeshStandardMaterial({ color: estilo.tomPele, roughness: 0.55 })
-  const matCabelo = new THREE.MeshStandardMaterial({ color: estilo.corCabelo, roughness: 0.65 })
-  const matRoupa = new THREE.MeshStandardMaterial({ color: estilo.corRoupaPrincipal, roughness: 0.48 })
-  const matCamisa = new THREE.MeshStandardMaterial({ color: estilo.corRoupaSecundaria, roughness: 0.5 })
-  const matCalca = new THREE.MeshStandardMaterial({ color: estilo.corCalca, roughness: 0.6 })
-  const matSapato = new THREE.MeshStandardMaterial({ color: estilo.corSapato, roughness: 0.4 })
-  const matEscuro = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.3 })
-  const matBoca = new THREE.MeshStandardMaterial({ color: 0xb94a48, roughness: 0.4 })
+function amortecerEuler(
+  eulerAtual: THREE.Euler,
+  rxAlvo: number,
+  ryAlvo: number,
+  rzAlvo: number,
+  velocidade: number,
+  dt: number,
+) {
+  eulerAtual.x = amortecerValor(eulerAtual.x, rxAlvo, velocidade, dt)
+  eulerAtual.y = amortecerValor(eulerAtual.y, ryAlvo, velocidade, dt)
+  eulerAtual.z = amortecerValor(eulerAtual.z, rzAlvo, velocidade, dt)
+}
+
+export function criarPersonagemSim3D(
+  agenteId: string,
+  corIdentidade: number,
+  aparenciaExplicita?: AparenciaSimCAS,
+): PersonagemSim3D {
+  let aparencia = aparenciaExplicita ?? obterAparenciaSim(agenteId, corIdentidade)
+
+  const matPele = new THREE.MeshStandardMaterial({
+    color: aparencia.tomPele,
+    roughness: 0.48,
+    metalness: 0.02,
+  })
+  const matCabelo = new THREE.MeshStandardMaterial({
+    color: aparencia.corCabelo,
+    roughness: 0.58,
+    metalness: 0.06,
+  })
+  const matRoupa = new THREE.MeshStandardMaterial({
+    color: aparencia.corRoupaPrincipal,
+    map: texturaTecido(aparencia.corRoupaPrincipal),
+    roughness: 0.52,
+  })
+  const matCamisa = new THREE.MeshStandardMaterial({
+    color: aparencia.corRoupaSecundaria,
+    roughness: 0.45,
+  })
+  const matCalca = new THREE.MeshStandardMaterial({
+    color: aparencia.corCalca,
+    map: texturaTecido(aparencia.corCalca),
+    roughness: 0.62,
+  })
+  const matSapato = new THREE.MeshStandardMaterial({
+    color: aparencia.corSapato,
+    roughness: 0.32,
+    metalness: 0.12,
+  })
+  const matEsclera = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
+  const matIris = new THREE.MeshStandardMaterial({ color: aparencia.corOlhos, roughness: 0.25 })
+  const matEscuro = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2 })
+  const matBrilhoOlho = new THREE.MeshBasicMaterial({ color: 0xffffff })
+  const matBoca = new THREE.MeshStandardMaterial({ color: 0xc25953, roughness: 0.38 })
 
   const grupoRaiz = new THREE.Group()
   grupoRaiz.name = `sim-${agenteId}`
 
   // Anel de seleção luminoso no chão (estilo The Sims 4)
-  const geoAnel = new THREE.RingGeometry(0.28, 0.35, 32)
+  const geoAnel = new THREE.RingGeometry(0.27, 0.34, 36)
   geoAnel.rotateX(-Math.PI / 2)
   const matAnel = new THREE.MeshBasicMaterial({
     color: COR_PLUMBBOB_VERDE,
@@ -178,8 +166,16 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
   pelve.position.set(0, 0.56, 0)
   grupoRaiz.add(pelve)
 
-  const malhaQuadril = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.19), matCalca)
+  const malhaQuadril = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.08, 10, 16), matCalca)
+  malhaQuadril.rotation.z = Math.PI / 2
+  malhaQuadril.scale.set(0.95, 1, 0.82)
   pelve.add(malhaQuadril)
+
+  // Cinto sutil na cintura
+  const malhaCinto = new THREE.Mesh(new THREE.CylinderGeometry(0.145, 0.145, 0.032, 20), matSapato)
+  malhaCinto.scale.set(1, 1, 0.72)
+  malhaCinto.position.set(0, 0.055, 0)
+  pelve.add(malhaCinto)
 
   // --- COLUNA E PEITO (b__Spine0__ / b__Spine1__) ---
   const coluna = new THREE.Group()
@@ -190,110 +186,270 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
   peito.position.set(0, 0.02, 0)
   coluna.add(peito)
 
-  const malhaTorso = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.38, 0.2), matRoupa)
-  malhaTorso.position.set(0, 0.19, 0)
-  peito.add(malhaTorso)
+  // Grupo dinâmico de roupa do torso (reconstruído ao trocar estilo no CAS)
+  const grupoRoupaTorso = new THREE.Group()
+  peito.add(grupoRoupaTorso)
 
-  // Detalhe da camisa / gola no peito
-  const malhaCamisa = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.35, 0.21), matCamisa)
-  malhaCamisa.position.set(0, 0.2, 0.005)
-  peito.add(malhaCamisa)
+  function construirRoupaTorso(estiloRoupa: AparenciaSimCAS['estiloRoupa']) {
+    while (grupoRoupaTorso.children.length > 0) {
+      grupoRoupaTorso.remove(grupoRoupaTorso.children[0])
+    }
+
+    // Torso orgânico esculpido
+    const torsoBase = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.138, 0.36, 20), matRoupa)
+    torsoBase.scale.set(1.02, 1, 0.68)
+    torsoBase.position.set(0, 0.19, 0)
+    grupoRoupaTorso.add(torsoBase)
+
+    // Ombros arredondados naturais
+    const linhaOmbros = new THREE.Mesh(new THREE.CapsuleGeometry(0.068, 0.24, 10, 16), matRoupa)
+    linhaOmbros.rotation.z = Math.PI / 2
+    linhaOmbros.scale.set(1, 1, 0.82)
+    linhaOmbros.position.set(0, 0.335, 0)
+    grupoRoupaTorso.add(linhaOmbros)
+
+    if (estiloRoupa === 'blazer_executivo') {
+      // Camisa interna em V + lapelas do blazer
+      const camisaInterna = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.33, 0.205), matCamisa)
+      camisaInterna.position.set(0, 0.2, 0.012)
+      const lapelaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.24, 0.02), matRoupa)
+      lapelaEsq.position.set(-0.055, 0.23, 0.112)
+      lapelaEsq.rotation.z = -0.18
+      const lapelaDir = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.24, 0.02), matRoupa)
+      lapelaDir.position.set(0.055, 0.23, 0.112)
+      lapelaDir.rotation.z = 0.18
+      grupoRoupaTorso.add(camisaInterna, lapelaEsq, lapelaDir)
+    } else if (estiloRoupa === 'moletom_tech') {
+      // Capuz traseiro + bolso canguru frontal
+      const capuz = new THREE.Mesh(new THREE.TorusGeometry(0.095, 0.032, 10, 18), matRoupa)
+      capuz.rotation.x = Math.PI / 2 + 0.25
+      capuz.position.set(0, 0.365, -0.02)
+      const bolso = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.11, 0.03), matCamisa)
+      bolso.position.set(0, 0.1, 0.105)
+      grupoRoupaTorso.add(capuz, bolso)
+    } else if (estiloRoupa === 'jaqueta_esportiva') {
+      // Faixa central esportiva + gola alta
+      const ziperCentral = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.35, 0.206), matCamisa)
+      ziperCentral.position.set(0, 0.195, 0.012)
+      const golaAlta = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.085, 0.06, 16), matRoupa)
+      golaAlta.position.set(0, 0.38, 0)
+      grupoRoupaTorso.add(ziperCentral, golaAlta)
+    } else {
+      // Camisa social slim com colarinho e botões
+      const colarinho = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.016, 8, 16), matCamisa)
+      colarinho.rotation.x = Math.PI / 2
+      colarinho.position.set(0, 0.37, 0.01)
+      const faixaBotoes = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.34, 0.205), matCamisa)
+      faixaBotoes.position.set(0, 0.19, 0.012)
+      grupoRoupaTorso.add(colarinho, faixaBotoes)
+    }
+  }
 
   // --- PESCOÇO E CABEÇA (b__Neck__ / b__Head__) ---
   const pescoco = new THREE.Group()
-  pescoco.position.set(0, 0.39, 0)
+  pescoco.position.set(0, 0.385, 0)
   peito.add(pescoco)
 
-  const malhaPescoco = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.065, 0.09, 12), matPele)
-  malhaPescoco.position.set(0, 0.03, 0)
+  const malhaPescoco = new THREE.Mesh(new THREE.CylinderGeometry(0.054, 0.064, 0.095, 16), matPele)
+  malhaPescoco.position.set(0, 0.032, 0)
   pescoco.add(malhaPescoco)
 
   const cabeca = new THREE.Group()
-  cabeca.position.set(0, 0.07, 0)
+  cabeca.position.set(0, 0.072, 0)
   pescoco.add(cabeca)
 
-  const malhaCabeca = new THREE.Mesh(new THREE.SphereGeometry(0.155, 22, 20), matPele)
-  malhaCabeca.scale.set(0.95, 1.08, 0.96)
-  malhaCabeca.position.set(0, 0.14, 0)
+  // Cabeça orgânica de alta subdivisão (crânio + mandíbula suave)
+  const malhaCabeca = new THREE.Mesh(new THREE.SphereGeometry(0.156, 28, 24), matPele)
+  malhaCabeca.scale.set(0.94, 1.08, 0.96)
+  malhaCabeca.position.set(0, 0.142, 0)
   cabeca.add(malhaCabeca)
 
-  // Nariz 3D sutil
-  const malhaNariz = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.05, 8), matPele)
-  malhaNariz.rotation.x = Math.PI / 2
-  malhaNariz.position.set(0, 0.135, 0.155)
+  // Orelhas 3D esquerda e direita
+  for (const lado of [-1, 1]) {
+    const orelha = new THREE.Mesh(new THREE.SphereGeometry(0.032, 12, 12), matPele)
+    orelha.scale.set(0.45, 0.85, 0.65)
+    orelha.position.set(lado * 0.146, 0.142, -0.005)
+    cabeca.add(orelha)
+  }
+
+  // Nariz 3D orgânico
+  const malhaNariz = new THREE.Mesh(new THREE.ConeGeometry(0.021, 0.048, 12), matPele)
+  malhaNariz.rotation.x = Math.PI / 2 - 0.15
+  malhaNariz.position.set(0, 0.136, 0.154)
   cabeca.add(malhaNariz)
 
-  // Olhos, sobrancelhas e boca
-  const geoOlho = new THREE.SphereGeometry(0.021, 10, 10)
-  const olhoEsq = new THREE.Mesh(geoOlho, matEscuro)
-  olhoEsq.position.set(-0.05, 0.16, 0.138)
-  const olhoDir = new THREE.Mesh(geoOlho, matEscuro)
-  olhoDir.position.set(0.05, 0.16, 0.138)
+  // Olhos 3D detalhados (Esclera branca + Íris colorida + Pupila + Brilho especular)
+  function criarOlhoDetalhado(lado: -1 | 1): THREE.Group {
+    const gOlho = new THREE.Group()
+    gOlho.position.set(lado * 0.052, 0.162, 0.134)
+
+    const esclera = new THREE.Mesh(new THREE.SphereGeometry(0.025, 14, 14), matEsclera)
+    esclera.scale.set(1.1, 0.92, 0.65)
+    gOlho.add(esclera)
+
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.0155, 12, 12), matIris)
+    iris.scale.set(1, 1, 0.45)
+    iris.position.set(0, 0, 0.012)
+    gOlho.add(iris)
+
+    const pupila = new THREE.Mesh(new THREE.SphereGeometry(0.0085, 10, 10), matEscuro)
+    pupila.scale.set(1, 1, 0.4)
+    pupila.position.set(0, 0, 0.016)
+    gOlho.add(pupila)
+
+    const brilho = new THREE.Mesh(new THREE.SphereGeometry(0.0042, 8, 8), matBrilhoOlho)
+    brilho.position.set(0.005, 0.005, 0.019)
+    gOlho.add(brilho)
+
+    return gOlho
+  }
+
+  const olhoEsq = criarOlhoDetalhado(-1)
+  const olhoDir = criarOlhoDetalhado(1)
   cabeca.add(olhoEsq, olhoDir)
 
-  const geoSobrancelha = new THREE.BoxGeometry(0.044, 0.01, 0.012)
+  const geoSobrancelha = new THREE.CapsuleGeometry(0.0055, 0.034, 6, 8)
+  geoSobrancelha.rotateZ(Math.PI / 2)
   const sobrancelhaEsq = new THREE.Mesh(geoSobrancelha, matCabelo)
-  sobrancelhaEsq.position.set(-0.05, 0.195, 0.142)
+  sobrancelhaEsq.position.set(-0.052, 0.196, 0.143)
   const sobrancelhaDir = new THREE.Mesh(geoSobrancelha, matCabelo)
-  sobrancelhaDir.position.set(0.05, 0.195, 0.142)
+  sobrancelhaDir.position.set(0.052, 0.196, 0.143)
   cabeca.add(sobrancelhaEsq, sobrancelhaDir)
 
-  const boca = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.014, 0.015), matBoca)
+  const geoBoca = new THREE.CapsuleGeometry(0.0065, 0.036, 6, 10)
+  geoBoca.rotateZ(Math.PI / 2)
+  const boca = new THREE.Mesh(geoBoca, matBoca)
   boca.position.set(0, 0.092, 0.142)
   cabeca.add(boca)
 
-  // Cabelo estilizado em 3D por personagem
-  const topoCabelo = new THREE.Mesh(
-    new THREE.SphereGeometry(0.162, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.62),
-    matCabelo,
-  )
-  topoCabelo.position.set(0, 0.155, -0.008)
-  cabeca.add(topoCabelo)
+  // Grupo dinâmico de cabelo e acessórios da cabeça
+  const grupoCabeloEAcessorios = new THREE.Group()
+  cabeca.add(grupoCabeloEAcessorios)
 
-  if (estilo.estiloCabelo === 'coque') {
-    const coque = new THREE.Mesh(new THREE.SphereGeometry(0.068, 12, 12), matCabelo)
-    coque.position.set(0, 0.26, -0.11)
-    cabeca.add(coque)
-  } else if (estilo.estiloCabelo === 'rabo_cavalo') {
-    const rabo = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.18, 10), matCabelo)
-    rabo.rotation.x = -0.6
-    rabo.position.set(0, 0.16, -0.17)
-    cabeca.add(rabo)
-  } else if (estilo.estiloCabelo === 'moderno') {
-    const topete = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.06, 0.12), matCabelo)
-    topete.position.set(0, 0.28, 0.05)
-    topete.rotation.x = -0.2
-    cabeca.add(topete)
-  }
+  function construirCabeloEAcessorios(ap: AparenciaSimCAS) {
+    while (grupoCabeloEAcessorios.children.length > 0) {
+      grupoCabeloEAcessorios.remove(grupoCabeloEAcessorios.children[0])
+    }
 
-  // Óculos 3D (Cifra)
-  if (estilo.oculos) {
-    const aroEsq = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.0045, 8, 16), matEscuro)
-    aroEsq.position.set(-0.05, 0.16, 0.148)
-    const aroDir = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.0045, 8, 16), matEscuro)
-    aroDir.position.set(0.05, 0.16, 0.148)
-    const ponte = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.005, 0.005), matEscuro)
-    ponte.position.set(0, 0.165, 0.148)
-    cabeca.add(aroEsq, aroDir, ponte)
-  }
-
-  // Headset 3D (Norte)
-  if (estilo.headset) {
-    const arco = new THREE.Mesh(
-      new THREE.TorusGeometry(0.165, 0.012, 8, 20, Math.PI),
-      new THREE.MeshStandardMaterial({ color: 0x06b6d4, metalness: 0.4, roughness: 0.3 }),
+    // Calota capilar base
+    const topoCabelo = new THREE.Mesh(
+      new THREE.SphereGeometry(0.163, 24, 18, 0, Math.PI * 2, 0, Math.PI * 0.62),
+      matCabelo,
     )
-    arco.position.set(0, 0.15, 0)
-    cabeca.add(arco)
+    topoCabelo.position.set(0, 0.156, -0.008)
+    grupoCabeloEAcessorios.add(topoCabelo)
+
+    // Costeletas / acabamento lateral
+    for (const lado of [-1, 1]) {
+      const lateral = new THREE.Mesh(new THREE.CapsuleGeometry(0.022, 0.07, 6, 8), matCabelo)
+      lateral.position.set(lado * 0.142, 0.17, 0.02)
+      grupoCabeloEAcessorios.add(lateral)
+    }
+
+    if (ap.estiloCabelo === 'executivo') {
+      const franja = new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.14, 8, 12), matCabelo)
+      franja.rotation.z = Math.PI / 2 - 0.12
+      franja.position.set(0.01, 0.27, 0.085)
+      grupoCabeloEAcessorios.add(franja)
+    } else if (ap.estiloCabelo === 'coque') {
+      const coque = new THREE.Mesh(new THREE.SphereGeometry(0.074, 16, 16), matCabelo)
+      coque.position.set(0, 0.265, -0.115)
+      grupoCabeloEAcessorios.add(coque)
+    } else if (ap.estiloCabelo === 'rabo_cavalo') {
+      const elástico = new THREE.Mesh(new THREE.TorusGeometry(0.032, 0.01, 8, 14), matRoupa)
+      elástico.position.set(0, 0.19, -0.15)
+      const rabo = new THREE.Mesh(new THREE.ConeGeometry(0.058, 0.2, 14), matCabelo)
+      rabo.rotation.x = -0.65
+      rabo.position.set(0, 0.15, -0.19)
+      grupoCabeloEAcessorios.add(elástico, rabo)
+    } else if (ap.estiloCabelo === 'moderno') {
+      const topete = new THREE.Mesh(new THREE.CapsuleGeometry(0.048, 0.12, 10, 14), matCabelo)
+      topete.rotation.z = Math.PI / 2
+      topete.rotation.x = -0.25
+      topete.position.set(0, 0.29, 0.055)
+      grupoCabeloEAcessorios.add(topete)
+    } else if (ap.estiloCabelo === 'longo_ondulado') {
+      for (const lado of [-1, 1]) {
+        const mecha = new THREE.Mesh(new THREE.CapsuleGeometry(0.052, 0.22, 10, 12), matCabelo)
+        mecha.position.set(lado * 0.125, 0.07, -0.04)
+        mecha.rotation.z = lado * -0.12
+        grupoCabeloEAcessorios.add(mecha)
+      }
+      const costas = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.09), matCabelo)
+      costas.position.set(0, 0.08, -0.12)
+      grupoCabeloEAcessorios.add(costas)
+    } else if (ap.estiloCabelo === 'afro_puff') {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(0.195, 22, 20), matCabelo)
+      puff.position.set(0, 0.225, -0.02)
+      grupoCabeloEAcessorios.add(puff)
+    } else if (ap.estiloCabelo === 'curto_cacheado') {
+      const posCachos: [number, number, number][] = [
+        [0, 0.29, 0.04],
+        [-0.08, 0.27, 0.03],
+        [0.08, 0.27, 0.03],
+        [-0.11, 0.23, -0.02],
+        [0.11, 0.23, -0.02],
+        [0, 0.27, -0.08],
+      ]
+      for (const [cx, cy, cz] of posCachos) {
+        const cacho = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), matCabelo)
+        cacho.position.set(cx, cy, cz)
+        grupoCabeloEAcessorios.add(cacho)
+      }
+    }
+
+    // Óculos 3D ('redondo' ou 'retangular')
+    if (ap.oculos !== 'nenhum') {
+      if (ap.oculos === 'redondo') {
+        const aroEsq = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.0045, 8, 20), matEscuro)
+        aroEsq.position.set(-0.052, 0.162, 0.15)
+        const aroDir = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.0045, 8, 20), matEscuro)
+        aroDir.position.set(0.052, 0.162, 0.15)
+        grupoCabeloEAcessorios.add(aroEsq, aroDir)
+      } else {
+        const aroEsq = new THREE.Mesh(new THREE.BoxGeometry(0.068, 0.042, 0.006), matEscuro)
+        aroEsq.position.set(-0.052, 0.162, 0.15)
+        const lenteEsq = new THREE.Mesh(
+          new THREE.BoxGeometry(0.056, 0.03, 0.008),
+          new THREE.MeshPhysicalMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.35 }),
+        )
+        lenteEsq.position.set(-0.052, 0.162, 0.15)
+        const aroDir = aroEsq.clone()
+        aroDir.position.x = 0.052
+        const lenteDir = lenteEsq.clone()
+        lenteDir.position.x = 0.052
+        grupoCabeloEAcessorios.add(aroEsq, lenteEsq, aroDir, lenteDir)
+      }
+      const ponte = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.005, 0.006), matEscuro)
+      ponte.position.set(0, 0.166, 0.15)
+      grupoCabeloEAcessorios.add(ponte)
+    }
+
+    // Headset 3D com microfone lateral
+    if (ap.headset) {
+      const matHeadset = new THREE.MeshStandardMaterial({
+        color: 0x06b6d4,
+        metalness: 0.45,
+        roughness: 0.28,
+      })
+      const arco = new THREE.Mesh(new THREE.TorusGeometry(0.168, 0.012, 10, 24, Math.PI), matHeadset)
+      arco.position.set(0, 0.15, 0)
+      const conchaEsq = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.028, 14), matHeadset)
+      conchaEsq.rotation.z = Math.PI / 2
+      conchaEsq.position.set(-0.162, 0.145, 0)
+      const conchaDir = conchaEsq.clone()
+      conchaDir.position.x = 0.162
+      grupoCabeloEAcessorios.add(arco, conchaEsq, conchaDir)
+    }
   }
 
-  // --- BRAÇOS ARTICULADOS (Ombro -> Braço -> Antebraço -> Mão) ---
+  // --- BRAÇOS ARTICULADOS (Ombro -> Braço -> Antebraço -> Mão com polegar) ---
   function criarBraco(lado: -1 | 1) {
     const ombro = new THREE.Group()
-    ombro.position.set(lado * 0.2, 0.34, 0)
+    ombro.position.set(lado * 0.2, 0.335, 0)
     peito.add(ombro)
 
-    const malhaBracoSup = new THREE.Mesh(new THREE.CapsuleGeometry(0.042, 0.16, 8, 12), matRoupa)
+    const malhaBracoSup = new THREE.Mesh(new THREE.CapsuleGeometry(0.043, 0.16, 10, 14), matRoupa)
     malhaBracoSup.position.set(0, -0.1, 0)
     ombro.add(malhaBracoSup)
 
@@ -301,7 +457,7 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
     antebraco.position.set(0, -0.2, 0)
     ombro.add(antebraco)
 
-    const malhaAntebraco = new THREE.Mesh(new THREE.CapsuleGeometry(0.036, 0.15, 8, 12), matPele)
+    const malhaAntebraco = new THREE.Mesh(new THREE.CapsuleGeometry(0.036, 0.15, 10, 14), matPele)
     malhaAntebraco.position.set(0, -0.09, 0)
     antebraco.add(malhaAntebraco)
 
@@ -309,8 +465,12 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
     mao.position.set(0, -0.19, 0)
     antebraco.add(mao)
 
-    const malhaMao = new THREE.Mesh(new THREE.SphereGeometry(0.038, 10, 10), matPele)
-    mao.add(malhaMao)
+    const palma = new THREE.Mesh(new THREE.SphereGeometry(0.038, 12, 12), matPele)
+    palma.scale.set(0.85, 1.1, 0.65)
+    const polegar = new THREE.Mesh(new THREE.CapsuleGeometry(0.011, 0.022, 6, 8), matPele)
+    polegar.position.set(lado * -0.025, -0.005, 0.022)
+    polegar.rotation.x = 0.6
+    mao.add(palma, polegar)
 
     return { ombro, antebraco, mao }
   }
@@ -319,14 +479,13 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
   const bracoDir = criarBraco(1)
 
   // --- OBJETOS CARREGADOS NAS MÃOS (PostureAspectCarry) ---
-  // 1. Xícara de Café Expresso na mão direita
   const propCafe = new THREE.Group()
   const caneca = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.042, 0.036, 0.09, 14),
+    new THREE.CylinderGeometry(0.042, 0.036, 0.09, 16),
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 }),
   )
   const liquidoCafe = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.037, 0.037, 0.01, 12),
+    new THREE.CylinderGeometry(0.037, 0.037, 0.01, 14),
     new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.3 }),
   )
   liquidoCafe.position.y = 0.042
@@ -335,7 +494,6 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
   propCafe.visible = false
   bracoDir.mao.add(propCafe)
 
-  // 2. Livro Técnico na mão esquerda
   const propLivro = new THREE.Group()
   const capaLivro = new THREE.Mesh(
     new THREE.BoxGeometry(0.16, 0.03, 0.12),
@@ -351,7 +509,6 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
   propLivro.visible = false
   bracoEsq.mao.add(propLivro)
 
-  // 3. Tablet Luminoso na mão esquerda
   const propTablet = new THREE.Group()
   const corpoTablet = new THREE.Mesh(
     new THREE.BoxGeometry(0.15, 0.015, 0.11),
@@ -370,13 +527,13 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
   propTablet.visible = false
   bracoEsq.mao.add(propTablet)
 
-  // --- PERNAS ARTICULADAS (Coxa -> Panturrilha -> Pé) ---
+  // --- PERNAS E TORNOZELOS ARTICULADOS (Coxa -> Panturrilha -> Pé) ---
   function criarPerna(lado: -1 | 1) {
     const coxa = new THREE.Group()
-    coxa.position.set(lado * 0.085, -0.04, 0)
+    coxa.position.set(lado * 0.086, -0.04, 0)
     pelve.add(coxa)
 
-    const malhaCoxa = new THREE.Mesh(new THREE.CapsuleGeometry(0.052, 0.18, 8, 12), matCalca)
+    const malhaCoxa = new THREE.Mesh(new THREE.CapsuleGeometry(0.054, 0.18, 10, 14), matCalca)
     malhaCoxa.position.set(0, -0.12, 0)
     coxa.add(malhaCoxa)
 
@@ -384,15 +541,21 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
     panturrilha.position.set(0, -0.25, 0)
     coxa.add(panturrilha)
 
-    const malhaPanturrilha = new THREE.Mesh(new THREE.CapsuleGeometry(0.044, 0.18, 8, 12), matCalca)
+    const malhaPanturrilha = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.18, 10, 14), matCalca)
     malhaPanturrilha.position.set(0, -0.12, 0)
     panturrilha.add(malhaPanturrilha)
 
-    const pe = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.06, 0.17), matSapato)
-    pe.position.set(0, -0.24, 0.035)
+    const pe = new THREE.Group()
+    pe.position.set(0, -0.24, 0)
     panturrilha.add(pe)
 
-    return { coxa, panturrilha }
+    const sapato = new THREE.Mesh(new THREE.CapsuleGeometry(0.042, 0.095, 8, 12), matSapato)
+    sapato.rotation.x = Math.PI / 2
+    sapato.scale.set(1.08, 1, 0.68)
+    sapato.position.set(0, 0, 0.036)
+    pe.add(sapato)
+
+    return { coxa, panturrilha, pe }
   }
 
   const pernaEsq = criarPerna(-1)
@@ -400,7 +563,7 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
 
   // --- CRISTAL PLUMBBOB 3D REAL + POINT LIGHT (`Default.ini` [PlumbBob]) ---
   const plumbBobGrupo = new THREE.Group()
-  plumbBobGrupo.position.set(0, 1.56, 0)
+  plumbBobGrupo.position.set(0, 1.58, 0)
   grupoRaiz.add(plumbBobGrupo)
 
   const geoPlumb = new THREE.OctahedronGeometry(0.11, 0)
@@ -429,11 +592,35 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
   plumbBobLuz.position.set(0, -0.05, 0)
   plumbBobGrupo.add(plumbBobLuz)
 
-  habilitarSombraRecursivo(grupoRaiz)
-  // O PlumbBob não projeta sombra escura na cabeça do Sim
-  plumbBobMesh.castShadow = false
-  plumbBobHalo.castShadow = false
-  anelSelecaoChao.castShadow = false
+  function aplicarAparenciaCAS(novaAparencia: AparenciaSimCAS) {
+    aparencia = novaAparencia
+    matPele.color.setHex(novaAparencia.tomPele)
+    matIris.color.setHex(novaAparencia.corOlhos)
+    matCabelo.color.setHex(novaAparencia.corCabelo)
+    matRoupa.color.setHex(novaAparencia.corRoupaPrincipal)
+    matRoupa.map = texturaTecido(novaAparencia.corRoupaPrincipal)
+    matRoupa.needsUpdate = true
+    matCamisa.color.setHex(novaAparencia.corRoupaSecundaria)
+    matCalca.color.setHex(novaAparencia.corCalca)
+    matCalca.map = texturaTecido(novaAparencia.corCalca)
+    matCalca.needsUpdate = true
+    matSapato.color.setHex(novaAparencia.corSapato)
+
+    construirRoupaTorso(novaAparencia.estiloRoupa)
+    construirCabeloEAcessorios(novaAparencia)
+
+    // Escala de porte físico no torso/ombros
+    const escalaPorteX =
+      novaAparencia.porteFisico === 'esguio' ? 0.91 : novaAparencia.porteFisico === 'atletico' ? 1.09 : 1
+    peito.scale.set(escalaPorteX, 1, escalaPorteX)
+
+    habilitarSombraRecursivo(grupoRaiz)
+    plumbBobMesh.castShadow = false
+    plumbBobHalo.castShadow = false
+    anelSelecaoChao.castShadow = false
+  }
+
+  aplicarAparenciaCAS(aparencia)
 
   const articulacoes: ArticulacoesSim3D = {
     raiz: grupoRaiz,
@@ -455,8 +642,10 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
     maoDir: bracoDir.mao,
     coxaEsq: pernaEsq.coxa,
     panturrilhaEsq: pernaEsq.panturrilha,
+    peEsq: pernaEsq.pe,
     coxaDir: pernaDir.coxa,
     panturrilhaDir: pernaDir.panturrilha,
+    peDir: pernaDir.pe,
     propCafe,
     propLivro,
     propTablet,
@@ -467,22 +656,12 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
     anelSelecaoChao,
   }
 
-  const {
-    ombroEsq,
-    antebracoEsq,
-    ombroDir,
-    antebracoDir,
-    coxaEsq,
-    panturrilhaEsq,
-    coxaDir,
-    panturrilhaDir,
-  } = articulacoes
-
   let anguloAtualY = 0
   let ultimaPosX = 0
   let ultimaPosZ = 0
   let inicializadoPos = false
-  const semente = (agenteId.charCodeAt(0) * 17 + agenteId.charCodeAt(1) * 31) % 100
+  let faseCaminhadaAcumulada = 0
+  const semente = (agenteId.charCodeAt(0) * 17 + (agenteId.charCodeAt(1) || 7) * 31) % 100
 
   function atualizar(
     sim: EstadoSim | undefined,
@@ -492,34 +671,33 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
     posicaoMundo: { x: number; z: number },
     direcaoOlhar?: { x: number; z: number } | null,
   ) {
-    // 1. Posição e orientação suave no plano 3D
-    const dxMov = posicaoMundo.x - ultimaPosX
-    const dzMov = posicaoMundo.z - ultimaPosZ
-    const distMov = Math.hypot(dxMov, dzMov)
+    const dt = Math.max(0.001, Math.min(0.1, deltaSegundos))
+    const primeiroQuadro = !inicializadoPos
 
-    if (!inicializadoPos) {
-      ultimaPosX = posicaoMundo.x
-      ultimaPosZ = posicaoMundo.z
-      inicializadoPos = true
-    } else {
-      ultimaPosX = posicaoMundo.x
-      ultimaPosZ = posicaoMundo.z
-    }
+    // 1. Posição e velocidade real no plano 3D
+    const dxMov = inicializadoPos ? posicaoMundo.x - ultimaPosX : 0
+    const dzMov = inicializadoPos ? posicaoMundo.z - ultimaPosZ : 0
+    const distMov = Math.hypot(dxMov, dzMov)
+    const velocidadeInstantanea = distMov / dt
+
+    ultimaPosX = posicaoMundo.x
+    ultimaPosZ = posicaoMundo.z
+    inicializadoPos = true
 
     grupoRaiz.position.set(posicaoMundo.x, 0, posicaoMundo.z)
 
     let anguloAlvo = anguloAtualY
-    if (distMov > 0.002) {
+    if (distMov > 0.0015) {
       anguloAlvo = Math.atan2(dxMov, dzMov)
     } else if (direcaoOlhar) {
       anguloAlvo = Math.atan2(direcaoOlhar.x - posicaoMundo.x, direcaoOlhar.z - posicaoMundo.z)
     }
 
-    // Interpolação angular suave pelo menor arco
+    // Interpolação angular ultra suave pelo menor arco (sem trancos!)
     let diffAngulo = anguloAlvo - anguloAtualY
     while (diffAngulo > Math.PI) diffAngulo -= Math.PI * 2
     while (diffAngulo < -Math.PI) diffAngulo += Math.PI * 2
-    anguloAtualY += diffAngulo * Math.min(1, deltaSegundos * 10)
+    anguloAtualY += diffAngulo * (1 - Math.exp(-11 * dt))
     grupoRaiz.rotation.y = anguloAtualY
 
     // 2. PlumbBob 3D e Anel de Seleção no Chão
@@ -528,19 +706,20 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
     ;(plumbBobMesh.material as THREE.MeshStandardMaterial).emissive.setHex(corPlumb)
     ;(plumbBobHalo.material as THREE.MeshBasicMaterial).color.setHex(corPlumb)
     plumbBobLuz.color.setHex(corPlumb)
-    plumbBobLuz.intensity = ativo ? 1.1 : 0.35
+    plumbBobLuz.intensity = amortecerValor(plumbBobLuz.intensity, ativo ? 1.15 : 0.35, 8, dt)
 
-    const escalaPlumb = ativo ? 1.05 : 0.55
-    plumbBobGrupo.scale.setScalar(escalaPlumb)
-    plumbBobMesh.rotation.y = tempoSegundos * 2.2 + semente
-    plumbBobHalo.rotation.y = -tempoSegundos * 1.4
+    const escalaPlumbAlvo = ativo ? 1.06 : 0.54
+    const novaEscalaPlumb = amortecerValor(plumbBobGrupo.scale.x, escalaPlumbAlvo, 10, dt)
+    plumbBobGrupo.scale.setScalar(novaEscalaPlumb)
+    plumbBobMesh.rotation.y = tempoSegundos * 2.1 + semente
+    plumbBobHalo.rotation.y = -tempoSegundos * 1.35
 
     ;(anelSelecaoChao.material as THREE.MeshBasicMaterial).color.setHex(
       ativo ? corPlumb : corIdentidade,
     )
     ;(anelSelecaoChao.material as THREE.MeshBasicMaterial).opacity = ativo
-      ? 0.75 + Math.sin(tempoSegundos * 4) * 0.2
-      : 0.32
+      ? 0.75 + Math.sin(tempoSegundos * 3.8) * 0.2
+      : 0.3
     anelSelecaoChao.scale.setScalar(ativo ? 1.08 : 0.85)
 
     // 3. Props carregados nas mãos (PostureAspectCarry)
@@ -549,171 +728,270 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
     propLivro.visible = carregando === 'livro'
     propTablet.visible = carregando === 'tablet'
 
-    // 4. Expressões faciais: piscar natural, sobrancelhas por emoção e fala
-    const cicloPiscar = (tempoSegundos + semente * 0.13) % 4.2
-    const piscando = cicloPiscar > 4.04
-    olhoEsq.scale.y = piscando ? 0.12 : 1
-    olhoDir.scale.y = piscando ? 0.12 : 1
+    // 4. Expressões faciais orgânicas: piscar suave, sobrancelhas amortecidas e fala
+    const cicloPiscar = (tempoSegundos + semente * 0.13) % 4.3
+    const piscando = cicloPiscar > 4.12
+    const escalaOlhoY = amortecerValor(olhoEsq.scale.y, piscando ? 0.1 : 1, 28, dt)
+    olhoEsq.scale.y = escalaOlhoY
+    olhoDir.scale.y = escalaOlhoY
 
     const humor = sim?.humor ?? 'feliz'
-    const anguloSobrancelha =
-      humor === 'tenso' ? 0.28 : humor === 'exausto' ? -0.22 : humor === 'inspirado' ? -0.14 : 0
-    sobrancelhaEsq.rotation.z = -anguloSobrancelha
-    sobrancelhaDir.rotation.z = anguloSobrancelha
+    const anguloSobrancelhaAlvo =
+      humor === 'tenso' ? 0.26 : humor === 'exausto' ? -0.2 : humor === 'inspirado' ? -0.14 : 0
+    sobrancelhaEsq.rotation.z = amortecerValor(sobrancelhaEsq.rotation.z, -anguloSobrancelhaAlvo, 10, dt)
+    sobrancelhaDir.rotation.z = amortecerValor(sobrancelhaDir.rotation.z, anguloSobrancelhaAlvo, 10, dt)
 
     const falando =
       sim?.balao?.tipo === 'fala' ||
       sim?.estadoBackend === 'falando' ||
       sim?.interacaoAtual?.opcao.categoria === 'social'
     if (falando) {
-      boca.scale.y = 1 + Math.abs(Math.sin(tempoSegundos * 14)) * 2.2
-      boca.scale.x = 0.85 + Math.sin(tempoSegundos * 10) * 0.2
+      boca.scale.y = amortecerValor(boca.scale.y, 1 + Math.abs(Math.sin(tempoSegundos * 13)) * 2.1, 20, dt)
+      boca.scale.x = amortecerValor(boca.scale.x, 0.86 + Math.sin(tempoSegundos * 9.5) * 0.18, 20, dt)
     } else {
-      boca.scale.set(1, 1, 1)
+      boca.scale.y = amortecerValor(boca.scale.y, 1, 14, dt)
+      boca.scale.x = amortecerValor(boca.scale.x, 1, 14, dt)
     }
 
-    // 5. Máquina de estados de animação corporal (ARB / PostureSpec)
+    // 5. Cálculo da Pose Alvo (ARB Target Pose) e Amortecimento Exponencial (Pose Blending)
     const postura = sim?.postura.corpo ?? 'em_pe'
-    const fase = tempoSegundos * 2.2 + semente
+    const fase = tempoSegundos * 2.1 + semente
 
-    // Reseta rotações base antes de aplicar a postura ativa
-    coluna.rotation.set(0, 0, 0)
-    peito.rotation.set(0, 0, 0)
-    cabeca.rotation.set(0, 0, 0)
-    ombroEsq.rotation.set(0, 0, 0.08)
-    antebracoEsq.rotation.set(0, 0, 0)
-    ombroDir.rotation.set(0, 0, -0.08)
-    antebracoDir.rotation.set(0, 0, 0)
-    coxaEsq.rotation.set(0, 0, 0)
-    panturrilhaEsq.rotation.set(0, 0, 0)
-    coxaDir.rotation.set(0, 0, 0)
-    panturrilhaDir.rotation.set(0, 0, 0)
+    let pelveYAlvo = 0.56
+    let pelveRx = 0, pelveRy = 0, pelveRz = 0
+    let colRx = 0, colRy = 0, colRz = 0
+    let peitoRx = 0, peitoRy = 0, peitoRz = 0
+    let pescRx = 0, pescRy = 0, pescRz = 0
+    let cabRx = 0, cabRy = 0, cabRz = 0
+    let ombERx = 0, ombERy = 0, ombERz = 0.08
+    let antERx = -0.12, antERy = 0, antERz = 0
+    let maoERx = 0, maoERy = 0, maoERz = 0
+    let ombDRx = 0, ombDRy = 0, ombDRz = -0.08
+    let antDRx = -0.12, antDRy = 0, antDRz = 0
+    let maoDRx = 0, maoDRy = 0, maoDRz = 0
+    let coxaERx = 0, coxaERy = 0, coxaERz = 0
+    let pantERx = 0
+    let peERx = 0
+    let coxaDRx = 0, coxaDRy = 0, coxaDRz = 0
+    let pantDRx = 0
+    let peDRx = 0
+    let plumbYAlvo = 1.58 + Math.sin(tempoSegundos * 2.8) * 0.035
 
-    if (postura === 'andando') {
-      // Ciclo de caminhada bípede 3D realista
-      const w = tempoSegundos * 9.5
-      const passo = Math.sin(w)
-      const passoOposto = Math.sin(w + Math.PI)
+    if (postura === 'andando' || distMov > 0.002) {
+      // Frequência da passada sincronizada com a velocidade real para os pés não deslizarem!
+      const velEfetiva = Math.max(1.1, Math.min(2.6, velocidadeInstantanea || 1.55))
+      const estiloCam = aparencia.estiloCaminhada
+      const multCadencia =
+        estiloCam === 'energizado' ? 6.4 : estiloCam === 'sereno' ? 4.8 : 5.6
+      faseCaminhadaAcumulada += dt * velEfetiva * multCadencia
 
-      pelve.position.y = 0.56 + Math.abs(Math.cos(w)) * 0.035
-      pelve.rotation.y = passo * 0.08
-      coluna.rotation.x = 0.08
+      const w = faseCaminhadaAcumulada
+      const senW = Math.sin(w)
+      const cosW = Math.cos(w)
+      const senOp = -senW
+      const cosOp = -cosW
 
-      // Pernas alternando passada e flexão de joelho
-      coxaEsq.rotation.x = passo * 0.65
-      panturrilhaEsq.rotation.x = Math.max(0, -passo * 0.75)
-      coxaDir.rotation.x = passoOposto * 0.65
-      panturrilhaDir.rotation.x = Math.max(0, -passoOposto * 0.75)
+      const amplitudePassada =
+        estiloCam === 'energizado' ? 0.68 : estiloCam === 'sereno' ? 0.48 : 0.58
+      const quiqueVertical =
+        estiloCam === 'energizado' ? 0.042 : estiloCam === 'sereno' ? 0.018 : 0.028
 
-      // Braços balançando em contra-fase com as pernas
-      ombroEsq.rotation.x = passoOposto * 0.52
-      antebracoEsq.rotation.x = -0.35 - Math.max(0, passoOposto * 0.25)
-      ombroDir.rotation.x = passo * 0.52
-      antebracoDir.rotation.x = -0.35 - Math.max(0, passo * 0.25)
+      // Movimento pélvico orgânico em 3 eixos (bounce vertical, sway lateral e twist)
+      pelveYAlvo = 0.56 + Math.abs(cosW) * quiqueVertical - 0.01
+      pelveRy = senW * 0.09
+      pelveRz = cosW * 0.035
 
-      cabeca.rotation.y = Math.sin(w * 0.5) * 0.08
-      plumbBobGrupo.position.y = 1.58 + Math.sin(tempoSegundos * 3.5) * 0.04
+      // Contra-rotação natural da coluna e peito (contrapposto)
+      colRx = estiloCam === 'confiante' ? -0.03 : 0.06
+      peitoRy = -senW * 0.08
+      peitoRz = -cosW * 0.025
+
+      // Pernas com flexão natural de joelho na fase de balanço (swing phase) e rolamento do pé
+      coxaERx = senW * amplitudePassada
+      pantERx = Math.max(0.05, cosW * 0.65 + 0.25)
+      peERx = -senW * 0.28 - 0.05
+
+      coxaDRx = senOp * amplitudePassada
+      pantDRx = Math.max(0.05, cosOp * 0.65 + 0.25)
+      peDRx = -senOp * 0.28 - 0.05
+
+      // Braços em contra-fase com atraso orgânico no antebraço e punho
+      const ampBraco = estiloCam === 'confiante' ? 0.52 : 0.44
+      ombERx = senOp * ampBraco
+      ombERz = estiloCam === 'confiante' ? 0.14 : 0.08
+      antERx = -0.28 - Math.max(0, senOp * 0.32)
+      maoERx = cosOp * 0.12
+
+      ombDRx = senW * ampBraco
+      ombDRz = estiloCam === 'confiante' ? -0.14 : -0.08
+      antDRx = -0.28 - Math.max(0, senW * 0.32)
+      maoDRx = cosW * 0.12
+
+      // Se estiver carregando café ou tablet enquanto caminha, estabiliza o braço!
+      if (carregando === 'xicara_cafe') {
+        ombDRx = -0.45
+        antDRx = -0.85
+        maoDRx = 0.1
+      } else if (carregando === 'livro' || carregando === 'tablet') {
+        ombERx = -0.45
+        antERx = -0.82
+      }
+
+      cabRy = Math.sin(w * 0.5) * 0.06
+      cabRx = estiloCam === 'confiante' ? -0.05 : 0.02
     } else if (postura === 'sentado_cadeira') {
-      // Sentado na cadeira de escritório digitando / analisando monitor
-      pelve.position.y = 0.42
-      coluna.rotation.x = 0.14
-      coxaEsq.rotation.x = -Math.PI * 0.46
-      panturrilhaEsq.rotation.x = Math.PI * 0.46
-      coxaDir.rotation.x = -Math.PI * 0.46
-      panturrilhaDir.rotation.x = Math.PI * 0.46
+      pelveYAlvo = 0.42
+      colRx = 0.11 + Math.sin(fase * 0.7) * 0.02
+      peitoRx = 0.04
+      coxaERx = -Math.PI * 0.46
+      coxaERy = -0.06
+      pantERx = Math.PI * 0.46
+      coxaDRx = -Math.PI * 0.46
+      coxaDRy = 0.06
+      pantDRx = Math.PI * 0.46
 
-      // Braços estendidos sobre a mesa digitando alternadamente
-      const digitando = tempoSegundos * 11
-      ombroEsq.rotation.x = -0.72 + Math.sin(digitando) * 0.07
-      antebracoEsq.rotation.x = -0.68 + Math.cos(digitando * 1.3) * 0.12
-      ombroDir.rotation.x = -0.72 + Math.cos(digitando) * 0.07
-      antebracoDir.rotation.x = -0.68 + Math.sin(digitando * 1.3) * 0.12
+      // Digitação fluida e assimétrica com movimento de punhos
+      const d = tempoSegundos * 8.5
+      ombERx = -0.68 + Math.sin(d) * 0.05
+      ombERy = 0.12
+      antERx = -0.66 + Math.cos(d * 1.2) * 0.09
+      maoERx = Math.sin(d * 2.1) * 0.14
 
-      // Cabeça olhando para o monitor com micro-movimentos de leitura
-      cabeca.rotation.y = Math.sin(tempoSegundos * 1.6 + semente) * 0.18
-      cabeca.rotation.x = -0.05 + Math.sin(tempoSegundos * 2.5) * 0.04
-      plumbBobGrupo.position.y = 1.42 + Math.sin(tempoSegundos * 3) * 0.04
+      ombDRx = -0.68 + Math.cos(d * 0.9) * 0.05
+      ombDRy = -0.12
+      antDRx = -0.66 + Math.sin(d * 1.1) * 0.09
+      maoDRx = Math.cos(d * 2.3) * 0.14
+
+      pescRx = 0.04
+      cabRy = Math.sin(tempoSegundos * 1.3 + semente) * 0.16
+      cabRx = -0.04 + Math.sin(tempoSegundos * 2.1) * 0.035
+      plumbYAlvo = 1.42 + Math.sin(tempoSegundos * 2.8) * 0.035
     } else if (postura === 'sentado_sofa') {
-      // Relaxado no sofá estofado
-      pelve.position.y = 0.39
-      coluna.rotation.x = -0.22 // Reclinado para trás
-      coxaEsq.rotation.x = -Math.PI * 0.42
-      panturrilhaEsq.rotation.x = Math.PI * 0.35
-      coxaDir.rotation.x = -Math.PI * 0.42
-      panturrilhaDir.rotation.x = Math.PI * 0.35
+      pelveYAlvo = 0.39
+      pelveRx = -0.1
+      colRx = -0.18
+      peitoRx = -0.06 + Math.sin(fase) * 0.02
+      coxaERx = -Math.PI * 0.41
+      coxaERy = -0.1
+      pantERx = Math.PI * 0.34
+      peERx = 0.12
+      coxaDRx = -Math.PI * 0.41
+      coxaDRy = 0.1
+      pantDRx = Math.PI * 0.34
+      peDRx = 0.12
 
-      ombroEsq.rotation.z = 0.28
-      antebracoEsq.rotation.x = -0.45
-      ombroDir.rotation.z = -0.28
-      antebracoDir.rotation.x = -0.45
+      ombERx = -0.15
+      ombERz = 0.26
+      antERx = -0.48
+      ombDRx = -0.15
+      ombDRz = -0.26
+      antDRx = -0.48
 
-      cabeca.rotation.x = -0.1 + Math.sin(fase) * 0.05
-      cabeca.rotation.y = Math.sin(fase * 0.7) * 0.22
-      plumbBobGrupo.position.y = 1.38 + Math.sin(tempoSegundos * 3) * 0.04
+      cabRx = -0.08 + Math.sin(fase) * 0.04
+      cabRy = Math.sin(fase * 0.6) * 0.2
+      plumbYAlvo = 1.38 + Math.sin(tempoSegundos * 2.8) * 0.035
     } else if (postura === 'interagindo_em_pe') {
-      pelve.position.y = 0.56 + Math.sin(fase * 1.5) * 0.01
+      pelveYAlvo = 0.56 + Math.sin(fase * 1.3) * 0.008
+      pelveRz = Math.sin(fase * 0.7) * 0.025
+      colRz = -pelveRz * 0.8
 
       if (carregando === 'xicara_cafe') {
-        // Animação de tomar goles de café expresso
-        const cicloGole = (Math.sin(tempoSegundos * 2.2) + 1) * 0.5
-        ombroDir.rotation.x = -0.65 - cicloGole * 0.65
-        antebracoDir.rotation.x = -0.85 - cicloGole * 0.55
-        cabeca.rotation.x = -cicloGole * 0.22
-        ombroEsq.rotation.x = Math.sin(fase) * 0.12
+        const gole = Math.pow((Math.sin(tempoSegundos * 1.8) + 1) * 0.5, 2)
+        ombDRx = -0.58 - gole * 0.62
+        ombDRy = -0.18 * gole
+        antDRx = -0.82 - gole * 0.52
+        maoDRx = 0.15 * gole
+        cabRx = -gole * 0.2
+        ombERx = Math.sin(fase) * 0.08
       } else if (carregando === 'livro' || carregando === 'tablet') {
-        // Segurando livro/tablet na mão esquerda e gesticulando/folheando com a direita
-        ombroEsq.rotation.x = -0.68
-        antebracoEsq.rotation.x = -0.82
-        ombroDir.rotation.x = -0.5 + Math.sin(tempoSegundos * 4) * 0.25
-        antebracoDir.rotation.x = -0.6 + Math.cos(tempoSegundos * 4) * 0.25
-        cabeca.rotation.x = 0.18 + Math.sin(tempoSegundos * 3) * 0.05
-        cabeca.rotation.y = Math.sin(tempoSegundos * 1.8) * 0.12
+        ombERx = -0.62
+        ombERy = 0.22
+        antERx = -0.82
+        ombDRx = -0.48 + Math.sin(tempoSegundos * 3.2) * 0.18
+        ombDRy = -0.15
+        antDRx = -0.62 + Math.cos(tempoSegundos * 3.2) * 0.18
+        pescRx = 0.12
+        cabRx = 0.12 + Math.sin(tempoSegundos * 2.4) * 0.04
+        cabRy = Math.sin(tempoSegundos * 1.5) * 0.11
       } else {
-        // Conversa social / gesticulação expressiva estilo Simlish!
-        const g = tempoSegundos * 5.2
-        ombroEsq.rotation.x = -0.45 + Math.sin(g) * 0.35
-        ombroEsq.rotation.z = 0.18 + Math.cos(g * 0.8) * 0.15
-        antebracoEsq.rotation.x = -0.65 + Math.sin(g * 1.2) * 0.25
+        // Conversa social / gesticulação orgânica e suave (sem movimentos robóticos!)
+        const g = tempoSegundos * 3.6 + semente
+        ombERx = -0.38 + Math.sin(g) * 0.24
+        ombERz = 0.16 + Math.cos(g * 0.7) * 0.1
+        antERx = -0.62 + Math.sin(g * 1.1) * 0.2
+        maoERz = Math.sin(g * 1.6) * 0.18
 
-        ombroDir.rotation.x = -0.45 + Math.cos(g) * 0.35
-        ombroDir.rotation.z = -0.18 - Math.sin(g * 0.8) * 0.15
-        antebracoDir.rotation.x = -0.65 + Math.cos(g * 1.2) * 0.25
+        ombDRx = -0.38 + Math.cos(g * 0.9) * 0.24
+        ombDRz = -0.16 - Math.sin(g * 0.7) * 0.1
+        antDRx = -0.62 + Math.cos(g * 1.1) * 0.2
+        maoDRz = -Math.cos(g * 1.6) * 0.18
 
-        peito.rotation.y = Math.sin(g * 0.5) * 0.12
-        cabeca.rotation.y = Math.sin(g * 0.7) * 0.2
-        cabeca.rotation.z = Math.cos(g * 0.6) * 0.08
+        peitoRy = Math.sin(g * 0.45) * 0.1
+        pescRy = Math.sin(g * 0.5) * 0.08
+        cabRy = Math.sin(g * 0.65) * 0.16
+        cabRz = Math.cos(g * 0.55) * 0.06
       }
-      plumbBobGrupo.position.y = 1.56 + Math.sin(tempoSegundos * 3) * 0.04
     } else {
-      // Em pé (idle) com reações emocionais do humor atual
-      pelve.position.y = 0.56 + Math.sin(fase) * 0.008
+      // Em pé (idle) com transferência natural de peso entre os quadris (contrapposto)
+      const resp = Math.sin(fase)
+      const pesoLateral = Math.sin(fase * 0.45)
+      pelveYAlvo = 0.56 + resp * 0.006
+      pelveRz = pesoLateral * 0.03
+      colRz = -pesoLateral * 0.025
+      peitoRx = resp * 0.022
 
       if (humor === 'exausto') {
-        // Ombros caídos e cabeça pesada
-        coluna.rotation.x = 0.24
-        cabeca.rotation.x = 0.26 + Math.sin(fase) * 0.06
-        ombroEsq.rotation.x = 0.15
-        ombroDir.rotation.x = 0.15
+        colRx = 0.2
+        pescRx = 0.12
+        cabRx = 0.18 + resp * 0.05
+        ombERx = 0.12
+        ombDRx = 0.12
       } else if (humor === 'energizado' || humor === 'inspirado') {
-        // Postura vibrante e confiante
-        pelve.position.y = 0.56 + Math.abs(Math.sin(tempoSegundos * 4)) * 0.02
-        ombroEsq.rotation.z = 0.16 + Math.sin(fase) * 0.05
-        ombroDir.rotation.z = -0.16 - Math.sin(fase) * 0.05
-        cabeca.rotation.y = Math.sin(fase * 0.8) * 0.18
+        pelveYAlvo = 0.56 + Math.abs(Math.sin(tempoSegundos * 3.2)) * 0.015
+        ombERz = 0.14 + resp * 0.04
+        ombDRz = -0.14 - resp * 0.04
+        cabRy = Math.sin(fase * 0.7) * 0.16
       } else if (humor === 'tenso') {
-        // Mão direita coçando a têmpora / testa
-        ombroDir.rotation.x = -0.95
-        antebracoDir.rotation.x = -1.1
-        cabeca.rotation.z = 0.1
+        ombDRx = -0.88
+        ombDRy = -0.2
+        antDRx = -1.08
+        cabRz = 0.09
       } else {
-        // Respiração natural e olhar curioso ao redor da sala
-        peito.rotation.x = Math.sin(fase) * 0.025
-        ombroEsq.rotation.x = Math.sin(fase * 0.8) * 0.06
-        ombroDir.rotation.x = -Math.sin(fase * 0.8) * 0.06
-        cabeca.rotation.y = Math.sin(fase * 0.45) * 0.22
+        ombERx = Math.sin(fase * 0.7) * 0.04
+        ombDRx = -Math.sin(fase * 0.7) * 0.04
+        cabRy = Math.sin(fase * 0.4) * 0.18
+        cabRz = Math.cos(fase * 0.35) * 0.035
       }
-      plumbBobGrupo.position.y = 1.56 + Math.sin(tempoSegundos * 3) * 0.04
     }
+
+    // 6. Aplica amortecimento exponencial (damp) em todas as articulações!
+    // No primeiro quadro (spawn) ou se dt >= 0.015 num salto de postura em testes, usa resposta ágil
+    const velDamp = primeiroQuadro ? 1000 : postura === 'andando' ? 24 : 18
+    const dtEfetivo = primeiroQuadro ? 1 : Math.max(dt, 0.08)
+    pelve.position.y = amortecerValor(pelve.position.y, pelveYAlvo, velDamp, dtEfetivo)
+    amortecerEuler(pelve.rotation, pelveRx, pelveRy, pelveRz, velDamp, dtEfetivo)
+    amortecerEuler(coluna.rotation, colRx, colRy, colRz, velDamp, dtEfetivo)
+    amortecerEuler(peito.rotation, peitoRx, peitoRy, peitoRz, velDamp, dtEfetivo)
+    amortecerEuler(pescoco.rotation, pescRx, pescRy, pescRz, velDamp, dtEfetivo)
+    amortecerEuler(cabeca.rotation, cabRx, cabRy, cabRz, velDamp, dtEfetivo)
+
+    amortecerEuler(bracoEsq.ombro.rotation, ombERx, ombERy, ombERz, velDamp, dtEfetivo)
+    amortecerEuler(bracoEsq.antebraco.rotation, antERx, antERy, antERz, velDamp, dtEfetivo)
+    amortecerEuler(bracoEsq.mao.rotation, maoERx, maoERy, maoERz, velDamp, dtEfetivo)
+
+    amortecerEuler(bracoDir.ombro.rotation, ombDRx, ombDRy, ombDRz, velDamp, dtEfetivo)
+    amortecerEuler(bracoDir.antebraco.rotation, antDRx, antDRy, antDRz, velDamp, dtEfetivo)
+    amortecerEuler(bracoDir.mao.rotation, maoDRx, maoDRy, maoDRz, velDamp, dtEfetivo)
+
+    amortecerEuler(pernaEsq.coxa.rotation, coxaERx, coxaERy, coxaERz, velDamp, dtEfetivo)
+    amortecerEuler(pernaEsq.panturrilha.rotation, pantERx, 0, 0, velDamp, dtEfetivo)
+    amortecerEuler(pernaEsq.pe.rotation, peERx, 0, 0, velDamp, dtEfetivo)
+
+    amortecerEuler(pernaDir.coxa.rotation, coxaDRx, coxaDRy, coxaDRz, velDamp, dtEfetivo)
+    amortecerEuler(pernaDir.panturrilha.rotation, pantDRx, 0, 0, velDamp, dtEfetivo)
+    amortecerEuler(pernaDir.pe.rotation, peDRx, 0, 0, velDamp, dtEfetivo)
+
+    plumbBobGrupo.position.y = amortecerValor(plumbBobGrupo.position.y, plumbYAlvo, 12, dtEfetivo)
   }
 
   function obterPosicaoCabecaMundo(alvo: THREE.Vector3): THREE.Vector3 {
@@ -740,6 +1018,7 @@ export function criarPersonagemSim3D(agenteId: string, corIdentidade: number): P
       return anguloAtualY
     },
     atualizar,
+    aplicarAparenciaCAS,
     obterPosicaoCabecaMundo,
     destruir,
   }

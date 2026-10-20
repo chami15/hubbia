@@ -4,18 +4,21 @@ import { categoriaDe } from './catalogo'
 import type { Paleta } from './sala'
 import type { Direcao } from './sala'
 import type { MovelSala } from './sala-dados'
+import {
+  texturaGramado,
+  texturaMadeira,
+  texturaPisoLadrilho,
+  texturaTecido,
+  texturaTelaMonitor,
+} from './texturas3d'
 
 // ---------------------------------------------------------------------------
-// MUNDO E MOBÍLIA 3D ESTILO THE SIMS 4
+// MUNDO, PORTAIS E MOBÍLIA 3D NÍTIDA ESTILO THE SIMS 4
 //
-// Diferente do Habbo (maquete 2D isolada no fundo escuro), o ambiente de
-// The Sims 4 situa o lote dentro de uma vizinhança viva 3D (gramado, calçada,
-// rua asfaltada, árvores balançando, iluminação solar dinâmica) e constrói
-// paredes com os 3 modos clássicos de visão do The Sims:
-//   - 'cortadas' (Cutaway): abaixa automaticamente as paredes voltadas para a
-//     câmera conforme você gira a órbita 360°, mantendo as de trás erguidas
-//   - 'altas' (Walls Up): todas as 4 paredes erguidas
-//   - 'baixas' (Walls Down): todas as paredes recolhidas até o rodapé
+// Utiliza texturas procedurais de alta nitidez (`texturas3d.ts`), modelos 3D
+// detalhados para todas as categorias do catálogo e portas articuladas com
+// pivô (`visualization/portal_visualizer.pyc`) que se abrem suavemente quando
+// um Sim atravessa ou entra/sai de lugares!
 // ---------------------------------------------------------------------------
 
 export type ModoParedesSims = 'cortadas' | 'altas' | 'baixas'
@@ -31,6 +34,7 @@ export interface LoteVizinhanca3D {
   pisoInterativo: THREE.Mesh
   paredes: Parede3DControlavel[]
   arvores: THREE.Group[]
+  pontoPortalRua: { coluna: number; linha: number }
   atualizarModoParedes: (modo: ModoParedesSims, posicaoCamera: THREE.Vector3, centroLote: THREE.Vector3) => void
   animarVizinhanca: (tempoSegundos: number) => void
 }
@@ -63,12 +67,13 @@ export function criarLoteVizinhanca3D(
   const cx = (colunas - 1) / 2
   const cz = (linhas - 1) / 2
 
-  // 1. Gramado amplo da vizinhança (The Sims 4 Lot Surroundings)
-  const geoGrama = new THREE.PlaneGeometry(54, 54)
+  // 1. Gramado amplo da vizinhança com textura nítida (The Sims 4 Lot Surroundings)
+  const geoGrama = new THREE.PlaneGeometry(56, 56)
   geoGrama.rotateX(-Math.PI / 2)
   const matGrama = new THREE.MeshStandardMaterial({
-    color: 0x4d7c3f,
-    roughness: 0.92,
+    color: 0xffffff,
+    map: texturaGramado(),
+    roughness: 0.88,
   })
   const grama = new THREE.Mesh(geoGrama, matGrama)
   grama.position.set(cx, -0.22, cz)
@@ -77,23 +82,23 @@ export function criarLoteVizinhanca3D(
 
   // 2. Rua asfaltada e calçada na frente do lote (eixo Z positivo)
   const zRua = linhas + 3.2
-  const calçada = new THREE.Mesh(
-    new THREE.BoxGeometry(54, 0.08, 1.5),
-    new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.8 }),
+  const calcada = new THREE.Mesh(
+    new THREE.BoxGeometry(56, 0.08, 1.5),
+    new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.72 }),
   )
-  calçada.position.set(cx, -0.18, zRua - 1.4)
-  calçada.receiveShadow = true
-  grupo.add(calçada)
+  calcada.position.set(cx, -0.18, zRua - 1.4)
+  calcada.receiveShadow = true
+  grupo.add(calcada)
 
   const rua = new THREE.Mesh(
-    new THREE.BoxGeometry(54, 0.06, 3.6),
+    new THREE.BoxGeometry(56, 0.06, 3.6),
     new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 }),
   )
   rua.position.set(cx, -0.2, zRua + 1.1)
   rua.receiveShadow = true
   grupo.add(rua)
 
-  // Faixas tracejadas amarelas/brancas na rua
+  // Faixas tracejadas amarelas na rua
   const matFaixa = new THREE.MeshBasicMaterial({ color: 0xfef08a })
   for (let fx = -18; fx <= 24; fx += 3.2) {
     const faixa = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.07, 0.14), matFaixa)
@@ -101,14 +106,40 @@ export function criarLoteVizinhanca3D(
     grupo.add(faixa)
   }
 
-  // Passarela de pedras da calçada até o lote
+  // Passarela de pedras da calçada até a entrada do lote (Portal de Chegada/Saída)
   const passarela = new THREE.Mesh(
-    new THREE.BoxGeometry(1.8, 0.05, 2.8),
-    new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.75 }),
+    new THREE.BoxGeometry(1.85, 0.055, 2.9),
+    new THREE.MeshStandardMaterial({
+      color: 0xcbd5e1,
+      map: texturaPisoLadrilho(0xcbd5e1, 0x94a3b8),
+      roughness: 0.65,
+    }),
   )
-  passarela.position.set(cx, -0.19, linhas + 0.6)
+  passarela.position.set(cx, -0.185, linhas + 0.55)
   passarela.receiveShadow = true
   grupo.add(passarela)
+
+  // Caixa de correio e poste de luz do lote (clássico ponto de chegada do The Sims!)
+  const caixaCorreio = new THREE.Group()
+  const hasteCorreio = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.04, 0.85, 10),
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.5, roughness: 0.3 }),
+  )
+  hasteCorreio.position.y = 0.425
+  const topoCorreio = new THREE.Mesh(
+    new THREE.BoxGeometry(0.22, 0.18, 0.34),
+    new THREE.MeshStandardMaterial({ color: 0x2563eb, metalness: 0.3, roughness: 0.4 }),
+  )
+  topoCorreio.position.set(0, 0.86, 0)
+  const bandeirinha = new THREE.Mesh(
+    new THREE.BoxGeometry(0.02, 0.14, 0.05),
+    new THREE.MeshStandardMaterial({ color: 0xef4444 }),
+  )
+  bandeirinha.position.set(0.12, 0.92, 0.05)
+  caixaCorreio.add(hasteCorreio, topoCorreio, bandeirinha)
+  caixaCorreio.position.set(cx + 1.25, -0.18, linhas + 1.25)
+  habilitarSombraGrupo(caixaCorreio)
+  grupo.add(caixaCorreio)
 
   // 3. Árvores e arbustos 3D ao redor do lote
   const posicoesArvores: [number, number, number][] = [
@@ -132,25 +163,28 @@ export function criarLoteVizinhanca3D(
   const profLote = linhas
   const laje = new THREE.Mesh(
     new THREE.BoxGeometry(largLote + 0.32, 0.22, profLote + 0.32),
-    new THREE.MeshStandardMaterial({ color: paleta.lajeFrente, roughness: 0.7 }),
+    new THREE.MeshStandardMaterial({ color: paleta.lajeFrente, roughness: 0.65 }),
   )
   laje.position.set(cx, -0.11, cz)
   laje.receiveShadow = true
   laje.castShadow = true
   grupo.add(laje)
 
-  // 5. Piso em ladrilhos 3D (usando as cores da paleta da sala)
+  // 5. Piso em ladrilhos 3D com textura de alta definição
   const grupoLadrilhos = new THREE.Group()
-  const geoTile = new THREE.BoxGeometry(0.985, 0.02, 0.985)
+  const geoTile = new THREE.BoxGeometry(0.992, 0.022, 0.992)
+  const texLadrilho = texturaPisoLadrilho(paleta.pisoClaro, paleta.pisoEscuro)
   const matClaro = new THREE.MeshStandardMaterial({
     color: paleta.pisoClaro,
-    roughness: 0.42,
-    metalness: 0.05,
+    map: texLadrilho,
+    roughness: 0.35,
+    metalness: 0.06,
   })
   const matEscuro = new THREE.MeshStandardMaterial({
     color: paleta.pisoEscuro,
-    roughness: 0.45,
-    metalness: 0.05,
+    map: texLadrilho,
+    roughness: 0.38,
+    metalness: 0.06,
   })
 
   for (let l = 0; l < linhas; l++) {
@@ -163,20 +197,19 @@ export function criarLoteVizinhanca3D(
   }
   grupo.add(grupoLadrilhos)
 
-  // Plano invisível para Raycast rápido e exato de cliques e arraste no chão
-  const geoPisoRaycast = new THREE.PlaneGeometry(largLote, profLote)
+  // Plano invisível expandido (inclui passarela frontal) para Raycast de cliques no chão
+  const geoPisoRaycast = new THREE.PlaneGeometry(largLote + 4, profLote + 5)
   geoPisoRaycast.rotateX(-Math.PI / 2)
   const pisoInterativo = new THREE.Mesh(
     geoPisoRaycast,
     new THREE.MeshBasicMaterial({ visible: false }),
   )
-  pisoInterativo.position.set(cx, 0.012, cz)
+  pisoInterativo.position.set(cx, 0.012, cz + 1)
   pisoInterativo.name = 'piso-interativo'
   grupo.add(pisoInterativo)
 
   // 6. As 4 Paredes 3D com Janelas e Modo Cutaway (The Sims 4 Wall Cutaway)
   const paredes: Parede3DControlavel[] = [
-    // Parede Norte (z = -0.5, olha para Sul +Z)
     criarParedeComJanela3D(
       largLote + ESPESSURA_PAREDE_3D,
       new THREE.Vector3(cx, 0, -0.5 - ESPESSURA_PAREDE_3D / 2),
@@ -185,7 +218,6 @@ export function criarLoteVizinhanca3D(
       paleta.paredeDireita,
       paleta,
     ),
-    // Parede Oeste (x = -0.5, olha para Leste +X)
     criarParedeComJanela3D(
       profLote + ESPESSURA_PAREDE_3D,
       new THREE.Vector3(-0.5 - ESPESSURA_PAREDE_3D / 2, 0, cz),
@@ -194,7 +226,6 @@ export function criarLoteVizinhanca3D(
       paleta.paredeEsquerda,
       paleta,
     ),
-    // Parede Sul (z = linhas - 0.5, olha para Norte -Z)
     criarParedeComJanela3D(
       largLote + ESPESSURA_PAREDE_3D,
       new THREE.Vector3(cx, 0, linhas - 0.5 + ESPESSURA_PAREDE_3D / 2),
@@ -203,7 +234,6 @@ export function criarLoteVizinhanca3D(
       paleta.paredeDireita,
       paleta,
     ),
-    // Parede Leste (x = colunas - 0.5, olha para Oeste -X)
     criarParedeComJanela3D(
       profLote + ESPESSURA_PAREDE_3D,
       new THREE.Vector3(colunas - 0.5 + ESPESSURA_PAREDE_3D / 2, 0, cz),
@@ -233,9 +263,6 @@ export function criarLoteVizinhanca3D(
         p.malhaAlta.visible = false
         p.malhaCortada.visible = true
       } else {
-        // Modo 'cortadas' (Cutaway de The Sims 4): se a parede fica entre a câmera e o
-        // interior da sala (produto escalar da normal interna com o vetor câmera < 0.1),
-        // abaixa para deixar a visão limpa!
         const produto = p.direcaoNormal.dot(dirCamera)
         const deveCortar = produto < 0.08
         p.malhaAlta.visible = !deveCortar
@@ -256,23 +283,37 @@ export function criarLoteVizinhanca3D(
     pisoInterativo,
     paredes,
     arvores,
+    pontoPortalRua: { coluna: Number(cx.toFixed(2)), linha: Number((linhas + 1.15).toFixed(2)) },
     atualizarModoParedes,
     animarVizinhanca,
   }
 }
 
+function habilitarSombraGrupo(g: THREE.Object3D) {
+  g.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      o.castShadow = true
+      o.receiveShadow = true
+    }
+  })
+}
+
 function criarArvoreVizinhanca3D(escala = 1): THREE.Group {
   const g = new THREE.Group()
   const tronco = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.14, 0.22, 1.3, 10),
-    new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.85 }),
+    new THREE.CylinderGeometry(0.14, 0.22, 1.3, 12),
+    new THREE.MeshStandardMaterial({
+      color: 0x6b4423,
+      map: texturaMadeira(0x6b4423),
+      roughness: 0.85,
+    }),
   )
   tronco.position.y = 0.65
   tronco.castShadow = true
   g.add(tronco)
 
-  const matFolhas1 = new THREE.MeshStandardMaterial({ color: 0x2e6f40, roughness: 0.75 })
-  const matFolhas2 = new THREE.MeshStandardMaterial({ color: 0x3b854f, roughness: 0.75 })
+  const matFolhas1 = new THREE.MeshStandardMaterial({ color: 0x2e6f40, roughness: 0.72 })
+  const matFolhas2 = new THREE.MeshStandardMaterial({ color: 0x3b854f, roughness: 0.72 })
 
   const copa1 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.95, 1), matFolhas1)
   copa1.position.set(0, 1.75, 0)
@@ -297,19 +338,18 @@ function criarParedeComJanela3D(
   corParede: number,
   paleta: Paleta,
 ): Parede3DControlavel {
-  const matParede = new THREE.MeshStandardMaterial({ color: corParede, roughness: 0.75 })
-  const matTopo = new THREE.MeshStandardMaterial({ color: paleta.paredeTopo, roughness: 0.6 })
-  const matRodape = new THREE.MeshStandardMaterial({ color: paleta.rodape, roughness: 0.6 })
-  const matMoldura = new THREE.MeshStandardMaterial({ color: paleta.janelaMoldura, roughness: 0.4 })
+  const matParede = new THREE.MeshStandardMaterial({ color: corParede, roughness: 0.72 })
+  const matTopo = new THREE.MeshStandardMaterial({ color: paleta.paredeTopo, roughness: 0.55 })
+  const matRodape = new THREE.MeshStandardMaterial({ color: paleta.rodape, roughness: 0.55 })
+  const matMoldura = new THREE.MeshStandardMaterial({ color: paleta.janelaMoldura, roughness: 0.35 })
   const matVidro = new THREE.MeshPhysicalMaterial({
     color: paleta.janelaVidro,
     transparent: true,
     opacity: 0.34,
-    roughness: 0.1,
+    roughness: 0.08,
     transmission: 0.5,
   })
 
-  // Parede Alta com abertura de janela central
   const malhaAlta = new THREE.Group()
   malhaAlta.position.copy(posicao)
   malhaAlta.rotation.y = rotacaoY
@@ -320,7 +360,6 @@ function criarParedeComJanela3D(
   const altJanela = 1.25
   const altVerga = ALTURA_PAREDE_3D - altPeitoril - altJanela
 
-  // Pilares esquerdo e direito
   const pilarEsq = new THREE.Mesh(
     new THREE.BoxGeometry(largLado, ALTURA_PAREDE_3D, ESPESSURA_PAREDE_3D),
     matParede,
@@ -337,7 +376,6 @@ function criarParedeComJanela3D(
   pilarDir.castShadow = true
   pilarDir.receiveShadow = true
 
-  // Abaixo e acima da janela
   const baixoJanela = new THREE.Mesh(
     new THREE.BoxGeometry(largJanela, altPeitoril, ESPESSURA_PAREDE_3D),
     matParede,
@@ -353,7 +391,6 @@ function criarParedeComJanela3D(
   cimaJanela.position.set(0, altPeitoril + altJanela + altVerga / 2, 0)
   cimaJanela.castShadow = true
 
-  // Vidro e moldura da janela 3D
   const vidro = new THREE.Mesh(
     new THREE.BoxGeometry(largJanela - 0.08, altJanela - 0.08, 0.03),
     matVidro,
@@ -396,7 +433,6 @@ function criarParedeComJanela3D(
     topo,
   )
 
-  // Parede Cortada (Cutaway)
   const malhaCortada = new THREE.Mesh(
     new THREE.BoxGeometry(comprimento, ALTURA_CORTE_PAREDE_3D, ESPESSURA_PAREDE_3D),
     matTopo,
@@ -414,9 +450,7 @@ function criarParedeComJanela3D(
 }
 
 // ---------------------------------------------------------------------------
-// CONSTRUTOR DE MÓVEIS E OBJETOS 3D (`criarMovel3D`)
-// Gera geometria 3D detalhada para cada peça do catálogo mantendo a escala
-// métrica de 1 tile = 1 metro.
+// CONSTRUTOR DE MÓVEIS E OBJETOS 3D NÍTIDOS (`criarMovel3D`)
 // ---------------------------------------------------------------------------
 export function criarMovel3D(movel: MovelSala): THREE.Group {
   const grupo = new THREE.Group()
@@ -429,51 +463,62 @@ export function criarMovel3D(movel: MovelSala): THREE.Group {
     ? (AGENTES.find((a) => a.id === movel.agente)?.cor ?? 0x3b82f6)
     : null
 
-  const matMadeiraClara = new THREE.MeshStandardMaterial({ color: 0xd4a373, roughness: 0.55 })
-  const matMadeiraEscura = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.6 })
+  const matMadeiraClara = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    map: texturaMadeira(0xd4a373),
+    roughness: 0.45,
+    metalness: 0.05,
+  })
+  const matMadeiraEscura = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    map: texturaMadeira(0x6b4423),
+    roughness: 0.5,
+    metalness: 0.05,
+  })
   const matMetalEscuro = new THREE.MeshStandardMaterial({
     color: 0x1e293b,
-    metalness: 0.55,
-    roughness: 0.35,
+    metalness: 0.62,
+    roughness: 0.28,
   })
   const matMetalCromo = new THREE.MeshStandardMaterial({
-    color: 0xcbd5e1,
-    metalness: 0.75,
-    roughness: 0.25,
+    color: 0xe2e8f0,
+    metalness: 0.8,
+    roughness: 0.2,
   })
-  const matBranco = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 })
+  const matBranco = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 })
 
   if (p.startsWith('desk')) {
-    // Mesa de escritório 3D com tampo amadeirado, gaveteiro e pés metálicos
-    const tampo = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.055, 0.64), matMadeiraClara)
+    const tampo = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.055, 0.65), matMadeiraClara)
     tampo.position.set(0, 0.73, 0)
     grupo.add(tampo)
 
-    const painelFrontal = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.32, 0.03), matMadeiraEscura)
+    const painelFrontal = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.32, 0.03), matMadeiraEscura)
     painelFrontal.position.set(0, 0.54, -0.22)
     grupo.add(painelFrontal)
 
-    // Gaveteiro lateral
     const gaveteiro = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.45, 0.56), matMetalEscuro)
-    gaveteiro.position.set(0.34, 0.48, 0)
+    gaveteiro.position.set(0.35, 0.48, 0)
     grupo.add(gaveteiro)
 
     for (const [lx, lz] of [
-      [-0.48, -0.26],
-      [-0.48, 0.26],
-      [0.48, -0.26],
-      [0.48, 0.26],
+      [-0.49, -0.26],
+      [-0.49, 0.26],
+      [0.49, -0.26],
+      [0.49, 0.26],
     ]) {
-      const perna = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.72, 10), matMetalEscuro)
+      const perna = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.72, 12), matMetalEscuro)
       perna.position.set(lx, 0.36, lz)
       grupo.add(perna)
     }
   } else if (p.startsWith('chairDesk')) {
-    // Cadeira ergonômica giratória 3D (tingida com a cor do agente dono da estação!)
     const corEstofado = corAgente ?? 0x334155
-    const matEstofado = new THREE.MeshStandardMaterial({ color: corEstofado, roughness: 0.5 })
+    const matEstofado = new THREE.MeshStandardMaterial({
+      color: corEstofado,
+      map: texturaTecido(corEstofado),
+      roughness: 0.48,
+    })
 
-    const baseCentral = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.38, 10), matMetalEscuro)
+    const baseCentral = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.38, 12), matMetalEscuro)
     baseCentral.position.set(0, 0.2, 0)
     grupo.add(baseCentral)
 
@@ -485,92 +530,96 @@ export function criarMovel3D(movel: MovelSala): THREE.Group {
       grupo.add(haste)
     }
 
-    const assento = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.07, 0.46), matEstofado)
+    const assento = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.075, 0.46), matEstofado)
     assento.position.set(0, 0.41, 0)
     grupo.add(assento)
 
-    const encosto = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.48, 0.06), matEstofado)
+    const encosto = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.48, 0.065), matEstofado)
     encosto.position.set(0, 0.68, -0.2)
     encosto.rotation.x = -0.08
     grupo.add(encosto)
 
-    // Braços da cadeira
     for (const lado of [-1, 1]) {
       const apoio = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.28), matMetalEscuro)
       apoio.position.set(lado * 0.24, 0.52, -0.02)
       grupo.add(apoio)
     }
   } else if (p.startsWith('computerScreen')) {
-    // Monitor 3D widescreen com tela luminosa de código/gráficos
+    const texTela = texturaTelaMonitor(String(corAgente ?? 'geral'))
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.018, 0.16), matMetalEscuro)
     base.position.set(0, 0.01, 0)
     const haste = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.03), matMetalEscuro)
     haste.position.set(0, 0.09, -0.03)
-    const moldura = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.34, 0.03), matMetalEscuro)
+    const moldura = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.35, 0.03), matMetalEscuro)
     moldura.position.set(0, 0.28, 0)
     const tela = new THREE.Mesh(
-      new THREE.BoxGeometry(0.52, 0.3, 0.034),
-      new THREE.MeshStandardMaterial({
-        color: 0x0f172a,
-        emissive: 0x0ea5e9,
-        emissiveIntensity: 0.55,
-        roughness: 0.2,
-      }),
+      new THREE.PlaneGeometry(0.54, 0.31),
+      new THREE.MeshBasicMaterial({ map: texTela }),
     )
-    tela.position.set(0, 0.28, 0.004)
+    tela.position.set(0, 0.28, 0.017)
     grupo.add(base, haste, moldura, tela)
   } else if (p.startsWith('computerKeyboard')) {
     const teclado = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.02, 0.12), matMetalEscuro)
     teclado.position.set(0, 0.015, 0)
     grupo.add(teclado)
   } else if (p.startsWith('computerMouse')) {
-    const mouse = new THREE.Mesh(new THREE.CapsuleGeometry(0.025, 0.04, 6, 10), matBranco)
+    const mouse = new THREE.Mesh(new THREE.CapsuleGeometry(0.025, 0.04, 8, 12), matBranco)
     mouse.rotation.x = Math.PI / 2
     mouse.position.set(0, 0.02, 0)
     grupo.add(mouse)
   } else if (p.startsWith('laptop')) {
+    const texTela = texturaTelaMonitor('laptop')
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.018, 0.24), matMetalCromo)
     base.position.set(0, 0.01, 0)
     const tampa = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.015), matMetalCromo)
     tampa.position.set(0, 0.12, -0.11)
     tampa.rotation.x = -0.2
     const tela = new THREE.Mesh(
-      new THREE.BoxGeometry(0.31, 0.19, 0.017),
-      new THREE.MeshStandardMaterial({
-        color: 0x1e293b,
-        emissive: 0x38bdf8,
-        emissiveIntensity: 0.65,
-      }),
+      new THREE.PlaneGeometry(0.31, 0.19),
+      new THREE.MeshBasicMaterial({ map: texTela }),
     )
-    tela.position.set(0, 0.12, -0.108)
+    tela.position.set(0, 0.12, -0.1)
     tela.rotation.x = -0.2
     grupo.add(base, tampa, tela)
   } else if (p.includes('CoffeeMachine')) {
-    // Cafeteira Expresso 3D com reservatório e luz indicadora verde
     const corpo = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 0.26), matMetalEscuro)
     corpo.position.set(0, 0.18, 0)
-    const bico = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.08, 12), matMetalCromo)
+    const bico = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.08, 14), matMetalCromo)
     bico.position.set(0, 0.22, 0.12)
-    const caneca = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.09, 12), matBranco)
+    const caneca = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.09, 14), matBranco)
     caneca.position.set(0, 0.06, 0.11)
     const led = new THREE.Mesh(
-      new THREE.SphereGeometry(0.018, 8, 8),
+      new THREE.SphereGeometry(0.018, 10, 10),
       new THREE.MeshBasicMaterial({ color: 0x4ade80 }),
     )
     led.position.set(0.08, 0.3, 0.132)
     grupo.add(corpo, bico, caneca, led)
+  } else if (p.includes('Fridge')) {
+    // Geladeira Duplex 3D
+    const alt = p.includes('Small') ? 0.95 : 1.72
+    const corpo = new THREE.Mesh(new THREE.BoxGeometry(0.72, alt, 0.68), matMetalCromo)
+    corpo.position.set(0, alt / 2, 0)
+    const puxador = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, alt * 0.45, 10), matMetalEscuro)
+    puxador.position.set(0.26, alt * 0.55, 0.355)
+    grupo.add(corpo, puxador)
   } else if (cat === 'cozinha') {
-    // Balcão / Armário de cozinha 3D
     const gabinete = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.74, 0.58), matMadeiraEscura)
     gabinete.position.set(0, 0.37, 0)
     const bancada = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.05, 0.62), matBranco)
     bancada.position.set(0, 0.76, 0)
     grupo.add(gabinete, bancada)
   } else if (p.startsWith('lounge') || p.startsWith('bench')) {
-    // Sofá / Poltrona 3D estofada
-    const matSofa = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.65 })
-    const matAlmofada = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.6 })
-    const larg = p.includes('Chair') ? 0.85 : 1.55
+    const matSofa = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      map: texturaTecido(0x0284c7),
+      roughness: 0.6,
+    })
+    const matAlmofada = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      map: texturaTecido(0x38bdf8),
+      roughness: 0.55,
+    })
+    const larg = p.includes('Chair') ? 0.85 : p.includes('Long') ? 1.85 : 1.55
 
     const base = new THREE.Mesh(new THREE.BoxGeometry(larg, 0.28, 0.78), matSofa)
     base.position.set(0, 0.2, 0)
@@ -584,8 +633,11 @@ export function criarMovel3D(movel: MovelSala): THREE.Group {
     almofada.position.set(0, 0.37, 0.06)
     grupo.add(base, encosto, bracoE, bracoD, almofada)
   } else if (cat === 'assentos') {
-    // Cadeira de reunião / descanso 3D
-    const matAssento = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.55 })
+    const matAssento = new THREE.MeshStandardMaterial({
+      color: 0x475569,
+      map: texturaTecido(0x475569),
+      roughness: 0.52,
+    })
     const assento = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.06, 0.48), matAssento)
     assento.position.set(0, 0.42, 0)
     const encosto = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.44, 0.06), matAssento)
@@ -597,12 +649,11 @@ export function criarMovel3D(movel: MovelSala): THREE.Group {
       [0.2, -0.2],
       [0.2, 0.2],
     ]) {
-      const perna = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.42, 8), matMetalCromo)
+      const perna = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.42, 10), matMetalCromo)
       perna.position.set(lx, 0.21, lz)
       grupo.add(perna)
     }
   } else if (p.startsWith('bookcase') || cat === 'guardar') {
-    // Estante 3D com prateleiras e livros coloridos
     const estrutura = new THREE.Mesh(new THREE.BoxGeometry(0.92, 1.65, 0.34), matMadeiraEscura)
     estrutura.position.set(0, 0.825, 0)
     grupo.add(estrutura)
@@ -618,19 +669,57 @@ export function criarMovel3D(movel: MovelSala): THREE.Group {
         grupo.add(livro)
       }
     }
+  } else if (cat === 'luz') {
+    // Luminária 3D com cúpula emissiva quente
+    const haste = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 1.25, 12), matMetalCromo)
+    haste.position.set(0, 0.625, 0)
+    const cupula = new THREE.Mesh(
+      new THREE.ConeGeometry(0.24, 0.28, 18, 1, true),
+      new THREE.MeshStandardMaterial({
+        color: 0xfef3c7,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 0.7,
+        side: THREE.DoubleSide,
+      }),
+    )
+    cupula.position.set(0, 1.28, 0)
+    grupo.add(haste, cupula)
+  } else if (cat === 'eletro') {
+    if (p.startsWith('television')) {
+      const texTV = texturaTelaMonitor('tv')
+      const painel = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.68, 0.05), matMetalEscuro)
+      painel.position.set(0, 0.65, 0)
+      const tela = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.08, 0.61),
+        new THREE.MeshBasicMaterial({ map: texTV }),
+      )
+      tela.position.set(0, 0.65, 0.027)
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.04, 0.24), matMetalEscuro)
+      base.position.set(0, 0.28, 0)
+      grupo.add(painel, tela, base)
+    } else {
+      // Caixa de som / Rádio Hi-Fi
+      const caixa = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.68, 0.32), matMetalEscuro)
+      caixa.position.set(0, 0.34, 0)
+      const cone1 = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.08, 0.04, 16), matMetalCromo)
+      cone1.rotation.x = Math.PI / 2
+      cone1.position.set(0, 0.46, 0.16)
+      const cone2 = cone1.clone()
+      cone2.position.y = 0.22
+      grupo.add(caixa, cone1, cone2)
+    }
   } else if (cat === 'verde') {
-    // Vaso de Planta 3D exuberante
     const vaso = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.22, 0.16, 0.36, 14),
-      new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.7 }),
+      new THREE.CylinderGeometry(0.22, 0.16, 0.36, 16),
+      new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.65 }),
     )
     vaso.position.set(0, 0.18, 0)
     grupo.add(vaso)
 
-    const matFolha = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.55 })
-    for (let i = 0; i < 7; i++) {
-      const a = (i * Math.PI * 2) / 7
-      const folha = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), matFolha)
+    const matFolha = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.48 })
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI * 2) / 8
+      const folha = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), matFolha)
       folha.scale.set(0.65, 1.45, 0.35)
       folha.position.set(Math.sin(a) * 0.14, 0.52 + (i % 2) * 0.12, Math.cos(a) * 0.14)
       folha.rotation.y = a
@@ -638,54 +727,81 @@ export function criarMovel3D(movel: MovelSala): THREE.Group {
       grupo.add(folha)
     }
   } else if (cat === 'mesas') {
-    // Mesa de vidro / reunião 3D
     const matVidroMesa = new THREE.MeshPhysicalMaterial({
       color: 0xe0f2fe,
       transparent: true,
-      opacity: 0.55,
-      roughness: 0.12,
+      opacity: 0.6,
+      roughness: 0.08,
     })
-    const tampo = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.04, 0.95), matVidroMesa)
+    const tampo = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.04, 0.98), matVidroMesa)
     tampo.position.set(0, 0.72, 0)
     grupo.add(tampo)
     for (const [lx, lz] of [
-      [-0.4, -0.4],
-      [-0.4, 0.4],
-      [0.4, -0.4],
-      [0.4, 0.4],
+      [-0.42, -0.42],
+      [-0.42, 0.42],
+      [0.42, -0.42],
+      [0.42, 0.42],
     ]) {
-      const perna = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.72, 10), matMetalCromo)
+      const perna = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.72, 12), matMetalCromo)
       perna.position.set(lx, 0.36, lz)
       grupo.add(perna)
     }
   } else if (p.startsWith('doorway') || movel.leva) {
-    // Porta arquitetônica 3D (com brilho verde se levar para outra sala)
-    const batente = new THREE.Mesh(new THREE.BoxGeometry(0.96, 2.08, 0.16), matMadeiraEscura)
-    batente.position.set(0, 1.04, 0)
-    const folhaPorta = new THREE.Mesh(new THREE.BoxGeometry(0.82, 1.98, 0.18), matMadeiraClara)
-    folhaPorta.position.set(0, 0.99, 0)
-    const macaneta = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 10), matMetalCromo)
-    macaneta.position.set(0.3, 0.95, 0.11)
-    grupo.add(batente, folhaPorta, macaneta)
+    // Porta arquitetônica 3D com folha pivotante (`folhaPortaPivo`) que abre quando um Sim passa!
+    const batenteEsq = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.1, 0.18), matMadeiraEscura)
+    batenteEsq.position.set(-0.44, 1.05, 0)
+    const batenteDir = new THREE.Mesh(new THREE.BoxGeometry(0.09, 2.1, 0.18), matMadeiraEscura)
+    batenteDir.position.set(0.44, 1.05, 0)
+    const batenteSup = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.1, 0.18), matMadeiraEscura)
+    batenteSup.position.set(0, 2.06, 0)
+    grupo.add(batenteEsq, batenteDir, batenteSup)
+
+    const pivoPorta = new THREE.Group()
+    pivoPorta.name = 'folhaPortaPivo'
+    pivoPorta.position.set(-0.39, 0, 0)
+
+    const folhaPorta = new THREE.Mesh(new THREE.BoxGeometry(0.78, 1.98, 0.08), matMadeiraClara)
+    folhaPorta.position.set(0.39, 1.0, 0)
+    const macaneta = new THREE.Mesh(new THREE.SphereGeometry(0.036, 12, 12), matMetalCromo)
+    macaneta.position.set(0.68, 0.96, 0.065)
+    const macanetaTras = macaneta.clone()
+    macanetaTras.position.z = -0.065
+
+    pivoPorta.add(folhaPorta, macaneta, macanetaTras)
+    grupo.add(pivoPorta)
 
     if (movel.leva) {
       const tapetePorta = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 0.02, 0.45),
+        new THREE.BoxGeometry(0.92, 0.02, 0.48),
         new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.45 }),
       )
-      tapetePorta.position.set(0, 0.015, 0.35)
+      tapetePorta.position.set(0, 0.015, 0.36)
       grupo.add(tapetePorta)
     }
   } else if (cat === 'chao') {
-    // Tapete 3D
     const tapete = new THREE.Mesh(
       new THREE.BoxGeometry(1.6, 0.018, 1.2),
-      new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9 }),
+      new THREE.MeshStandardMaterial({
+        color: 0x334155,
+        map: texturaTecido(0x334155),
+        roughness: 0.85,
+      }),
     )
     tapete.position.set(0, 0.01, 0)
     grupo.add(tapete)
+  } else if (cat === 'quarto') {
+    // Cama 3D aconchegante
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.28, 1.85), matMadeiraEscura)
+    base.position.set(0, 0.16, 0)
+    const colchao = new THREE.Mesh(
+      new THREE.BoxGeometry(1.02, 0.22, 1.75),
+      new THREE.MeshStandardMaterial({ color: 0x3b82f6, map: texturaTecido(0x3b82f6), roughness: 0.6 }),
+    )
+    colchao.position.set(0, 0.36, 0)
+    const travesseiro = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.1, 0.32), matBranco)
+    travesseiro.position.set(0, 0.5, -0.62)
+    grupo.add(base, colchao, travesseiro)
   } else {
-    // Móvel genérico 3D do catálogo
     const bloco = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.65, 0.65), matMadeiraClara)
     bloco.position.set(0, 0.325, 0)
     grupo.add(bloco)
@@ -704,8 +820,6 @@ export function criarMovel3D(movel: MovelSala): THREE.Group {
 }
 
 export function posicionarMovel3D(grupo: THREE.Group, movel: MovelSala) {
-  // Se o móvel está apoiado sobre uma mesa (`movel.sobre` ou `movel.altura`),
-  // converte a altura para metros reais (altura da mesa 3D = 0.75m)
   const yBase = movel.sobre ? 0.755 : (movel.altura ?? 0) * 4.2
   grupo.position.set(movel.coluna, yBase, movel.linha)
   grupo.rotation.y = direcaoParaAnguloY(movel.direcao)

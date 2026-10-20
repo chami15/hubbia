@@ -10,25 +10,25 @@ import {
   type ModoParedesSims,
 } from './moveis3d'
 import { criarPersonagemSim3D, type PersonagemSim3D } from './personagem3d'
-import { COR_PLUMBBOB_VERDE, type EstadoMundoSims } from './simulacao-sims'
+import { COR_NIVEL, type EstadoMundoSims } from './simulacao-sims'
 
 // ---------------------------------------------------------------------------
-// MOTOR 3D WEBGL COMPLETO ESTILO THE SIMS 4 (`cena3d.ts`)
+// MUNDO 3D (three.js)
 //
-// Inclui:
-//   - PerspectiveCamera (FOV 38°, TargetHeight 1.05m) extraída de `Camera.ini`
-//   - Órbita 360° livre (Yaw) + Inclinação vertical (Pitch)
-//   - Modos de Parede do The Sims 4 ('cortadas', 'altas', 'baixas')
-//   - Portas 3D com abertura automática por proximidade (`portal_visualizer.pyc`)
-//   - Criação dinâmica de Sims customizados do Create-A-Sim (CAS)
+// Cena, câmera orbital, móveis, personagens e o LAÇO DE ANIMAÇÃO. O laço é
+// o relógio de tudo: a cada quadro ele pede ao Escritorio o mundo simulado
+// seguinte (`aoQuadro`), anima os personagens até ele, move as etiquetas
+// do HUD e desenha. Uma batida só — antes o motor rodava num setInterval
+// de 250ms à parte, e o boneco recebia posição nova 4x por segundo
+// (andava aos trancos e alternava entre pose de andar e de parado).
+//
+// Paredes têm 3 modos (cortadas na frente da câmera, altas, baixas); porta
+// abre sozinha quando alguém chega perto.
 // ---------------------------------------------------------------------------
 
-export interface ProjecaoSimTela {
-  id: string
-  x: number
-  y: number
-  visivel: boolean
-}
+// Quão rápido a câmera alcança o alvo, por segundo. Era 0.14 POR QUADRO —
+// a 144Hz a câmera ficava mais que o dobro mais rápida que a 60Hz.
+const RIGIDEZ_CAMERA = 9
 
 export interface OpcoesCena3D {
   aoClicarSim?: (simId: string, telaX: number, telaY: number) => void
@@ -38,7 +38,14 @@ export interface OpcoesCena3D {
   aoSelecionarMovelConstrucao?: (movelId: string) => void
   aoArrastarMovelConstrucao?: (movelId: string, novaColuna: number, novaLinha: number) => void
   aoDesativarSeguirCamera?: () => void
-  aoAtualizarProjecoes?: (projecoes: Record<string, ProjecaoSimTela>) => void
+  // Chamado no começo de todo quadro com o dt real (≤0.5s); devolve o mundo já
+  // avançado. É aqui que o motor (simulacao-sims.ts) roda.
+  aoQuadro?: (dtSegundos: number) => EstadoMundoSims
+  // Etiquetas (nome + balão) do HUD, por id de personagem. A cena só MOVE
+  // esses elementos, todo quadro, direto no style — o conteúdo é do React.
+  // Antes as posições iam pro estado do React a 20Hz: re-render do
+  // Escritorio inteiro e etiqueta sempre um passo atrás do boneco.
+  etiquetas?: () => Map<string, HTMLElement>
 }
 
 export interface ControladorCena3D {
@@ -51,6 +58,9 @@ export interface ControladorCena3D {
   girarCameraHorizontal: (deltaRad: number) => void
   inclinarCameraVertical: (deltaRad: number) => void
   deslocarCameraTeclado: (dx: number, dz: number) => void
+  // Com a maquete 2D na tela, o laço continua (o motor roda nele) mas não
+  // desenha — antes o 3D seguia renderizando escondido.
+  definirVisivel: (visivel: boolean) => void
   destruir: () => void
 }
 
@@ -73,12 +83,13 @@ export function criarCena3D(
   renderizador.setSize(larguraInicial, alturaInicial)
   renderizador.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   renderizador.shadowMap.enabled = true
-  renderizador.shadowMap.type = THREE.PCFSoftShadowMap
+  // PCFSoft saiu do three; o PCF comum é o que ele já usava por baixo
+  renderizador.shadowMap.type = THREE.PCFShadowMap
   renderizador.toneMapping = THREE.ACESFilmicToneMapping
   renderizador.toneMappingExposure = 1.08
   hospedeiro.appendChild(renderizador.domElement)
 
-  // --- Iluminação Solar e Hemisférica (`LightPitch = 50, LightYaw = -75`) ---
+  // --- Luz: céu (hemisférica) + sol com sombra + preenchimento frio ---
   const luzHemisferica = new THREE.HemisphereLight(0xdbeafe, 0x4d7c3f, 0.88)
   cena.add(luzHemisferica)
 
@@ -126,7 +137,7 @@ export function criarCena3D(
   const geoDestino = new THREE.RingGeometry(0.18, 0.25, 28)
   geoDestino.rotateX(-Math.PI / 2)
   const matDestino = new THREE.MeshBasicMaterial({
-    color: COR_PLUMBBOB_VERDE,
+    color: COR_NIVEL.bom.num,
     side: THREE.DoubleSide,
     transparent: true,
     opacity: 0.85,
@@ -166,8 +177,11 @@ export function criarCena3D(
     }
     assinaturaMoveisAnterior = novaAssinatura
 
+    // libera geometria/material de cada móvel antigo: cada um cria os seus,
+    // e sem isso toda edição da sala deixava a versão anterior na GPU
     for (const m of malhasMoveis.values()) {
       grupoMoveis.remove(m)
+      liberarObjeto(m)
     }
     malhasMoveis.clear()
 
@@ -195,7 +209,7 @@ export function criarCena3D(
 
   reconstruirMoveis3D(dadosSala)
 
-  // --- Controle de Câmera 3D Estilo The Sims 4 (`Camera.ini`) ---
+  // --- Câmera orbital: giro livre, inclinação e distância, todos suavizados ---
   const centroPadrao = new THREE.Vector3((colunas - 1) / 2, 0.55, (linhas - 1) / 2)
   const alvoCamera = centroPadrao.clone()
   const alvoCameraDesejado = centroPadrao.clone()
@@ -346,6 +360,9 @@ export function criarCena3D(
       return
     }
 
+    // hover só com o ponteiro EM CIMA do canvas: o pointermove é da janela,
+    // e raycast em toda a cena a cada movimento sobre o HUD era custo à toa
+    if (e.target !== renderizador.domElement) return
     atualizarMouseNDC(e)
     raycaster.setFromCamera(mouseNDC, camera)
     if (!modoConstruirAtivo) {
@@ -363,7 +380,11 @@ export function criarCena3D(
     modoArrasteMouse = 'nenhum'
     movelArrastadoId = null
 
-    if (moveuSignificativo || eraModo === 'orbita') return
+    // o pointerup é ouvido na janela inteira (pra arraste que sai do canvas);
+    // gesto que NÃO começou no canvas — clique num botão do HUD — não é
+    // clique na cena. Antes, clicar num botão abria o menu do que estivesse
+    // atrás dele.
+    if (eraModo === 'nenhum' || moveuSignificativo || eraModo === 'orbita') return
 
     atualizarMouseNDC(e)
     raycaster.setFromCamera(mouseNDC, camera)
@@ -423,11 +444,12 @@ export function criarCena3D(
 
   // --- Loop de Animação 3D (60fps) ---
   let rafId = 0
+  let visivel = true
   let ultimoTempoMS = performance.now()
-  let ultimoEnvioProjecaoMS = 0
   const vetorTemp = new THREE.Vector3()
 
-  function atualizarIluminacaoRelogio(minutosDoDia: number) {
+  const corCeuAlvo = new THREE.Color()
+  function atualizarIluminacaoRelogio(minutosDoDia: number, k: number) {
     const hora = (minutosDoDia / 60) % 24
     let corCeu = 0x87ceeb
     let intensidadeSol = 1.55
@@ -441,11 +463,11 @@ export function criarCena3D(
       corCeu = 0xfb923c
       intensidadeSol = 1.05
     }
-    ;(cena.background as THREE.Color).lerp(new THREE.Color(corCeu), 0.05)
+    ;(cena.background as THREE.Color).lerp(corCeuAlvo.setHex(corCeu), k)
     if (cena.fog instanceof THREE.FogExp2) {
       cena.fog.color.copy(cena.background as THREE.Color)
     }
-    luzSol.intensity += (intensidadeSol - luzSol.intensity) * 0.05
+    luzSol.intensity += (intensidadeSol - luzSol.intensity) * k
   }
 
   function animarPortasProximidade(dt: number) {
@@ -467,19 +489,30 @@ export function criarCena3D(
 
   function animar(agoraMS: number) {
     rafId = window.requestAnimationFrame(animar)
-    const dt = Math.min(0.1, (agoraMS - ultimoTempoMS) / 1000)
+    // o motor recebe o tempo real (até meio segundo — aba que volta do
+    // segundo plano não pode "pular" minutos); a animação, no máximo 0.1s
+    const dtReal = Math.min(0.5, (agoraMS - ultimoTempoMS) / 1000)
+    const dt = Math.min(0.1, dtReal)
     ultimoTempoMS = agoraMS
     const tempoSeg = agoraMS / 1000
+
+    if (opcoes.aoQuadro) {
+      mundoSims = opcoes.aoQuadro(dtReal)
+      garantirPersonagensSims(mundoSims)
+    }
+
+    if (!visivel) return
 
     const simAtivo = mundoSims.sims[mundoSims.simAtivoId]
     if (mundoSims.seguirSimAtivo && simAtivo && !modoConstruirAtivo) {
       alvoCameraDesejado.set(simAtivo.coluna, 0.85, simAtivo.linha)
     }
 
-    yawAtual += (yawAlvo - yawAtual) * 0.14
-    pitchAtual += (pitchAlvo - pitchAtual) * 0.14
-    distanciaAtual += (distanciaAlvo - distanciaAtual) * 0.14
-    alvoCamera.lerp(alvoCameraDesejado, 0.14)
+    const kCamera = 1 - Math.exp(-RIGIDEZ_CAMERA * dt)
+    yawAtual += (yawAlvo - yawAtual) * kCamera
+    pitchAtual += (pitchAlvo - pitchAtual) * kCamera
+    distanciaAtual += (distanciaAlvo - distanciaAtual) * kCamera
+    alvoCamera.lerp(alvoCameraDesejado, kCamera)
 
     const raioHorizontal = distanciaAtual * Math.cos(pitchAtual)
     camera.position.set(
@@ -491,7 +524,7 @@ export function criarCena3D(
 
     loteVizinhanca.atualizarModoParedes(modoParedes, camera.position, centroPadrao)
     loteVizinhanca.animarVizinhanca(tempoSeg)
-    atualizarIluminacaoRelogio(mundoSims.minutosDoDia)
+    atualizarIluminacaoRelogio(mundoSims.minutosDoDia, 1 - Math.exp(-3 * dt))
     animarPortasProximidade(dt)
 
     for (const [id, p3d] of personagens.entries()) {
@@ -539,28 +572,26 @@ export function criarCena3D(
 
     renderizador.render(cena, camera)
 
-    if (opcoes.aoAtualizarProjecoes && agoraMS - ultimoEnvioProjecaoMS > 50) {
-      ultimoEnvioProjecaoMS = agoraMS
-      const rect = renderizador.domElement.getBoundingClientRect()
-      const projecoes: Record<string, ProjecaoSimTela> = {}
-      for (const [id, p3d] of personagens.entries()) {
-        p3d.obterPosicaoCabecaMundo(vetorTemp)
-        vetorTemp.project(camera)
-        const x = (vetorTemp.x * 0.5 + 0.5) * rect.width
-        const y = (-(vetorTemp.y * 0.5) + 0.5) * rect.height
-        projecoes[id] = {
-          id,
-          x: Math.round(x),
-          y: Math.round(y),
-          visivel:
-            vetorTemp.z < 1 &&
-            x >= -100 &&
-            x <= rect.width + 100 &&
-            y >= -100 &&
-            y <= rect.height + 100,
-        }
-      }
-      opcoes.aoAtualizarProjecoes(projecoes)
+    posicionarEtiquetas()
+  }
+
+  // Cabeça de cada personagem → pixel da tela, aplicado direto no elemento.
+  // `translate3d` em vez de left/top: só compõe, não refaz layout.
+  function posicionarEtiquetas() {
+    const etiquetas = opcoes.etiquetas?.()
+    if (!etiquetas || etiquetas.size === 0) return
+    const largura = renderizador.domElement.clientWidth
+    const altura = renderizador.domElement.clientHeight
+    for (const [id, p3d] of personagens) {
+      const el = etiquetas.get(id)
+      if (!el) continue
+      p3d.obterPosicaoCabecaMundo(vetorTemp)
+      vetorTemp.project(camera)
+      const x = (vetorTemp.x * 0.5 + 0.5) * largura
+      const y = (-vetorTemp.y * 0.5 + 0.5) * altura
+      const visivel = vetorTemp.z < 1 && x > -120 && x < largura + 120 && y > -120 && y < altura + 120
+      el.style.visibility = visivel ? 'visible' : 'hidden'
+      if (visivel) el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -100%)`
     }
   }
 
@@ -589,6 +620,10 @@ export function criarCena3D(
     definirModoParedes(modo) {
       modoParedes = modo
     },
+    definirVisivel(v) {
+      visivel = v
+      if (v) aoRedimensionar()
+    },
     centralizarCamera,
     aplicarZoom,
     girarCameraHorizontal,
@@ -603,8 +638,19 @@ export function criarCena3D(
       dom.removeEventListener('contextmenu', aoContextMenu)
       window.removeEventListener('resize', aoRedimensionar)
       for (const p of personagens.values()) p.destruir()
+      liberarObjeto(cena)
       renderizador.dispose()
       dom.remove()
     },
   }
+}
+
+function liberarObjeto(raiz: THREE.Object3D) {
+  raiz.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return
+    o.geometry.dispose()
+    // textura não: vem do cache compartilhado de texturas3d.ts
+    const mats = Array.isArray(o.material) ? o.material : [o.material]
+    for (const m of mats) m.dispose()
+  })
 }

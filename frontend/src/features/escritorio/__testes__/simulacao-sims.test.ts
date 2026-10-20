@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
-import { obterMetadadosPecaSims } from '../CatalogoTheSims'
+import { obterMetadadosPeca } from '../catalogo-jogo'
+import { nomeCompletoDoMovel, nomeDoMovel } from '../catalogo'
 import { REGISTROS_PADRAO_POR_SIM, type RegistroSimCAS } from '../cas-sims'
 import { criarPersonagemSim3D } from '../personagem3d'
 import { criarLoteVizinhanca3D, criarMovel3D } from '../moveis3d'
@@ -12,243 +13,335 @@ import {
 } from '../roteamento-sims'
 import { PALETAS } from '../sala'
 import {
+  aplicarInteracoesBackendNoMundo,
   avancarSimulacaoSims,
-  calcularCorPlumbBob,
+  calcularCorDiamante,
   calcularPontuacaoAmbiente,
   cancelarInteracaoSim,
-  COR_PLUMBBOB_AMARELO,
-  COR_PLUMBBOB_LARANJA,
-  COR_PLUMBBOB_VERDE,
-  COR_PLUMBBOB_VERMELHO,
+  COR_NIVEL,
   criarEstadoMundoSims,
   enfileirarInteracaoSim,
   escolherInteracaoAutonoma,
   escolherInteracaoParaNecessidade,
   formatarRelogioSim,
   integrarSimDoCASNoMundo,
+  nivelDaNecessidade,
   obterInteracoesDoChao,
   obterInteracoesDoMovel,
   obterInteracoesDoSim,
-  ZONA_MORTA_PIE_MENU_PX,
+  pontoNaRua,
+  type EstadoMundoSims,
+  type NecessidadesSim,
 } from '../simulacao-sims'
 import escritorioJson from '../salas/escritorio.json'
 import type { SalaDados } from '../sala-dados'
 
-const SALA_TESTE = escritorioJson as unknown as SalaDados
+const SALA = escritorioJson as unknown as SalaDados
+const semSorte = () => 0
 
-describe('simulacao-sims (motor The Sims 4)', () => {
-  it('mantém as constantes oficiais de Default.ini (PlumbBob e Pie Menu)', () => {
-    expect(COR_PLUMBBOB_VERDE).toBe(0x6ec71f)
-    expect(COR_PLUMBBOB_AMARELO).toBe(0xffff00)
-    expect(COR_PLUMBBOB_LARANJA).toBe(0xff8000)
-    expect(COR_PLUMBBOB_VERMELHO).toBe(0xff0000)
-    expect(ZONA_MORTA_PIE_MENU_PX).toBe(28)
+function cheias(sobrescrever: Partial<NecessidadesSim> = {}): NecessidadesSim {
+  return { energia: 90, cafeina: 90, foco: 90, social: 90, diversao: 90, ambiente: 60, ...sobrescrever }
+}
+
+// roda N segundos em passos de 1 quadro (60Hz), como o laço da cena 3D faz
+function rodar(mundo: EstadoMundoSims, segundos: number, sala = SALA): EstadoMundoSims {
+  let m = mundo
+  let agora = 1_000_000
+  for (let i = 0; i < Math.round(segundos * 60); i++) {
+    agora += 1000 / 60
+    m = avancarSimulacaoSims(m, sala, 1 / 60, agora, semSorte)
+  }
+  return m
+}
+
+describe('níveis e diamante', () => {
+  it('usa a MESMA régua pra barra e pro diamante', () => {
+    expect(nivelDaNecessidade(80)).toBe('bom')
+    expect(nivelDaNecessidade(50)).toBe('atencao')
+    expect(nivelDaNecessidade(30)).toBe('baixo')
+    expect(nivelDaNecessidade(10)).toBe('critico')
   })
 
-  it('calcula a cor do PlumbBob conforme a menor necessidade do Sim', () => {
-    expect(
-      calcularCorPlumbBob({
-        energia: 80,
-        foco: 75,
-        social: 90,
-        cafeina: 70,
-        ambiente: 80,
-        diversao: 65,
-      }).nivelCritico,
-    ).toBe('verde')
+  it('o diamante reflete a PIOR necessidade, ignorando o ambiente', () => {
+    expect(calcularCorDiamante(cheias()).nivel).toBe('bom')
+    expect(calcularCorDiamante(cheias({ social: 30 })).nivel).toBe('baixo')
+    expect(calcularCorDiamante(cheias({ energia: 5 })).corNum).toBe(COR_NIVEL.critico.num)
+    expect(calcularCorDiamante(cheias({ ambiente: 0 })).nivel).toBe('bom')
+  })
+})
 
-    expect(
-      calcularCorPlumbBob({
-        energia: 48,
-        foco: 75,
-        social: 90,
-        cafeina: 70,
-        ambiente: 80,
-        diversao: 65,
-      }).nivelCritico,
-    ).toBe('amarelo')
-
-    expect(
-      calcularCorPlumbBob({
-        energia: 80,
-        foco: 75,
-        social: 25,
-        cafeina: 70,
-        ambiente: 80,
-        diversao: 65,
-      }).nivelCritico,
-    ).toBe('laranja')
-
-    expect(
-      calcularCorPlumbBob({
-        energia: 12,
-        foco: 75,
-        social: 90,
-        cafeina: 70,
-        ambiente: 80,
-        diversao: 65,
-      }).nivelCritico,
-    ).toBe('vermelho')
+describe('ambiente da sala', () => {
+  it('cada categoria tem teto: empilhar planta não leva a 100', () => {
+    const planta = (i: number) => ({ id: `p${i}`, peca: 'pottedPlant', direcao: 'NE' as const, coluna: 0, linha: 0 })
+    const tres = calcularPontuacaoAmbiente([1, 2, 3].map(planta))
+    const dez = calcularPontuacaoAmbiente(Array.from({ length: 10 }, (_, i) => planta(i)))
+    expect(dez).toBe(tres)
+    expect(dez).toBeLessThan(100)
   })
 
-  it('inicializa os 4 Sims do Hubbia sentados nas suas respectivas estações', () => {
-    const mundo = criarEstadoMundoSims(SALA_TESTE)
+  it('a sala padrão nasce no meio da escala, com espaço pra decorar', () => {
+    const nota = calcularPontuacaoAmbiente(SALA.moveis)
+    expect(nota).toBeGreaterThan(40)
+    expect(nota).toBeLessThan(75)
+  })
+})
+
+describe('estado inicial', () => {
+  it('cria os 4 agentes sentados nas próprias cadeiras', () => {
+    const mundo = criarEstadoMundoSims(SALA)
     expect(Object.keys(mundo.sims)).toEqual(['cifra', 'agenda', 'vita', 'norte'])
     expect(mundo.sims.cifra.postura.corpo).toBe('sentado_cadeira')
     expect(mundo.sims.cifra.movelCasaId).toBe('cifra-cadeira')
-    expect(mundo.pontuacaoAmbienteSala).toBeGreaterThanOrEqual(52)
+  })
+})
+
+describe('interações', () => {
+  it('móvel, colega e chão oferecem as opções certas', () => {
+    const mundo = criarEstadoMundoSims(SALA)
+    const { cifra, agenda } = mundo.sims
+
+    const mesa = SALA.moveis.find((m) => m.id === 'cifra-mesa')!
+    expect(obterInteracoesDoMovel(mesa, SALA.moveis, cifra, SALA).some((o) => o.id.startsWith('trabalhar-'))).toBe(true)
+
+    const deColega = obterInteracoesDoSim(agenda, cifra, SALA)
+    expect(deColega.some((o) => o.acaoEspecial === 'selecionar_sim')).toBe(true)
+    expect(deColega.some((o) => o.acaoEspecial === 'abrir_painel_hubbia')).toBe(true)
+    expect(deColega.some((o) => o.categoria === 'social')).toBe(true)
+
+    const chao = obterInteracoesDoChao(2.5, 3.5)
+    expect(chao.some((o) => o.id.startsWith('ir-aqui-'))).toBe(true)
+    expect(chao.some((o) => o.acaoEspecial === 'chamar_todos')).toBe(true)
   })
 
-  it('gera interações de Pie Menu para móveis, outros Sims e chão', () => {
-    const mundo = criarEstadoMundoSims(SALA_TESTE)
-    const cifra = mundo.sims.cifra
-    const agenda = mundo.sims.agenda
-
-    const mesa = SALA_TESTE.moveis.find((m) => m.id === 'cifra-mesa')!
-    const opcoesMesa = obterInteracoesDoMovel(mesa, SALA_TESTE.moveis, cifra)
-    expect(opcoesMesa.some((o) => o.id.startsWith('trabalhar-'))).toBe(true)
-
-    const opcoesColega = obterInteracoesDoSim(agenda, cifra)
-    expect(opcoesColega.some((o) => o.acaoEspecial === 'selecionar_sim')).toBe(true)
-    expect(opcoesColega.some((o) => o.acaoEspecial === 'abrir_painel_hubbia')).toBe(true)
-    expect(opcoesColega.some((o) => o.categoria === 'social')).toBe(true)
-
-    const opcoesChao = obterInteracoesDoChao(2.5, 3.5)
-    expect(opcoesChao.some((o) => o.id.startsWith('ir-aqui-'))).toBe(true)
-    expect(opcoesChao.some((o) => o.acaoEspecial === 'chamar_todos')).toBe(true)
+  it('café só sai da cafeteira — o armário embaixo dela não oferece', () => {
+    const { cifra } = criarEstadoMundoSims(SALA).sims
+    const armario = SALA.moveis.find((m) => m.peca === 'kitchenCabinet')!
+    const cafeteira = SALA.moveis.find((m) => m.peca.includes('Coffee'))!
+    expect(obterInteracoesDoMovel(armario, SALA.moveis, cifra, SALA).some((o) => o.efeitos.cafeina)).toBe(false)
+    expect(obterInteracoesDoMovel(cafeteira, SALA.moveis, cifra, SALA).some((o) => o.efeitos.cafeina)).toBe(true)
   })
 
-  it('enfileira, executa e cancela interações na fila (SIState)', () => {
-    let mundo = criarEstadoMundoSims(SALA_TESTE)
-    const opcoesChao = obterInteracoesDoChao(1, 1)
-    mundo = enfileirarInteracaoSim(mundo, 'cifra', opcoesChao[0])
-    expect(mundo.sims.cifra.interacaoAtual?.opcao.id).toBe(opcoesChao[0].id)
+  it('"sair" leva pra calçada em frente ao MEIO do lote, de qualquer tamanho', () => {
+    expect(pontoNaRua({ colunas: 7, linhas: 7 }).coluna).toBe(3)
+    expect(pontoNaRua({ colunas: 11, linhas: 5 })).toEqual({ coluna: 5, linha: 5.9 })
+  })
+})
 
-    mundo = enfileirarInteracaoSim(mundo, 'cifra', opcoesChao[1])
+describe('fila', () => {
+  it('enfileira, executa e cancela', () => {
+    let mundo = criarEstadoMundoSims(SALA)
+    const [ir, alongar] = obterInteracoesDoChao(1, 1)
+    mundo = enfileirarInteracaoSim(mundo, 'cifra', ir)
+    expect(mundo.sims.cifra.interacaoAtual?.opcao.id).toBe(ir.id)
+    mundo = enfileirarInteracaoSim(mundo, 'cifra', alongar)
     expect(mundo.sims.cifra.filaInteracoes).toHaveLength(1)
-
     mundo = cancelarInteracaoSim(mundo, 'cifra', 'atual')
-    expect(mundo.sims.cifra.interacaoAtual?.opcao.id).toBe(opcoesChao[1].id)
+    expect(mundo.sims.cifra.interacaoAtual?.opcao.id).toBe(alongar.id)
     expect(mundo.sims.cifra.filaInteracoes).toHaveLength(0)
   })
+})
 
-  it('avança a simulação no tempo, move Sims e aciona a autonomia quando ocioso', () => {
-    let mundo = criarEstadoMundoSims(SALA_TESTE)
-    const minAntes = mundo.minutosDoDia
-    mundo = avancarSimulacaoSims(mundo, SALA_TESTE, 0.25)
-    expect(mundo.minutosDoDia).toBeGreaterThan(minAntes)
-    // Com autonomia ligada, todos os Sims ganham uma interação autônoma
-    expect(mundo.sims.cifra.interacaoAtual).not.toBeNull()
+describe('o quadro', () => {
+  it('decai mesmo em passos de 1 quadro (o arredondamento antigo engolia isso)', () => {
+    let m = { ...criarEstadoMundoSims(SALA), autonomiaAtiva: false }
+    const antes = m.sims.cifra.necessidades.cafeina
+    m = rodar(m, 5)
+    expect(m.sims.cifra.necessidades.cafeina).toBeLessThan(antes - 1)
   })
 
-  it('escolhe interações autônomas para resolver necessidades baixas', () => {
-    const mundo = criarEstadoMundoSims(SALA_TESTE)
-    const cifra = mundo.sims.cifra
-    cifra.necessidades.cafeina = 15
-    const op = escolherInteracaoAutonoma(cifra, mundo, SALA_TESTE)
+  it('pausado não muda nada', () => {
+    const m = { ...criarEstadoMundoSims(SALA), velocidade: 0 as const }
+    expect(avancarSimulacaoSims(m, SALA, 1)).toBe(m)
+  })
+
+  it('o relógio anda 1 minuto por segundo em 1x, e 3 em 3x', () => {
+    const m = { ...criarEstadoMundoSims(SALA), autonomiaAtiva: false }
+    expect(rodar(m, 10).minutosDoDia - m.minutosDoDia).toBeCloseTo(10, 0)
+    expect(rodar({ ...m, velocidade: 3 }, 10).minutosDoDia - m.minutosDoDia).toBeCloseTo(30, 0)
+  })
+
+  it('caminha de forma contínua até o destino e então executa', () => {
+    let m = { ...criarEstadoMundoSims(SALA), autonomiaAtiva: false }
+    const [ir] = obterInteracoesDoChao(1, 5.5)
+    m = enfileirarInteracaoSim(m, 'cifra', ir, false, SALA)
+    const posicoes: number[] = []
+    for (let i = 0; i < 30; i++) {
+      m = rodar(m, 1 / 60)
+      posicoes.push(m.sims.cifra.linha)
+    }
+    // nenhum salto: de quadro em quadro anda no máximo o passo de 1 quadro
+    for (let i = 1; i < posicoes.length; i++) expect(Math.abs(posicoes[i] - posicoes[i - 1])).toBeLessThan(0.06)
+    m = rodar(m, 8)
+    expect(m.sims.cifra.interacaoAtual).toBeNull()
+  })
+
+  it('autonomia espera um respiro antes de escolher, e então escolhe', () => {
+    const m = criarEstadoMundoSims(SALA)
+    expect(avancarSimulacaoSims(m, SALA, 1 / 60, 0, semSorte).sims.norte.interacaoAtual).toBeNull()
+    expect(rodar(m, 4).sims.norte.interacaoAtual).not.toBeNull()
+  })
+
+  it('relação sobe pros DOIS lados durante uma conversa', () => {
+    let m = { ...criarEstadoMundoSims(SALA), autonomiaAtiva: false }
+    const papo = obterInteracoesDoSim(m.sims.agenda, m.sims.cifra, SALA).find((o) => o.id.startsWith('social-papo-'))!
+    const amizade = (de: string, para: string, mundo: EstadoMundoSims) =>
+      mundo.sims[de].relacionamentos.find((r) => r.alvoId === para)!.amizade
+    const antesCifra = amizade('cifra', 'agenda', m)
+    const antesAgenda = amizade('agenda', 'cifra', m)
+    m = enfileirarInteracaoSim(m, 'cifra', papo, false, SALA)
+    m = rodar(m, 10)
+    expect(amizade('cifra', 'agenda', m)).toBeGreaterThan(antesCifra)
+    expect(amizade('agenda', 'cifra', m)).toBeGreaterThan(antesAgenda)
+  })
+
+  it('habilidade sobe devagar: 1 minuto de prática não vale mais de um nível', () => {
+    let m = { ...criarEstadoMundoSims(SALA), autonomiaAtiva: false }
+    const cadeira = SALA.moveis.find((x) => x.id === 'cifra-cadeira')!
+    const trabalhar = obterInteracoesDoMovel(cadeira, SALA.moveis, m.sims.cifra, SALA).find((o) => o.id.startsWith('trabalhar-'))!
+    const nivelAntes = m.sims.cifra.habilidades[0].nivel
+    for (let i = 0; i < 5; i++) m = enfileirarInteracaoSim(m, 'cifra', trabalhar, false, SALA)
+    m = rodar(m, 60)
+    expect(m.sims.cifra.habilidades[0].nivel).toBeLessThanOrEqual(nivelAntes + 1)
+  })
+})
+
+describe('autonomia', () => {
+  it('café baixo → escolhe algo que dá café', () => {
+    const m = criarEstadoMundoSims(SALA)
+    const s = { ...m.sims.cifra, necessidades: cheias({ cafeina: 10 }) }
+    expect(escolherInteracaoAutonoma(s, m, SALA, semSorte)?.efeitos.cafeina).toBeGreaterThan(0)
+  })
+
+  it('tudo confortável → volta pra própria mesa', () => {
+    const m = criarEstadoMundoSims(SALA)
+    const op = escolherInteracaoAutonoma({ ...m.sims.cifra, necessidades: cheias() }, m, SALA, semSorte)
+    expect(op?.id.startsWith('trabalhar-')).toBe(true)
+  })
+
+  it('nada livre que resolva → volta pra mesa em vez de ficar parado', () => {
+    let m = { ...criarEstadoMundoSims(SALA), autonomiaAtiva: false }
+    const cafeteira = SALA.moveis.find((x) => x.peca.includes('Coffee'))!
+    const expresso = obterInteracoesDoMovel(cafeteira, SALA.moveis, m.sims.vita, SALA).find((o) => o.efeitos.cafeina)!
+    m = enfileirarInteracaoSim(m, 'vita', expresso, false, SALA)
+    m = rodar(m, 6) // Vita chega e ocupa o encaixe da cafeteira
+    const norte = { ...m.sims.norte, necessidades: cheias({ cafeina: 10 }) }
+    const op = escolherInteracaoAutonoma(norte, m, SALA, semSorte)
     expect(op).not.toBeNull()
-    expect(op?.efeitos.cafeina).toBeGreaterThan(0)
-
-    const opSocial = escolherInteracaoParaNecessidade(cifra, 'social', mundo, SALA_TESTE)
-    expect(opSocial).not.toBeNull()
-    expect(opSocial?.efeitos.social).toBeGreaterThan(0)
+    expect(op?.alvoMovelId).not.toBe(cafeteira.id)
   })
 
-  it('formata o relógio Sim e calcula pontuação de ambiente', () => {
-    expect(formatarRelogioSim(9 * 60 + 5, 0)).toBe('Seg 09:05')
-    expect(calcularPontuacaoAmbiente(SALA_TESTE.moveis)).toBeGreaterThan(50)
+  it('nunca escolhe a cadeira de outro agente', () => {
+    const m = criarEstadoMundoSims(SALA)
+    const s = { ...m.sims.cifra, necessidades: cheias({ foco: 5 }), movelCasaId: null }
+    const op = escolherInteracaoParaNecessidade(s, 'foco', m, SALA, semSorte)
+    const alheias = SALA.moveis.filter((x) => x.agente && x.agente !== 'cifra').map((x) => x.id)
+    expect(alheias).not.toContain(op?.alvoMovelId)
+  })
+})
+
+describe('rota, encaixe e conversa', () => {
+  it('sofá tem 3 lugares e o segundo a chegar pega outro', () => {
+    const sofa = { id: 'sofa-teste', peca: 'loungeSofa', coluna: 3, linha: 3, direcao: 'NE' as const }
+    const slots = obterSlotsDeInteracaoMovel(sofa)
+    expect(slots).toHaveLength(3)
+    const daAgenda = escolherSlotLivreDoMovel(sofa, 'agenda', [
+      { id: 'cifra', coluna: slots[0].coluna, linha: slots[0].linha, movelOcupadoId: 'sofa-teste', indiceSlotOcupado: 0 },
+    ])
+    expect(daAgenda.indiceSlot).toBe(1)
   })
 
-  it('constrói o personagem Sim 3D com esqueleto articulado e anima posturas', () => {
-    const mundo = criarEstadoMundoSims(SALA_TESTE)
+  it('conversa frente a frente a uma distância confortável', () => {
+    const pos = calcularPosicaoJigSocial({ coluna: 1, linha: 1 }, { coluna: 3, linha: 3 }, SALA, [], 'cifra')
+    expect(Math.hypot(pos.coluna - 3, pos.linha - 3)).toBeGreaterThan(0.5)
+  })
+
+  it('A* chega no destino', () => {
+    const rota = calcularCaminhoAEstrela({ coluna: 0.5, linha: 0.5 }, { coluna: 5.5, linha: 5.5 }, SALA)
+    expect(rota[rota.length - 1]).toEqual({ coluna: 5.5, linha: 5.5 })
+  })
+})
+
+describe('3D', () => {
+  it('personagem tem esqueleto e muda de pose', () => {
+    const mundo = criarEstadoMundoSims(SALA)
     const p3d = criarPersonagemSim3D('cifra', 0x16a34a)
-
-    // Confere ossos/articulações principais e PlumbBob 3D
     expect(p3d.articulacoes.cabeca).toBeDefined()
-    expect(p3d.articulacoes.ombroEsq).toBeDefined()
-    expect(p3d.articulacoes.coxaEsq).toBeDefined()
-    expect(p3d.articulacoes.plumbBobMesh).toBeDefined()
+    expect(p3d.articulacoes.diamanteMesh).toBeDefined()
 
-    // Anima sentado na cadeira digitando
     p3d.atualizar(mundo.sims.cifra, true, 1.5, 0.016, { x: 3.5, z: 2.4 })
     expect(p3d.articulacoes.coxaEsq.rotation.x).toBeLessThan(-1)
 
-    // Anima andando pela sala
+    // o amortecimento usa o dt real: alguns quadros depois já está de pé
     mundo.sims.cifra.postura.corpo = 'andando'
-    p3d.atualizar(mundo.sims.cifra, true, 2.0, 0.016, { x: 3.8, z: 2.7 })
-    expect(p3d.articulacoes.pelve.position.y).toBeGreaterThan(0.55)
-
+    for (let i = 0; i < 30; i++) p3d.atualizar(mundo.sims.cifra, true, 2 + i / 60, 1 / 60, { x: 3.8 + i * 0.02, z: 2.7 })
+    expect(p3d.articulacoes.pelve.position.y).toBeGreaterThan(0.5)
     p3d.destruir()
   })
 
-  it('constrói o lote de vizinhança 3D com modo de paredes Cutaway e móveis 3D', () => {
+  it('trocar aparência várias vezes não acumula peças (roupa/cabelo são refeitos)', () => {
+    const p3d = criarPersonagemSim3D('norte', 0x0891b2)
+    const contar = () => {
+      let n = 0
+      p3d.grupoRaiz.traverse((o) => {
+        if (o instanceof THREE.Mesh) n++
+      })
+      return n
+    }
+    const antes = contar()
+    for (let i = 0; i < 5; i++) p3d.aplicarAparenciaCAS(REGISTROS_PADRAO_POR_SIM.norte.aparencia)
+    expect(contar()).toBe(antes)
+    p3d.destruir()
+  })
+
+  it('lote: paredes da frente da câmera se cortam; todo móvel da sala vira modelo', () => {
     const lote = criarLoteVizinhanca3D(7, 7, PALETAS.neutra)
     expect(lote.paredes).toHaveLength(4)
-
-    // No modo 'cortadas', paredes voltadas para a câmera abaixam e as do fundo ficam altas
     lote.atualizarModoParedes('cortadas', new THREE.Vector3(10, 8, 10), new THREE.Vector3(3, 0, 3))
-    const altasVisiveis = lote.paredes.filter((p) => p.malhaAlta.visible).length
-    expect(altasVisiveis).toBe(2)
-
-    for (const m of SALA_TESTE.moveis) {
-      const m3d = criarMovel3D(m)
-      expect(m3d.children.length).toBeGreaterThan(0)
-    }
+    expect(lote.paredes.filter((p) => p.malhaAlta.visible)).toHaveLength(2)
+    for (const m of SALA.moveis) expect(criarMovel3D(m).children.length).toBeGreaterThan(0)
   })
+})
 
-  it('evita colisão com mobília via A* e separa Sims em slots distintos e Jigs Sociais', () => {
-    const sofa = {
-      id: 'sofa-teste',
-      peca: 'loungeSofa',
-      coluna: 3,
-      linha: 3,
-      direcao: 'NE' as const,
-    }
-    const slotsSofa = obterSlotsDeInteracaoMovel(sofa)
-    expect(slotsSofa).toHaveLength(3)
-
-    // Se o slot 0 já está ocupado por Cifra, Agenda recebe o slot 1 sem sobrepor!
-    const slotAgenda = escolherSlotLivreDoMovel(sofa, 'agenda', [
-      { id: 'cifra', coluna: slotsSofa[0].coluna, linha: slotsSofa[0].linha, movelOcupadoId: 'sofa-teste', indiceSlotOcupado: 0 },
-    ])
-    expect(slotAgenda.indiceSlot).toBe(1)
-
-    // Jig Social garante distância saudável (~0.72m) ao conversar
-    const posJig = calcularPosicaoJigSocial(
-      { coluna: 1, linha: 1 },
-      { coluna: 3, linha: 3 },
-      SALA_TESTE,
-      [],
-      'cifra',
-    )
-    expect(Math.hypot(posJig.coluna - 3, posJig.linha - 3)).toBeGreaterThan(0.5)
-
-    // Rota A* calcula caminho entre pontos da sala
-    const rota = calcularCaminhoAEstrela({ coluna: 0.5, linha: 0.5 }, { coluna: 5.5, linha: 5.5 }, SALA_TESTE)
-    expect(rota.length).toBeGreaterThan(0)
-    expect(rota[rota.length - 1]).toEqual({ coluna: 5.5, linha: 5.5 })
-  })
-
-  it('permite criar novos Sims no Create-A-Sim (CAS) chegando pelo portal da rua e catálogo com preços §', () => {
-    let mundo = criarEstadoMundoSims(SALA_TESTE)
-    const novoSimCAS: RegistroSimCAS = {
+describe('criador de personagem e catálogo', () => {
+  it('personagem novo chega pela calçada e entra', () => {
+    const novo: RegistroSimCAS = {
       ...REGISTROS_PADRAO_POR_SIM.norte,
       id: 'sim_iris_novo',
       nome: 'Íris',
-      funcao: 'Marketing & Growth',
+      funcao: 'marketing',
       especialidade: 'marketing',
       customizado: true,
     }
+    const m = integrarSimDoCASNoMundo(criarEstadoMundoSims(SALA), novo, SALA, true)
+    expect(m.sims.sim_iris_novo.foraDoLote).toBe(true)
+    expect(m.sims.sim_iris_novo.interacaoAtual?.opcao.acaoEspecial).toBe('entrar_lote')
+    // e os outros já o conhecem
+    expect(m.sims.cifra.relacionamentos.some((r) => r.alvoId === 'sim_iris_novo')).toBe(true)
+  })
 
-    mundo = integrarSimDoCASNoMundo(mundo, novoSimCAS, SALA_TESTE, true)
-    expect(mundo.sims.sim_iris_novo).toBeDefined()
-    expect(mundo.sims.sim_iris_novo.nome).toBe('Íris')
-    expect(mundo.sims.sim_iris_novo.foraDoLote).toBe(true)
-    expect(mundo.sims.sim_iris_novo.interacaoAtual?.opcao.acaoEspecial).toBe('entrar_lote')
+  it('balão de rodada acha o agente pelo nome do BACKEND, mesmo renomeado na tela', () => {
+    let m = criarEstadoMundoSims(SALA)
+    m = { ...m, sims: { ...m.sims, vita: { ...m.sims.vita, nome: 'Vitinha' } } }
+    m = aplicarInteracoesBackendNoMundo(m, [{ agente_nome: 'Vita', tipo: 'trabalho', motivo: 'Fechei a semana' } as never])
+    expect(m.sims.vita.balao?.texto).toBe('Fechei a semana')
+  })
 
-    // Metadados do catálogo Build/Buy The Sims 4
-    const metaCafe = obterMetadadosPecaSims('kitchenCoffeeMachine')
-    expect(metaCafe.precoSimoleons).toBeGreaterThan(0)
-    expect(metaCafe.atributos.length).toBeGreaterThan(0)
+  it('catálogo mostra o que a peça faz de verdade, sem preço inventado', () => {
+    const cafe = obterMetadadosPeca('kitchenCoffeeMachine')
+    expect(cafe.uso).toBe('café')
+    expect(cafe).not.toHaveProperty('precoSimoleons')
+    expect(obterMetadadosPeca('pottedPlant').ambiente).toBeGreaterThan(0)
+    expect(obterMetadadosPeca('chairDesk').ambiente).toBe(0)
+  })
+
+  it('nomes em português, concordando com o gênero', () => {
+    expect(nomeDoMovel('loungeDesignSofa')).toBe('sofá')
+    expect(nomeCompletoDoMovel('rugRound')).toBe('Tapete redondo')
+    expect(nomeCompletoDoMovel('tableRound')).toBe('Mesa redonda')
+    expect(nomeCompletoDoMovel('tableCoffeeGlass')).toBe('Mesa de centro de vidro')
+  })
+
+  it('formata o relógio', () => {
+    expect(formatarRelogioSim(9 * 60 + 5, 0)).toBe('Seg 09:05')
   })
 })

@@ -1,29 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Application, Container } from 'pixi.js'
 import { criarCena, type Cena } from './cena'
-import { criarCena3D, type ControladorCena3D, type ProjecaoSimTela } from './cena3d'
+import { criarCena3D, type ControladorCena3D } from './cena3d'
 import type { ModoParedesSims } from './moveis3d'
 import { criarEditor, type Editor, type EstadoEditor } from './edicao'
 import { carregarSala, definirSalaAtual, recarregarDeProposito, todasAsSalasComRascunho } from './persistencia'
 import { PALETAS } from './sala'
 import { AGENTES } from './agentes'
-import { rotuloDe } from './catalogo'
+import { nomeDoMovel } from './catalogo'
 import { conferirConjuntoDeSalas } from './sala-conferir'
+import type { SalaDados } from './sala-dados'
 import { PainelEdicao } from './PainelEdicao'
-import { CatalogoTheSims } from './CatalogoTheSims'
-import { CriadorSimCAS } from './CriadorSimCAS'
+import { CatalogoConstrucao } from './CatalogoConstrucao'
+import { CriadorPersonagem } from './CriadorPersonagem'
 import { PainelProblemas } from './PainelProblemas'
 import { PainelSalas } from './PainelSalas'
 import { PopupPorta } from './PopupPorta'
 import { PainelDoAgente } from '../agentes/PainelDoAgente'
 import { PainelMensagens } from '../agentes/PainelMensagens'
 import { PainelConfiguracoes } from './PainelConfiguracoes'
-import { HudTheSims } from './HudTheSims'
-import { MenuPie, type EstadoMenuPie } from './MenuPie'
+import { HudSimulacao } from './HudSimulacao'
+import { MenuRadial, type EstadoMenuRadial } from './MenuRadial'
 import {
   aplicarInteracoesBackendNoMundo,
   avancarSimulacaoSims,
-  calcularCorPlumbBob,
+  calcularCorDiamante,
   cancelarInteracaoSim,
   criarEstadoMundoSims,
   enfileirarInteracaoSim,
@@ -32,7 +33,6 @@ import {
   obterInteracoesDoChao,
   obterInteracoesDoMovel,
   obterInteracoesDoSim,
-  type ChaveNecessidade,
   type EstadoMundoSims,
   type OpcaoPieMenu,
   type VelocidadeTempo,
@@ -49,9 +49,29 @@ import { mensagemDeErro } from '../../api/client'
 import type { EstadoAgente } from '../../types/agente'
 import type { RodadaProcessada } from '../../types/interacao'
 
-// Hospeda o mundo 3D estilo The Sims 4 (Three.js WebGL com personagens 3D
-// articulados, vizinhança, móveis 3D e paredes com modo Cutaway) e também
-// preserva a maquete 2D isométrica (PixiJS) para comparação direta.
+// De quanto em quanto tempo o HUD (React) recebe uma foto nova do mundo.
+// A cena lê o mundo TODO quadro direto da ref; o HUD só mostra número e
+// barra, e 60 renders/s de um HUD inteiro custariam mais que a cena.
+const INTERVALO_HUD_MS = 140
+// Maior passo que o motor aceita (ver DT_MAXIMO em simulacao-sims.ts).
+const PASSO_MAXIMO_MOTOR = 0.1
+
+// Qual painel lateral está aberto. Um por vez, sempre: abrir outro troca o
+// conteúdo, nunca empilha (eram três useState que cada botão tinha que
+// lembrar de zerar).
+type Painel = { tipo: 'agente'; id: string } | { tipo: 'mensagens' } | { tipo: 'configuracoes' } | null
+
+// Só os 4 agentes têm painel de domínio — personagem criado no criador
+// não existe no backend.
+const temPainel = (id: string) => AGENTES.some((a) => a.id === id)
+
+// Hospeda o mundo 3D (three.js, o modo principal) e a maquete 2D isométrica
+// (PixiJS). A 2D fica montada mesmo escondida: é dona do editor de salas
+// (persistência, desfazer) e o 3D espelha o que ela edita.
+//
+// O MUNDO SIMULADO mora numa ref e é avançado TODO QUADRO dentro do laço
+// da cena 3D (`aoQuadro`) — que continua rodando, sem desenhar, quando a
+// 2D está na tela. React só recebe fotos (INTERVALO_HUD_MS).
 export function Escritorio() {
   const hospedeiro3DRef = useRef<HTMLDivElement>(null)
   const hospedeiro2DRef = useRef<HTMLDivElement>(null)
@@ -59,26 +79,39 @@ export function Escritorio() {
   const cenaRef = useRef<Cena | null>(null)
   const cena3DRef = useRef<ControladorCena3D | null>(null)
   const cameraRef = useRef<ControladorCamera | null>(null)
+  const etiquetasRef = useRef(new Map<string, HTMLElement>())
 
-  const [modo3DAtivo, setModo3DAtivo] = useState(true)
+  const [modo3D, setModo3D] = useState(true)
   const [modoParedes, setModoParedes] = useState<ModoParedesSims>('cortadas')
-  const [projecoes3D, setProjecoes3D] = useState<Record<string, ProjecaoSimTela>>({})
   const [estado, setEstado] = useState<EstadoEditor | null>(null)
   const [catalogoAberto, setCatalogoAberto] = useState(true)
-  const [criadorCASAberto, setCriadorCASAberto] = useState(false)
+  const [criadorAberto, setCriadorAberto] = useState(false)
   const [salasAbertas, setSalasAbertas] = useState(false)
   const [problemas, setProblemas] = useState<string[]>([])
-  const [agenteAberto, setAgenteAberto] = useState<string | null>(null)
-  const [mensagensAbertas, setMensagensAbertas] = useState(false)
-  const [configuracoesAbertas, setConfiguracoesAbertas] = useState(false)
-  const [menuPie, setMenuPie] = useState<EstadoMenuPie | null>(null)
+  const [painel, setPainel] = useState<Painel>(null)
+  const [menu, setMenu] = useState<EstadoMenuRadial | null>(null)
 
-  const [mundoSims, setMundoSims] = useState<EstadoMundoSims>(() => {
-    const { sala } = carregarSala()
-    return criarEstadoMundoSims(sala)
+  const mundoRef = useRef<EstadoMundoSims | null>(null)
+  const [mundo, setMundo] = useState<EstadoMundoSims>(() => {
+    const inicial = criarEstadoMundoSims(carregarSala().sala)
+    mundoRef.current = inicial
+    return inicial
   })
-  const mundoSimsRef = useRef<EstadoMundoSims>(mundoSims)
-  mundoSimsRef.current = mundoSims
+
+  // Toda ação do chefe passa por aqui: muda a ref e publica na hora (sem
+  // esperar a próxima foto), pro clique responder no mesmo instante.
+  const atualizarMundo = useCallback((f: (m: EstadoMundoSims) => EstadoMundoSims) => {
+    const atual = mundoRef.current
+    if (!atual) return
+    const proximo = f(atual)
+    if (proximo === atual) return
+    mundoRef.current = proximo
+    setMundo(proximo)
+  }, [])
+
+  // a sala viva é a da maquete (o editor mexe nela); antes dela montar,
+  // a carregada do disco
+  const salaAtual = useCallback((): SalaDados => cenaRef.current?.maquete.sala ?? carregarSala().sala, [])
 
   const [dryRunAtivo, setDryRunAtivoState] = useState(dryRunEstaAtivo)
   const [ultimoResultado, setUltimoResultado] = useState<ResultadoAvancoMundo | null>(() =>
@@ -91,31 +124,29 @@ export function Escritorio() {
   const agentesAoVivoRef = useRef<typeof agentesAoVivo>(undefined)
   agentesAoVivoRef.current = agentesAoVivo
 
-  const aplicarEstadosNaCena = useCallback(() => {
+  // Estado REAL de cada agente (backend) → anel do crachá na 2D +
+  // modificador de humor na simulação. Ligação pelo nome original.
+  const aplicarEstadosAoVivo = useCallback(() => {
     const dados = agentesAoVivoRef.current
-    if (!dados) return
-    if (cenaRef.current) {
-      const estados = new Map<string, EstadoAgente>()
-      for (const local of AGENTES) {
-        const aoVivo = dados.find((a) => a.nome === local.nome)
-        if (aoVivo) estados.set(local.id, aoVivo.estado)
-      }
-      cenaRef.current.definirEstadosAgentes(estados)
+    if (!Array.isArray(dados)) return
+    const estados = new Map<string, EstadoAgente>()
+    for (const local of AGENTES) {
+      const aoVivo = dados.find((a) => a.nome === local.nome)
+      if (aoVivo) estados.set(local.id, aoVivo.estado)
     }
-    setMundoSims((anterior) => {
-      const novosSims = { ...anterior.sims }
-      for (const local of AGENTES) {
-        const aoVivo = dados.find((a) => a.nome === local.nome)
-        if (aoVivo && novosSims[local.id]) {
-          novosSims[local.id] = {
-            ...novosSims[local.id],
-            estadoBackend: aoVivo.estado,
-          }
+    cenaRef.current?.definirEstadosAgentes(estados)
+    atualizarMundo((m) => {
+      let mudou = false
+      const sims = { ...m.sims }
+      for (const [id, estadoBackend] of estados) {
+        if (sims[id] && sims[id].estadoBackend !== estadoBackend) {
+          sims[id] = { ...sims[id], estadoBackend }
+          mudou = true
         }
       }
-      return { ...anterior, sims: novosSims }
+      return mudou ? { ...m, sims } : m
     })
-  }, [])
+  }, [atualizarMundo])
 
   function aoAlternarDryRun(ativo: boolean) {
     definirDryRunAtivo(ativo)
@@ -138,7 +169,7 @@ export function Escritorio() {
     const chefeId = agentesAoVivoRef.current?.find((a) => a.tipo === 'chefe')?.id
 
     if (rodada.interacoes.length > 0) {
-      setMundoSims((atual) => aplicarInteracoesBackendNoMundo(atual, rodada.interacoes))
+      atualizarMundo((m) => aplicarInteracoesBackendNoMundo(m, rodada.interacoes))
     }
 
     for (const interacao of rodada.interacoes) {
@@ -173,47 +204,68 @@ export function Escritorio() {
     })
   }
 
-  const executarOpcaoPieMenu = useCallback((opcao: OpcaoPieMenu) => {
-    const mAtual = mundoSimsRef.current
-    if (opcao.acaoEspecial === 'selecionar_sim' && opcao.alvoSimId) {
-      setMundoSims((ant) => ({ ...ant, simAtivoId: opcao.alvoSimId! }))
-      return
-    }
-    if (opcao.acaoEspecial === 'abrir_painel_hubbia') {
-      const idPainel = opcao.alvoSimId ?? mAtual.simAtivoId
-      setAgenteAberto(idPainel)
-      setMensagensAbertas(false)
-      setConfiguracoesAbertas(false)
-      return
-    }
-    const salaAtual = cenaRef.current?.maquete.sala ?? carregarSala().sala
-    if (opcao.acaoEspecial === 'chamar_todos' && opcao.alvoPosicao) {
-      setMundoSims((ant) => {
-        let novo = ant
-        Object.keys(ant.sims).forEach((simId, idx) => {
-          const offsetCol = opcao.alvoPosicao!.coluna + (idx % 2 === 0 ? -0.45 : 0.45)
-          const offsetLin = opcao.alvoPosicao!.linha + (idx < 2 ? -0.45 : 0.45)
-          novo = enfileirarInteracaoSim(
-            novo,
-            simId,
-            {
-              ...opcao,
-              acaoEspecial: undefined,
-              alvoPosicao: { coluna: offsetCol, linha: offsetLin },
-            },
-            true,
-            salaAtual,
-          )
-        })
-        return novo
-      })
-      return
-    }
-
-    setMundoSims((ant) => enfileirarInteracaoSim(ant, ant.simAtivoId, opcao, true, salaAtual))
+  const abrirPainelAgente = useCallback((id: string) => {
+    if (temPainel(id)) setPainel({ tipo: 'agente', id })
   }, [])
 
-  // Monta tanto o Motor 3D WebGL (Three.js) quanto a Maquete/Editor 2D (PixiJS)
+  const alternarPainel = useCallback((alvo: Exclude<Painel, null>) => {
+    setPainel((atual) => (atual?.tipo === alvo.tipo ? null : alvo))
+  }, [])
+
+  const executarOpcao = useCallback(
+    (opcao: OpcaoPieMenu) => {
+      const sala = salaAtual()
+      if (opcao.acaoEspecial === 'selecionar_sim' && opcao.alvoSimId) {
+        atualizarMundo((m) => ({ ...m, simAtivoId: opcao.alvoSimId! }))
+        return
+      }
+      if (opcao.acaoEspecial === 'abrir_painel_hubbia') {
+        abrirPainelAgente(opcao.alvoSimId ?? mundoRef.current!.simAtivoId)
+        return
+      }
+      if (opcao.acaoEspecial === 'chamar_todos' && opcao.alvoPosicao) {
+        // todo mundo pro ponto, cada um num canto de um quadradinho em volta
+        // dele (o encaixe livre final quem acha é o roteamento)
+        const centro = opcao.alvoPosicao
+        atualizarMundo((m) => {
+          let novo = m
+          Object.keys(m.sims).forEach((id, i) => {
+            const alvoPosicao = { coluna: centro.coluna + (i % 2 === 0 ? -0.45 : 0.45), linha: centro.linha + (i < 2 ? -0.45 : 0.45) }
+            novo = enfileirarInteracaoSim(novo, id, { ...opcao, acaoEspecial: undefined, alvoPosicao }, true, sala)
+          })
+          return novo
+        })
+        return
+      }
+      atualizarMundo((m) => enfileirarInteracaoSim(m, m.simAtivoId, opcao, true, sala))
+    },
+    [atualizarMundo, abrirPainelAgente, salaAtual],
+  )
+
+  // Menus que o clique na cena abre — iguais pra 3D e 2D.
+  const abrirMenuDoSim = useCallback((id: string, x: number, y: number) => {
+    const m = mundoRef.current!
+    const alvo = m.sims[id]
+    const ativo = m.sims[m.simAtivoId]
+    if (!alvo || !ativo) return
+    setMenu({ x, y, titulo: alvo.nome, opcoes: obterInteracoesDoSim(alvo, ativo, salaAtual()) })
+  }, [salaAtual])
+
+  const abrirMenuDoMovel = useCallback((movelId: string, x: number, y: number) => {
+    const m = mundoRef.current!
+    const ativo = m.sims[m.simAtivoId]
+    const sala = salaAtual()
+    const movel = sala.moveis.find((mv) => mv.id === movelId)
+    if (!ativo || !movel) return
+    setMenu({ x, y, titulo: nomeDoMovel(movel.peca), opcoes: obterInteracoesDoMovel(movel, sala.moveis, ativo, sala) })
+  }, [salaAtual])
+
+  const abrirMenuDoChao = useCallback((coluna: number, linha: number, x: number, y: number) => {
+    const sala = salaAtual()
+    const foraDoLote = linha > sala.linhas - 0.5
+    setMenu({ x, y, titulo: foraDoLote ? 'Calçada' : 'Piso', opcoes: obterInteracoesDoChao(coluna, linha, sala.linhas, sala.colunas) })
+  }, [salaAtual])
+
   useEffect(() => {
     const hospedeiro3D = hospedeiro3DRef.current
     const hospedeiro2D = hospedeiro2DRef.current
@@ -221,53 +273,53 @@ export function Escritorio() {
 
     let desmontado = false
     let app: Application | null = null
-
     const { sala, idSala } = carregarSala()
+    let desdeUltimaFoto = 0
 
-    // 1. Inicializa imediatamente o Mundo 3D WebGL (The Sims 4)
-    const ctrl3D = criarCena3D(hospedeiro3D, sala, mundoSimsRef.current, {
-      aoClicarSim: (id, telaX, telaY) => {
-        const m = mundoSimsRef.current
-        const alvo = m.sims[id]
-        const ativo = m.sims[m.simAtivoId]
-        if (alvo && ativo) {
-          setMenuPie({
-            x: telaX,
-            y: telaY,
-            tituloAlvo: `${alvo.nome} (${alvo.funcao})`,
-            opcoes: obterInteracoesDoSim(alvo, ativo),
-          })
+    // O laço do motor: roda dentro do requestAnimationFrame da cena 3D.
+    function aoQuadro(dt: number): EstadoMundoSims {
+      let m = mundoRef.current!
+      // no modo construir o tempo para — mover a cadeira de alguém com a
+      // pessoa andando até ela daria destino velho
+      const salaViva = cenaRef.current?.maquete.sala
+      if (salaViva && !editorRef.current?.estado().ativo) {
+        // em subpassos de até 0.1s: o motor limita o passo (senão rota e
+        // colisão "atravessariam" coisas), e em máquina lenta o jogo não
+        // pode ficar mais lento que o relógio de verdade
+        for (let resta = dt; resta > 1e-4; resta -= PASSO_MAXIMO_MOTOR) {
+          m = avancarSimulacaoSims(m, salaViva, Math.min(PASSO_MAXIMO_MOTOR, resta))
         }
-      },
-      aoClicarMovelSimulacao: (movel, telaX, telaY) => {
-        const m = mundoSimsRef.current
-        const ativo = m.sims[m.simAtivoId]
-        if (!ativo) return
-        const moveisAtuais = cenaRef.current?.maquete.moveis ?? sala.moveis
-        setMenuPie({
-          x: telaX,
-          y: telaY,
-          tituloAlvo: rotuloDe(movel.peca),
-          opcoes: obterInteracoesDoMovel(movel, moveisAtuais, ativo),
-        })
-      },
+        mundoRef.current = m
+      }
+      if (m.salaPendenteViagem) {
+        definirSalaAtual(m.salaPendenteViagem)
+        recarregarDeProposito()
+        mundoRef.current = { ...m, salaPendenteViagem: null }
+      }
+
+      cenaRef.current?.sincronizarMundoSims(m)
+      const seguido = m.seguirSimAtivo ? m.sims[m.simAtivoId] : undefined
+      cameraRef.current?.definirSeguirPonto(seguido ? pontoMundoDoSim(seguido.coluna, seguido.linha) : null)
+
+      desdeUltimaFoto += dt * 1000
+      if (desdeUltimaFoto >= INTERVALO_HUD_MS) {
+        desdeUltimaFoto = 0
+        setMundo((anterior) => (anterior === m ? anterior : m))
+      }
+      return m
+    }
+
+    cena3DRef.current = criarCena3D(hospedeiro3D, sala, mundoRef.current!, {
+      aoQuadro,
+      etiquetas: () => etiquetasRef.current,
+      aoClicarSim: abrirMenuDoSim,
+      aoClicarMovelSimulacao: (movel, x, y) => abrirMenuDoMovel(movel.id, x, y),
       aoClicarPorta: (salaDestino) => {
         definirSalaAtual(salaDestino)
         recarregarDeProposito()
       },
-      aoClicarPiso: (coluna, linha, telaX, telaY) => {
-        setMenuPie({
-          x: telaX,
-          y: telaY,
-          tituloAlvo: linha > (sala.linhas || 7) - 0.5
-            ? `Calçada / Vizinhança (${coluna.toFixed(1)}, ${linha.toFixed(1)})`
-            : `Piso 3D (${coluna.toFixed(1)}, ${linha.toFixed(1)})`,
-          opcoes: obterInteracoesDoChao(coluna, linha, sala.linhas || 7),
-        })
-      },
-      aoSelecionarMovelConstrucao: (movelId) => {
-        editorRef.current?.selecionar(movelId)
-      },
+      aoClicarPiso: abrirMenuDoChao,
+      aoSelecionarMovelConstrucao: (movelId) => editorRef.current?.selecionar(movelId),
       aoArrastarMovelConstrucao: (movelId, novaColuna, novaLinha) => {
         const movelAtual = cenaRef.current?.maquete.movel(movelId)
         if (!movelAtual || !cenaRef.current) return
@@ -278,16 +330,9 @@ export function Escritorio() {
           setEstado(editorRef.current?.estado() ?? null)
         }
       },
-      aoDesativarSeguirCamera: () => {
-        setMundoSims((ant) => (ant.seguirSimAtivo ? { ...ant, seguirSimAtivo: false } : ant))
-      },
-      aoAtualizarProjecoes: (projecoes) => {
-        setProjecoes3D(projecoes)
-      },
+      aoDesativarSeguirCamera: () => atualizarMundo((m) => (m.seguirSimAtivo ? { ...m, seguirSimAtivo: false } : m)),
     })
-    cena3DRef.current = ctrl3D
 
-    // 2. Monta a Maquete/Editor 2D em paralelo (dona da persistência e undo/redo da sala)
     async function montarPixi() {
       const corFundo = typeof sala.paleta?.vazio === 'number' ? sala.paleta.vazio : PALETAS.neutra.vazio
 
@@ -308,78 +353,45 @@ export function Escritorio() {
       app = aplicacao
       hospedeiro2D!.appendChild(aplicacao.canvas)
 
-      const mundo = new Container()
-      aplicacao.stage.addChild(mundo)
+      const mundoPixi = new Container()
+      aplicacao.stage.addChild(mundoPixi)
+
+      // clique que na verdade foi o fim de um arraste de câmera não é clique
+      const foiArraste = () => cameraRef.current?.acabouDeArrastar() ?? false
 
       const cena = await criarCena(sala, {
-        aoClicarAgente: (id, telaX, telaY) => {
-          if (typeof telaX === 'number' && typeof telaY === 'number') {
-            const m = mundoSimsRef.current
-            const alvo = m.sims[id]
-            const ativo = m.sims[m.simAtivoId]
-            if (alvo && ativo) {
-              setMenuPie({
-                x: telaX,
-                y: telaY,
-                tituloAlvo: `${alvo.nome} (${alvo.funcao})`,
-                opcoes: obterInteracoesDoSim(alvo, ativo),
-              })
-              return
-            }
-          }
-          setAgenteAberto(id)
-          setMensagensAbertas(false)
-          setConfiguracoesAbertas(false)
+        aoClicarAgente: (id, x, y) => {
+          if (foiArraste()) return
+          if (typeof x === 'number' && typeof y === 'number') abrirMenuDoSim(id, x, y)
+          else abrirPainelAgente(id)
         },
-        aoClicarMovelSimulacao: (movel, telaX, telaY) => {
-          const m = mundoSimsRef.current
-          const ativo = m.sims[m.simAtivoId]
-          if (!ativo) return
-          const opcoes = obterInteracoesDoMovel(
-            movel,
-            cenaRef.current?.maquete.moveis ?? sala.moveis,
-            ativo,
-          )
-          setMenuPie({
-            x: telaX,
-            y: telaY,
-            tituloAlvo: rotuloDe(movel.peca),
-            opcoes,
-          })
+        aoClicarMovelSimulacao: (movel, x, y) => {
+          if (!foiArraste()) abrirMenuDoMovel(movel.id, x, y)
         },
-        aoClicarPiso: (coluna, linha, telaX, telaY) => {
-          setMenuPie({
-            x: telaX,
-            y: telaY,
-            tituloAlvo: `Piso (${coluna.toFixed(1)}, ${linha.toFixed(1)})`,
-            opcoes: obterInteracoesDoChao(coluna, linha),
-          })
+        aoClicarPiso: (coluna, linha, x, y) => {
+          if (!foiArraste()) abrirMenuDoChao(coluna, linha, x, y)
         },
       })
       if (desmontado) return
-      mundo.addChild(cena.raiz)
+      mundoPixi.addChild(cena.raiz)
       cenaRef.current = cena
-      cena.sincronizarMundoSims(mundoSimsRef.current)
-      aplicarEstadosNaCena()
+      cena.sincronizarMundoSims(mundoRef.current!)
+      aplicarEstadosAoVivo()
 
-      const problemasConjunto = conferirConjuntoDeSalas(todasAsSalasComRascunho())
-      setProblemas([...cena.problemas, ...problemasConjunto])
+      setProblemas([...cena.problemas, ...conferirConjuntoDeSalas(todasAsSalasComRascunho())])
 
       const editor = criarEditor(
         cena,
-        mundo,
+        mundoPixi,
         aplicacao.stage,
         () => {
           const atual = editorRef.current?.estado() ?? null
           setEstado(atual)
           cena.definirAgentesClicaveis(!atual?.ativo)
-          if (atual?.ativo) setMenuPie(null)
-          // Sincroniza qualquer edição de móvel (girar, adicionar, desfazer, excluir) com a cena 3D!
-          cena3DRef.current?.sincronizarSala(
-            cena.maquete.exportar(),
-            atual?.selecionado?.id ?? null,
-            Boolean(atual?.ativo),
-          )
+          if (atual?.ativo) setMenu(null)
+          // toda edição de móvel (girar, adicionar, desfazer, excluir) vai
+          // pro 3D também — a maquete é a dona da sala
+          cena3DRef.current?.sincronizarSala(cena.maquete.exportar(), atual?.selecionado?.id ?? null, Boolean(atual?.ativo))
         },
         idSala,
       )
@@ -388,11 +400,9 @@ export function Escritorio() {
 
       cameraRef.current = criarControladorCamera(
         aplicacao,
-        mundo,
+        mundoPixi,
         () => !(editorRef.current?.estado().ativo ?? false),
-        () => {
-          setMundoSims((ant) => (ant.seguirSimAtivo ? { ...ant, seguirSimAtivo: false } : ant))
-        },
+        () => atualizarMundo((m) => (m.seguirSimAtivo ? { ...m, seguirSimAtivo: false } : m)),
       )
     }
 
@@ -410,64 +420,32 @@ export function Escritorio() {
       cenaRef.current = null
       app?.destroy(true, { children: true })
     }
-  }, [aplicarEstadosNaCena])
-
-  // Loop de simulação The Sims (4Hz)
-  useEffect(() => {
-    const intervalo = window.setInterval(() => {
-      if (editorRef.current?.estado().ativo) return
-      const salaAtual = cenaRef.current?.maquete.sala
-      if (!salaAtual) return
-      setMundoSims((anterior) => avancarSimulacaoSims(anterior, salaAtual, 0.25))
-    }, 250)
-    return () => window.clearInterval(intervalo)
-  }, [])
-
-  // Sincroniza mundo Sims com as cenas 3D e 2D e processa viagem por porta
-  useEffect(() => {
-    if (mundoSims.salaPendenteViagem) {
-      definirSalaAtual(mundoSims.salaPendenteViagem)
-      recarregarDeProposito()
-      return
-    }
-    cena3DRef.current?.sincronizarMundoSims(mundoSims)
-    cenaRef.current?.sincronizarMundoSims(mundoSims)
-    if (mundoSims.seguirSimAtivo) {
-      const ativo = mundoSims.sims[mundoSims.simAtivoId]
-      if (ativo) {
-        cameraRef.current?.definirSeguirPonto(pontoMundoDoSim(ativo.coluna, ativo.linha))
-      }
-    } else {
-      cameraRef.current?.definirSeguirPonto(null)
-    }
-  }, [mundoSims])
+  }, [aplicarEstadosAoVivo, atualizarMundo, abrirMenuDoSim, abrirMenuDoMovel, abrirMenuDoChao, abrirPainelAgente])
 
   useEffect(() => {
     cena3DRef.current?.definirModoParedes(modoParedes)
   }, [modoParedes])
 
   useEffect(() => {
-    aplicarEstadosNaCena()
-  }, [agentesAoVivo, aplicarEstadosNaCena])
+    cena3DRef.current?.definirVisivel(modo3D)
+  }, [modo3D])
+
+  useEffect(() => {
+    aplicarEstadosAoVivo()
+  }, [agentesAoVivo, aplicarEstadosAoVivo])
 
   useEffect(() => {
     function aoTeclar(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        if (menuPie) {
-          setMenuPie(null)
-          return
-        }
-        if (agenteAberto || mensagensAbertas || configuracoesAbertas || salasAbertas) {
-          setAgenteAberto(null)
-          setMensagensAbertas(false)
-          setConfiguracoesAbertas(false)
+        if (menu) setMenu(null)
+        else if (painel || salasAbertas) {
+          setPainel(null)
           setSalasAbertas(false)
-          return
         }
+        return
       }
 
-      if (mensagensAbertas || configuracoesAbertas || agenteAberto) return
-
+      if (painel || criadorAberto) return
       const editor = editorRef.current
       if (!editor) return
       const alvo = e.target as HTMLElement | null
@@ -478,48 +456,38 @@ export function Escritorio() {
         return
       }
 
+      // Modo simulação: espaço/0 pausa, 1-3 velocidade, WASD câmera,
+      // Q/R (ou , .) giram a câmera 3D.
       if (!editor.estado().ativo) {
-        if (e.key === '0' || e.key === ' ') {
+        const tecla = e.key.toLowerCase()
+        if (tecla === ' ' || tecla === '0') {
+          // espaço com foco num botão do HUD também "clicaria" nele
           e.preventDefault()
-          setMundoSims((ant) => ({ ...ant, velocidade: ant.velocidade === 0 ? 1 : 0 }))
+          atualizarMundo((m) => ({ ...m, velocidade: m.velocidade === 0 ? 1 : 0 }))
           return
         }
-        if (e.key === '1' || e.key === '2' || e.key === '3') {
-          const v = Number(e.key) as VelocidadeTempo
-          setMundoSims((ant) => ({ ...ant, velocidade: v }))
+        if (tecla === '1' || tecla === '2' || tecla === '3') {
+          atualizarMundo((m) => ({ ...m, velocidade: Number(tecla) as VelocidadeTempo }))
           return
         }
-        if (e.key === 'q' || e.key === 'Q' || e.key === ',') {
+        if (tecla === 'q' || tecla === ',') {
           cena3DRef.current?.girarCameraHorizontal(-0.28)
           return
         }
-        if (e.key === 'r' || e.key === 'R' || e.key === '.') {
+        if (tecla === 'r' || tecla === '.') {
           cena3DRef.current?.girarCameraHorizontal(0.28)
           return
         }
-        if (e.key === 'w' || e.key === 'W') {
-          cena3DRef.current?.deslocarCameraTeclado(0, 0.55)
-          cameraRef.current?.deslocarPorTeclado(0, 42)
-          return
-        }
-        if (e.key === 's' || e.key === 'S') {
-          cena3DRef.current?.deslocarCameraTeclado(0, -0.55)
-          cameraRef.current?.deslocarPorTeclado(0, -42)
-          return
-        }
-        if (e.key === 'a' || e.key === 'A') {
-          cena3DRef.current?.deslocarCameraTeclado(-0.55, 0)
-          cameraRef.current?.deslocarPorTeclado(42, 0)
-          return
-        }
-        if (e.key === 'd' || e.key === 'D') {
-          cena3DRef.current?.deslocarCameraTeclado(0.55, 0)
-          cameraRef.current?.deslocarPorTeclado(-42, 0)
-          return
+        const deslocamento: Record<string, [number, number]> = { w: [0, 1], s: [0, -1], a: [-1, 0], d: [1, 0] }
+        const d = deslocamento[tecla]
+        if (d) {
+          if (modo3D) cena3DRef.current?.deslocarCameraTeclado(d[0] * 0.55, d[1] * 0.55)
+          else cameraRef.current?.deslocarPorTeclado(-d[0] * 42, d[1] * 42)
         }
         return
       }
 
+      // Modo construir
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault()
         if (e.shiftKey) editor.refazer()
@@ -596,170 +564,116 @@ export function Escritorio() {
 
     window.addEventListener('keydown', aoTeclar)
     return () => window.removeEventListener('keydown', aoTeclar)
-  }, [agenteAberto, mensagensAbertas, configuracoesAbertas, salasAbertas, menuPie])
+  }, [painel, salasAbertas, menu, criadorAberto, modo3D, atualizarMundo])
 
   const chamar = useCallback((f: (e: Editor) => void) => {
     const editor = editorRef.current
     if (editor) f(editor)
   }, [])
 
-  const simAtivo = mundoSims.sims[mundoSims.simAtivoId] ?? Object.values(mundoSims.sims)[0]
-  const plumbAtivo = simAtivo
-    ? calcularCorPlumbBob(simAtivo.necessidades)
-    : { corHex: '#6ec71f', corNum: 0x6ec71f, nivelCritico: 'verde' as const }
+  const registrarEtiqueta = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) etiquetasRef.current.set(id, el)
+    else etiquetasRef.current.delete(id)
+  }, [])
+
+  const ativo = mundo.sims[mundo.simAtivoId] ?? Object.values(mundo.sims)[0]
+  const construindo = Boolean(estado?.ativo)
 
   return (
     <div style={{ width: '100vw', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
-      {/* Hospedeiro 3D WebGL (The Sims 4) */}
-      <div
-        ref={hospedeiro3DRef}
-        style={{
-          width: '100%',
-          height: '100%',
-          display: modo3DAtivo ? 'block' : 'none',
-        }}
-      />
+      <div ref={hospedeiro3DRef} style={{ width: '100%', height: '100%', display: modo3D ? 'block' : 'none' }} />
+      <div ref={hospedeiro2DRef} style={{ width: '100%', height: '100%', display: modo3D ? 'none' : 'block' }} />
 
-      {/* Hospedeiro 2D PixiJS (Maquete Isométrica Habbo) */}
-      <div
-        ref={hospedeiro2DRef}
-        style={{
-          width: '100%',
-          height: '100%',
-          display: modo3DAtivo ? 'none' : 'block',
-        }}
-      />
+      {ativo && (
+        <MenuRadial
+          menu={menu}
+          agenteAtivo={ativo}
+          corDiamante={calcularCorDiamante(ativo.necessidades).corHex}
+          aoEscolher={executarOpcao}
+          aoFechar={() => setMenu(null)}
+        />
+      )}
 
-      {/* Menu Radial Pie Menu (The Sims 4) */}
-      <MenuPie
-        menu={menuPie}
-        simAtivoId={mundoSims.simAtivoId}
-        corPlumbBobHex={plumbAtivo.corHex}
-        aoEscolher={executarOpcaoPieMenu}
-        aoFechar={() => setMenuPie(null)}
-      />
-
-      {/* HUD Principal Estilo The Sims 4 */}
-      <HudTheSims
-        mundo={mundoSims}
-        modo3DAtivo={modo3DAtivo}
+      <HudSimulacao
+        mundo={mundo}
+        modo3D={modo3D}
         modoParedes={modoParedes}
-        projecoes3D={projecoes3D}
-        modoConstruirAtivo={Boolean(estado?.ativo)}
+        construindo={construindo}
         salasAbertas={salasAbertas}
-        mensagensAbertas={mensagensAbertas}
-        configuracoesAbertas={configuracoesAbertas}
+        mensagensAbertas={painel?.tipo === 'mensagens'}
+        configuracoesAbertas={painel?.tipo === 'configuracoes'}
         contagemNaoLidas={contagemNaoLidas}
         dryRunAtivo={dryRunAtivo}
         avancandoTick={avancar.isPending}
-        aoSelecionarSim={(simId) => {
-          setMundoSims((ant) => ({ ...ant, simAtivoId: simId }))
-        }}
-        aoAbrirPainelAgente={(simId) => {
-          setAgenteAberto(simId)
-          setMensagensAbertas(false)
-          setConfiguracoesAbertas(false)
-        }}
-        aoMudarVelocidade={(velocidade) => {
-          setMundoSims((ant) => ({ ...ant, velocidade }))
-        }}
-        aoAlternarAutonomia={() => {
-          setMundoSims((ant) => ({ ...ant, autonomiaAtiva: !ant.autonomiaAtiva }))
-        }}
-        aoAlternarSeguirSim={() => {
-          setMundoSims((ant) => ({ ...ant, seguirSimAtivo: !ant.seguirSimAtivo }))
-        }}
-        aoAlternarModo3D={() => {
-          setModo3DAtivo((v) => !v)
-        }}
-        aoCiclarModoParedes={() => {
-          setModoParedes((atual) =>
-            atual === 'cortadas' ? 'altas' : atual === 'altas' ? 'baixas' : 'cortadas',
-          )
-        }}
-        aoGirarCamera3D={(direcao) => {
-          cena3DRef.current?.girarCameraHorizontal(direcao * 0.38)
-        }}
-        aoZoom={(fator) => {
-          if (modo3DAtivo) cena3DRef.current?.aplicarZoom(fator)
-          else cameraRef.current?.aplicarZoom(fator)
-        }}
-        aoCentralizarCamera={() => {
-          setMundoSims((ant) => ({ ...ant, seguirSimAtivo: false }))
-          if (modo3DAtivo) cena3DRef.current?.centralizarCamera()
+        registrarEtiqueta={registrarEtiqueta}
+        aoSelecionar={(id) => atualizarMundo((m) => ({ ...m, simAtivoId: id }))}
+        aoAbrirPainelAgente={abrirPainelAgente}
+        aoMudarVelocidade={(velocidade) => atualizarMundo((m) => ({ ...m, velocidade }))}
+        aoAlternarAutonomia={() => atualizarMundo((m) => ({ ...m, autonomiaAtiva: !m.autonomiaAtiva }))}
+        aoAlternarSeguir={() => atualizarMundo((m) => ({ ...m, seguirSimAtivo: !m.seguirSimAtivo }))}
+        aoAlternarModo3D={() => setModo3D((v) => !v)}
+        aoCiclarParedes={() => setModoParedes((a) => (a === 'cortadas' ? 'altas' : a === 'altas' ? 'baixas' : 'cortadas'))}
+        aoGirarCamera={(direcao) => cena3DRef.current?.girarCameraHorizontal(direcao * 0.38)}
+        aoZoom={(fator) => (modo3D ? cena3DRef.current?.aplicarZoom(fator) : cameraRef.current?.aplicarZoom(fator))}
+        aoCentralizar={() => {
+          atualizarMundo((m) => ({ ...m, seguirSimAtivo: false }))
+          if (modo3D) cena3DRef.current?.centralizarCamera()
           else cameraRef.current?.centralizarSala(false)
         }}
-        aoCancelarInteracao={(indice) => {
-          setMundoSims((ant) => cancelarInteracaoSim(ant, ant.simAtivoId, indice))
-        }}
-        aoAutoResolverNecessidade={(chave: ChaveNecessidade) => {
-          const salaAtual = cenaRef.current?.maquete.sala
-          if (!salaAtual) return
-          setMundoSims((ant) => {
-            const s = ant.sims[ant.simAtivoId]
-            if (!s) return ant
-            const op = escolherInteracaoParaNecessidade(s, chave, ant, salaAtual)
-            if (!op) return ant
-            return enfileirarInteracaoSim(ant, ant.simAtivoId, op, true)
+        aoCancelar={(indice) => atualizarMundo((m) => cancelarInteracaoSim(m, m.simAtivoId, indice))}
+        aoResolverNecessidade={(chave) => {
+          const sala = salaAtual()
+          atualizarMundo((m) => {
+            const s = m.sims[m.simAtivoId]
+            const op = s && escolherInteracaoParaNecessidade(s, chave, m, sala)
+            return op ? enfileirarInteracaoSim(m, s.id, op, true, sala) : m
           })
         }}
-        aoInteragirComColega={(alvoSimId, tipo) => {
-          setMundoSims((ant) => {
-            const s = ant.sims[ant.simAtivoId]
-            const alvo = ant.sims[alvoSimId]
-            if (!s || !alvo) return ant
-            const opcoes = obterInteracoesDoSim(alvo, s)
-            const escolhida = opcoes.find((o) =>
-              tipo === 'papo' ? o.id.startsWith('social-papo-') : o.id.startsWith('social-projeto-'),
-            )
-            if (!escolhida) return ant
-            return enfileirarInteracaoSim(ant, ant.simAtivoId, escolhida, true)
+        aoInteragirComColega={(alvoId, tipo) => {
+          const sala = salaAtual()
+          atualizarMundo((m) => {
+            const s = m.sims[m.simAtivoId]
+            const alvo = m.sims[alvoId]
+            if (!s || !alvo) return m
+            const prefixo = tipo === 'papo' ? 'social-papo-' : 'social-projeto-'
+            const op = obterInteracoesDoSim(alvo, s, sala).find((o) => o.id.startsWith(prefixo))
+            return op ? enfileirarInteracaoSim(m, s.id, op, true, sala) : m
           })
         }}
-        aoAlternarModoConstruir={() => chamar((e) => e.alternar())}
+        aoAlternarConstruir={() => chamar((e) => e.alternar())}
         aoAlternarSalas={() => setSalasAbertas((v) => !v)}
-        aoAlternarMensagens={() => {
-          setMensagensAbertas((v) => !v)
-          setAgenteAberto(null)
-          setConfiguracoesAbertas(false)
-        }}
-        aoAlternarConfiguracoes={() => {
-          setConfiguracoesAbertas((v) => !v)
-          setAgenteAberto(null)
-          setMensagensAbertas(false)
-        }}
-        aoClicarAvancarTick={aoClicarAvancar}
-        aoAbrirCriadorCAS={() => setCriadorCASAberto(true)}
+        aoAbrirCriador={() => setCriadorAberto(true)}
+        aoAlternarMensagens={() => alternarPainel({ tipo: 'mensagens' })}
+        aoAlternarConfiguracoes={() => alternarPainel({ tipo: 'configuracoes' })}
+        aoAvancarTick={aoClicarAvancar}
       />
 
-      {criadorCASAberto && (
-        <CriadorSimCAS
-          simInicialId={mundoSims.simAtivoId}
+      {criadorAberto && (
+        <CriadorPersonagem
+          simInicialId={mundo.simAtivoId}
           aoSalvarSim={(registro, ehNovo) => {
-            const salaAtual = cenaRef.current?.maquete.sala ?? carregarSala().sala
-            setMundoSims((ant) => integrarSimDoCASNoMundo(ant, registro, salaAtual, ehNovo))
+            atualizarMundo((m) => integrarSimDoCASNoMundo(m, registro, salaAtual(), ehNovo))
             cena3DRef.current?.atualizarAparenciaSim3D(registro.id, registro.aparencia)
-            setCriadorCASAberto(false)
+            setCriadorAberto(false)
             notificar({
               tipo: 'info',
               titulo: registro.nome,
-              texto: ehNovo
-                ? `${registro.nome} chegou pela calçada e entrou para a equipe do Hubbia!`
-                : `Visual 3D e traços de ${registro.nome} atualizados com sucesso!`,
+              texto: ehNovo ? `${registro.nome} chegou pela calçada.` : `Aparência de ${registro.nome} atualizada.`,
             })
           }}
-          aoRemoverSim={(simIdRemovido) => {
-            setMundoSims((ant) => {
-              const copia = { ...ant.sims }
-              delete copia[simIdRemovido]
-              return {
-                ...ant,
-                simAtivoId: 'cifra',
-                sims: copia,
+          aoRemoverSim={(idRemovido) => {
+            atualizarMundo((m) => {
+              const sims = { ...m.sims }
+              delete sims[idRemovido]
+              // tira também das relações dos outros
+              for (const [id, s] of Object.entries(sims)) {
+                sims[id] = { ...s, relacionamentos: s.relacionamentos.filter((r) => r.alvoId !== idRemovido) }
               }
+              const simAtivoId = m.simAtivoId === idRemovido ? AGENTES[0].id : m.simAtivoId
+              return { ...m, simAtivoId, sims }
             })
           }}
-          aoFechar={() => setCriadorCASAberto(false)}
+          aoFechar={() => setCriadorAberto(false)}
         />
       )}
 
@@ -781,23 +695,23 @@ export function Escritorio() {
         />
       )}
       <PainelProblemas problemas={problemas} aoFechar={() => setProblemas([])} />
-      {!estado?.ativo && salasAbertas && !agenteAberto && !mensagensAbertas && !configuracoesAbertas && (
-        <PainelSalas />
-      )}
-      {!estado?.ativo && <PopupPorta popup={estado?.popupPorta ?? null} />}
+      {/* trocar de sala no meio de uma conversa não faz sentido — o menu de
+          salas some com qualquer painel aberto, e no modo construir */}
+      {!construindo && salasAbertas && !painel && <PainelSalas />}
+      {!construindo && <PopupPorta popup={estado?.popupPorta ?? null} />}
 
-      {agenteAberto && <PainelDoAgente agenteId={agenteAberto} aoFechar={() => setAgenteAberto(null)} />}
-      {mensagensAbertas && <PainelMensagens aoFechar={() => setMensagensAbertas(false)} />}
-      {configuracoesAbertas && (
+      {painel?.tipo === 'agente' && <PainelDoAgente agenteId={painel.id} aoFechar={() => setPainel(null)} />}
+      {painel?.tipo === 'mensagens' && <PainelMensagens aoFechar={() => setPainel(null)} />}
+      {painel?.tipo === 'configuracoes' && (
         <PainelConfiguracoes
-          aoFechar={() => setConfiguracoesAbertas(false)}
+          aoFechar={() => setPainel(null)}
           dryRunAtivo={dryRunAtivo}
           aoAlternarDryRun={aoAlternarDryRun}
           ultimoResultado={ultimoResultado}
         />
       )}
-      {estado?.ativo && (
-        <CatalogoTheSims
+      {construindo && (
+        <CatalogoConstrucao
           aberto={catalogoAberto}
           aoAlternar={() => setCatalogoAberto((v) => !v)}
           aoAdicionar={(peca) => chamar((e) => e.adicionar(peca))}

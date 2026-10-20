@@ -351,26 +351,25 @@ export function criarEditor(
     recarregarDeProposito()
   }
 
-  // Só interativo em modo de edição (arrastar) OU, fora dele, se for
-  // uma porta válida (clicar navega). Nunca as duas coisas ao mesmo
-  // tempo — em edição, toda peça se comporta como móvel comum, mesmo
-  // as que têm `leva`, senão um clique pra mover viraria sem querer um
-  // clique pra sair da sala.
+  // Toda peça é clicável nos dois modos, mas o clique quer dizer coisa
+  // diferente: em edição, arrastar; fora dela, porta válida navega e o
+  // resto abre o menu radial do modo simulação (cena.ts). Nunca as duas
+  // coisas ao mesmo tempo — em edição, toda peça se comporta como móvel
+  // comum, mesmo as que têm `leva`, senão um clique pra mover viraria
+  // sem querer um clique pra sair da sala.
+  //
+  // (Antes, fora da edição, só porta ficava 'static' — e o menu radial
+  // de móvel só funcionava depois de entrar e sair da edição uma vez.)
   function aplicarInteratividade() {
     for (const m of maquete.moveis) {
       const sprite = maquete.spriteDe(m.id)
-      if (!sprite) continue
-      if (ativo) {
-        sprite.eventMode = 'static'
-        sprite.cursor = 'move'
-      } else if (portaValida(m)) {
-        sprite.eventMode = 'static'
-        sprite.cursor = 'pointer'
-      } else {
-        sprite.eventMode = 'none'
-        sprite.cursor = 'default'
-      }
+      if (sprite) prepararSprite(sprite)
     }
+  }
+
+  function prepararSprite(sprite: NonNullable<ReturnType<typeof maquete.spriteDe>>) {
+    sprite.eventMode = 'static'
+    sprite.cursor = ativo ? 'move' : 'pointer'
   }
 
   // Liga o clique de um sprite. Chamado de novo a cada peça
@@ -533,10 +532,7 @@ export function criarEditor(
       void maquete.adicionar(novo).then(() => {
         ligarClique(novo.id)
         const sprite = maquete.spriteDe(novo.id)
-        if (sprite) {
-          sprite.eventMode = ativo ? 'static' : 'none'
-          sprite.cursor = ativo ? 'move' : 'default'
-        }
+        if (sprite) prepararSprite(sprite)
         selecionadoId = novo.id
         notificar()
       })
@@ -585,10 +581,7 @@ export function criarEditor(
       void maquete.adicionar(novo).then(() => {
         ligarClique(novo.id)
         const sprite = maquete.spriteDe(novo.id)
-        if (sprite) {
-          sprite.eventMode = ativo ? 'static' : 'none'
-          sprite.cursor = ativo ? 'move' : 'default'
-        }
+        if (sprite) prepararSprite(sprite)
         // já seleciona a cópia: quase sempre o próximo gesto é arrastar
         // ela pro lugar
         selecionadoId = novo.id

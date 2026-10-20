@@ -3,16 +3,15 @@ import { direcaoParaAnguloY } from './moveis3d'
 import type { MovelSala, SalaDados } from './sala-dados'
 
 // ---------------------------------------------------------------------------
-// SISTEMA DE ROTEAMENTO A*, COLISÃO DE MOBÍLIA, SLOTS E JIGS SOCIAIS
+// ROTA, COLISÃO E ENCAIXE NOS MÓVEIS
 //
-// Extraído da arquitetura de `simulation.zip` e `core.zip` do The Sims 4:
-//   - `native/routing/connectivity.pyc` & `services/object_routing_service.pyc`
-//   - `visualization/jig_visualizer.pyc` (Jigs Sociais: pares de posições a
-//     0.72m de distância livres de colisão para conversas frente a frente)
-//   - `visualization/sectional_sofa_visualizer.pyc` (Múltiplos assentos por
-//     sofá/mesa para que Sims não sentem um em cima do outro)
-//   - `visualization/portal_visualizer.pyc` (Portais de entrada/saída de
-//     salas e da calçada/rua externa do lote)
+//   - pegada: retângulo que cada móvel ocupa no chão (o que bloqueia andar)
+//   - rota: A* numa grade de meio tile, desviando de móvel e de gente, e
+//     depois "esticada" (linha de visão) pra não andar em zigue-zague
+//   - encaixe (slot): pontos de uso de cada móvel — sofá tem 3 lugares,
+//     mesa tem frente e lados — pra ninguém sentar em cima de ninguém
+//   - conversa: dois agentes ficam frente a frente a ~0.72 tile
+//   - calçada: rota pra fora do lote é reta (não há móvel lá fora)
 // ---------------------------------------------------------------------------
 
 export interface PontoRota {

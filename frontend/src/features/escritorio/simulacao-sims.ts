@@ -4,7 +4,7 @@ import {
   resolverTracosSim,
   type RegistroSimCAS,
 } from './cas-sims'
-import { categoriaDe, rotuloDe } from './catalogo'
+import { categoriaDe, nomeDoMovel } from './catalogo'
 import {
   calcularCaminhoAEstrela,
   calcularPosicaoJigSocial,
@@ -19,26 +19,46 @@ import type { EstadoAgente } from '../../types/agente'
 import type { InteracaoAgente } from '../../types/interacao'
 
 // ---------------------------------------------------------------------------
-// MOTOR DE SIMULAÇÃO "THE SIMS 4" PARA O HUBBIA
+// MOTOR DO MODO SIMULAÇÃO
 //
-// Arquitetura extraída via engenharia reversa (REA / Ghidra) dos binários e
-// arquivos de configuração de The Sims 4 (C:\Program Files\EA Games\The Sims 4):
-//   - Game\Bin\Default.ini → seção [PlumbBob] (cores exatas por estado de
-//     necessidade) e [UI] piemenudeadzone = 28
-//   - Game\Bin\res\Camera.ini → FollowCameraParams e interpolação de zoom
-//   - Game\Bin\Python\DLLs\postures\posture_specs_x64.pyd → grafo de posturas
-//   - Data\Simulation\Gameplay\simulation.zip → subsistemas autonomy,
-//     interactions/si_state, routing/connectivity, visualization/jig_visualizer,
-//     visualization/portal_visualizer, services/rabbit_hole_service, cas/cas
+// Camada de jogo por cima do escritório: necessidades, humor, habilidades,
+// relações, fila de ações e autonomia de cada agente. Nada disso vai pro
+// backend — o único fio com o servidor é o estado real do agente
+// (`estadoBackend`) e o balão que uma rodada de tick provoca.
+//
+// `avancarSimulacaoSims` é PURA (devolve o mundo seguinte sem tocar no
+// anterior) e é chamada TODO QUADRO pelo laço da cena 3D (ver
+// Escritorio.tsx). Por isso nada aqui dentro arredonda: com passo de 1
+// quadro a queda de uma necessidade é ~0.005, e arredondar pra uma casa
+// engolia o decaimento inteiro. Arredondar é assunto de tela.
+//
+// Rota, colisão e encaixe nos móveis moram em roteamento-sims.ts; a
+// aparência e os traços editáveis, em cas-sims.ts.
 // ---------------------------------------------------------------------------
 
-export const COR_PLUMBBOB_VERDE = 0x6ec71f
-export const COR_PLUMBBOB_AMARELO = 0xffff00
-export const COR_PLUMBBOB_LARANJA = 0xff8000
-export const COR_PLUMBBOB_VERMELHO = 0xff0000
-export const COR_PLUMBBOB_BRANCO = 0xffffff
+// Faixas de uma necessidade — UMA régua só, usada pela cor do diamante,
+// pela barra do inspetor e pelo balão de reclamação (antes a barra tinha
+// limites próprios e ficava amarela com o diamante ainda verde).
+export type NivelNecessidade = 'bom' | 'atencao' | 'baixo' | 'critico'
 
-export const ZONA_MORTA_PIE_MENU_PX = 28
+export const LIMITES_NIVEL = { critico: 20, baixo: 38, atencao: 55 } as const
+
+export function nivelDaNecessidade(valor: number): NivelNecessidade {
+  if (valor < LIMITES_NIVEL.critico) return 'critico'
+  if (valor < LIMITES_NIVEL.baixo) return 'baixo'
+  if (valor < LIMITES_NIVEL.atencao) return 'atencao'
+  return 'bom'
+}
+
+// Cores do diamante e das barras, da paleta "Console" (index.css): verde
+// é o --good, vermelho o --danger; amarelo/laranja são os tons quentes que
+// ainda leem bem em cima do fundo escuro e do céu do mundo 3D.
+export const COR_NIVEL: Record<NivelNecessidade, { num: number; hex: string }> = {
+  bom: { num: 0x4ade80, hex: '#4ade80' },
+  atencao: { num: 0xfacc15, hex: '#facc15' },
+  baixo: { num: 0xfb923c, hex: '#fb923c' },
+  critico: { num: 0xef4444, hex: '#ef4444' },
+}
 
 export type VelocidadeTempo = 0 | 1 | 2 | 3
 
@@ -63,37 +83,37 @@ export const ROTULOS_NECESSIDADES: Record<ChaveNecessidade, { nome: string; icon
   energia: {
     nome: 'Energia',
     icone: '⚡',
-    descricao: 'Disposição física e mental. Recupere tomando café ou descansando em sofás e poltronas.',
+    descricao: 'Disposição pro expediente. Volta com café, sofá ou um alongamento.',
   },
   foco: {
     nome: 'Foco',
     icone: '🎯',
-    descricao: 'Clareza analítica para executar tarefas do Hubbia. Sobe lendo livros ou planejando.',
+    descricao: 'Clareza pra trabalhar. Sobe lendo, planejando ou depois de uma pausa.',
   },
   social: {
     nome: 'Social',
     icone: '💬',
-    descricao: 'Conexão com colegas de equipe e com o Chefe. Sobe conversando, elogiando ou discutindo projetos.',
+    descricao: 'Contato com os colegas. Sobe conversando ou alinhando projeto.',
   },
   cafeina: {
-    nome: 'Cafeína & Lanche',
+    nome: 'Café',
     icone: '☕',
-    descricao: 'Combustível de escritório. Sobe preparando expresso, pegando água ou fazendo uma pausa.',
+    descricao: 'Combustível de escritório. Volta com um expresso ou um lanche.',
   },
   ambiente: {
     nome: 'Ambiente',
     icone: '🌿',
-    descricao: 'Conforto estético calculado a partir das plantas, luzes e móveis da sala atual.',
+    descricao: 'Vem da sala: plantas, luz e móveis contam ponto. Muda no modo construir.',
   },
   diversao: {
     nome: 'Diversão',
     icone: '✨',
-    descricao: 'Criatividade e leveza no expediente. Sobe ouvindo música, contando piadas ou admirando a decoração.',
+    descricao: 'Leveza no dia. Sobe com música, piada ou um descanso.',
   },
 }
 
 // ---------------------------------------------------------------------------
-// POSTURE SPECS (`postures/posture_specs_x64.pyd`)
+// POSTURA — o que o corpo está fazendo, o que está na mão e onde está apoiado
 // ---------------------------------------------------------------------------
 export type AspectoCorpoPostura =
   | 'em_pe'
@@ -116,7 +136,7 @@ export interface EspecificacaoPostura {
 }
 
 // ---------------------------------------------------------------------------
-// HUMOR (EMOTIONS) E MODIFICADORES (BUFFS - `buffs/buff.pyc`)
+// HUMOR E MODIFICADORES — o resumo das necessidades num estado só, com motivo
 // ---------------------------------------------------------------------------
 export type HumorSim =
   | 'inspirado'
@@ -137,54 +157,55 @@ export interface InfoHumor {
   descricao: string
 }
 
+// Cores da paleta Console (as mesmas tintas do resto do app).
 export const INFO_HUMORES: Record<HumorSim, InfoHumor> = {
   inspirado: {
     id: 'inspirado',
     titulo: 'Inspirado',
-    corHex: '#06b6d4',
-    corNum: 0x06b6d4,
+    corHex: '#5eead4',
+    corNum: 0x5eead4,
     icone: '💡',
-    descricao: 'Criatividade em alta! Excelente para propor soluções novas no Hubbia.',
+    descricao: 'Cabeça cheia de ideia — bom momento pra propor coisa nova.',
   },
   focado: {
     id: 'focado',
     titulo: 'Focado',
-    corHex: '#8b5cf6',
-    corNum: 0x8b5cf6,
+    corHex: '#a78bfa',
+    corNum: 0xa78bfa,
     icone: '🔬',
-    descricao: 'Concentração máxima nas análises, código e compromissos.',
+    descricao: 'Concentrado no trabalho.',
   },
   energizado: {
     id: 'energizado',
     titulo: 'Energizado',
-    corHex: '#84cc16',
-    corNum: 0x84cc16,
+    corHex: '#a3e635',
+    corNum: 0xa3e635,
     icone: '⚡',
-    descricao: 'Movimenta-se mais rápido pelo escritório e conclui tarefas com vigor.',
+    descricao: 'Anda mais rápido pela sala.',
   },
   feliz: {
     id: 'feliz',
     titulo: 'Feliz',
-    corHex: '#22c55e',
-    corNum: 0x22c55e,
+    corHex: '#4ade80',
+    corNum: 0x4ade80,
     icone: '😊',
-    descricao: 'Necessidades equilibradas e ótimo clima no escritório.',
+    descricao: 'Necessidades em dia, clima bom.',
   },
   confiante: {
     id: 'confiante',
     titulo: 'Confiante',
-    corHex: '#f59e0b',
-    corNum: 0xf59e0b,
+    corHex: '#dbb15f',
+    corNum: 0xdbb15f,
     icone: '😎',
-    descricao: 'Pronto para liderar reuniões e apresentar resultados ao Chefe.',
+    descricao: 'Bem alinhado com a equipe.',
   },
   tenso: {
     id: 'tenso',
     titulo: 'Tenso',
-    corHex: '#f97316',
-    corNum: 0xf97316,
+    corHex: '#fb923c',
+    corNum: 0xfb923c,
     icone: '😤',
-    descricao: 'Sobrecarga cognitiva ou falta de pausa. Recomenda-se relaxar ou conversar.',
+    descricao: 'Precisa de uma pausa ou de café.',
   },
   exausto: {
     id: 'exausto',
@@ -192,15 +213,15 @@ export const INFO_HUMORES: Record<HumorSim, InfoHumor> = {
     corHex: '#ef4444',
     corNum: 0xef4444,
     icone: '😫',
-    descricao: 'Energia ou cafeína críticas! Precisa urgentemente de café ou descanso.',
+    descricao: 'Sem energia. Anda devagar até descansar.',
   },
   entediado: {
     id: 'entediado',
-    titulo: 'Normal',
-    corHex: '#94a3b8',
-    corNum: 0x94a3b8,
+    titulo: 'Entediado',
+    corHex: '#8d8779',
+    corNum: 0x8d8779,
     icone: '🙂',
-    descricao: 'Rotina tranquila no escritório.',
+    descricao: 'Faz tempo que não fala com ninguém.',
   },
 }
 
@@ -214,7 +235,7 @@ export interface ModificadorHumor {
 }
 
 // ---------------------------------------------------------------------------
-// INTERAÇÕES E FILA (`interactions/si_state.pyc` & `pie_menu_category.pyc`)
+// INTERAÇÕES (menu radial e autonomia) E FILA
 // ---------------------------------------------------------------------------
 export type CategoriaPieMenu =
   | 'trabalho'
@@ -316,6 +337,8 @@ export interface EstadoSim {
   tracos: TracoPersonalidade[]
   estadoBackend: EstadoAgente
   desempenhoCarreira: number // 0..100
+  // segundos (já com velocidade) até a autonomia reavaliar — ver RESPIRO
+  respiroSegundos?: number
 }
 
 export interface EstadoMundoSims {
@@ -381,12 +404,13 @@ const HABILIDADES_INICIAIS: Record<string, HabilidadeSim[]> = {
 }
 
 // ---------------------------------------------------------------------------
-// CÁLCULO DE COR DO PLUMBBOB (`Default.ini` [PlumbBob])
+// DIAMANTE (o indicador sobre a cabeça) — reflete a PIOR necessidade.
+// Ambiente fica de fora: é da sala, não do agente.
 // ---------------------------------------------------------------------------
-export function calcularCorPlumbBob(necessidades: NecessidadesSim): {
+export function calcularCorDiamante(necessidades: NecessidadesSim): {
   corNum: number
   corHex: string
-  nivelCritico: 'verde' | 'amarelo' | 'laranja' | 'vermelho'
+  nivel: NivelNecessidade
 } {
   const menor = Math.min(
     necessidades.energia,
@@ -395,38 +419,50 @@ export function calcularCorPlumbBob(necessidades: NecessidadesSim): {
     necessidades.cafeina,
     necessidades.diversao,
   )
-  if (menor < 20) {
-    return { corNum: COR_PLUMBBOB_VERMELHO, corHex: '#ff0000', nivelCritico: 'vermelho' }
-  }
-  if (menor < 38) {
-    return { corNum: COR_PLUMBBOB_LARANJA, corHex: '#ff8000', nivelCritico: 'laranja' }
-  }
-  if (menor < 55) {
-    return { corNum: COR_PLUMBBOB_AMARELO, corHex: '#ffff00', nivelCritico: 'amarelo' }
-  }
-  return { corNum: COR_PLUMBBOB_VERDE, corHex: '#6ec71f', nivelCritico: 'verde' }
+  const nivel = nivelDaNecessidade(menor)
+  return { corNum: COR_NIVEL[nivel].num, corHex: COR_NIVEL[nivel].hex, nivel }
 }
 
 // ---------------------------------------------------------------------------
-// PONTUAÇÃO DE AMBIENTE (`broadcasters/environment_score`)
+// AMBIENTE — nota da sala a partir da mobília. Cada categoria conta até um
+// teto: a 4ª planta já não muda nada, o que incentiva VARIAR a decoração
+// em vez de empilhar o mesmo vaso. (Antes cada móvel somava sem limite e a
+// sala padrão já nascia com 100.)
 // ---------------------------------------------------------------------------
+const PONTOS_AMBIENTE: Record<string, { pontos: number; teto: number }> = {
+  verde: { pontos: 8, teto: 3 },
+  luz: { pontos: 6, teto: 3 },
+  assentos: { pontos: 4, teto: 3 },
+  chao: { pontos: 5, teto: 2 },
+  eletro: { pontos: 4, teto: 2 },
+  guardar: { pontos: 3, teto: 2 },
+}
+const AMBIENTE_BASE = 40
+
+// Quanto UMA peça soma no ambiente (o catálogo mostra isso). 0 = não conta.
+export function pontosDeAmbienteDaPeca(peca: string): number {
+  if (peca.startsWith('chairDesk')) return 0
+  return PONTOS_AMBIENTE[categoriaDe(peca)]?.pontos ?? 0
+}
+
 export function calcularPontuacaoAmbiente(moveis: MovelSala[]): number {
-  let pontos = 52
+  const contagem = new Map<string, number>()
   for (const m of moveis) {
+    // cadeira de escritório é "trabalho", não conforto
+    if (m.peca.startsWith('chairDesk')) continue
     const cat = categoriaDe(m.peca)
-    if (cat === 'verde') pontos += 10
-    else if (cat === 'luz') pontos += 7
-    else if (cat === 'chao') pontos += 6
-    else if (cat === 'assentos') pontos += 4
-    else if (cat === 'eletro') pontos += 5
-    else if (cat === 'guardar') pontos += 4
-    else if (cat === 'trabalho' || cat === 'mesas') pontos += 2
+    if (PONTOS_AMBIENTE[cat]) contagem.set(cat, (contagem.get(cat) ?? 0) + 1)
   }
-  return Math.max(25, Math.min(100, pontos))
+  let pontos = AMBIENTE_BASE
+  for (const [cat, n] of contagem) {
+    const regra = PONTOS_AMBIENTE[cat]
+    pontos += regra.pontos * Math.min(n, regra.teto)
+  }
+  return Math.min(100, pontos)
 }
 
 // ---------------------------------------------------------------------------
-// CÁLCULO DE HUMOR E MODIFICADORES (`sims/multi_motive_buff_tracker.pyc`)
+// HUMOR — cada condição vira um modificador com peso; vence o que somar mais
 // ---------------------------------------------------------------------------
 export function recalcularHumorEModificadores(sim: EstadoSim): {
   humor: HumorSim
@@ -438,124 +474,124 @@ export function recalcularHumorEModificadores(sim: EstadoSim): {
   if (sim.foraDoLote) {
     mods.push({
       id: 'passeio-externo',
-      titulo: 'Ar Fresco na Vizinhança',
+      titulo: 'Ar fresco',
       icone: '🌳',
       humor: 'inspirado',
       bonus: 3,
-      motivo: 'Caminhando pela calçada/jardim fora do escritório.',
+      motivo: 'Está lá fora, na calçada.',
     })
   }
 
   if (n.energia < 25) {
     mods.push({
       id: 'sem-energia',
-      titulo: 'Bateria Arriada',
+      titulo: 'Sem bateria',
       icone: '🪫',
       humor: 'exausto',
       bonus: 3,
-      motivo: 'Energia muito baixa — sente-se num sofá ou tome um expresso.',
+      motivo: 'Energia muito baixa.',
     })
   } else if (n.energia > 80 && n.cafeina > 75) {
     mods.push({
       id: 'cafeina-alta',
-      titulo: 'Expresso Duplo na Veia',
+      titulo: 'Cafeinado',
       icone: '⚡',
       humor: 'energizado',
       bonus: 2,
-      motivo: 'Cheio de disposição e cafeína!',
+      motivo: 'Energia e café lá em cima.',
     })
   }
 
   if (n.cafeina < 25) {
     mods.push({
       id: 'fome-cafe',
-      titulo: 'Abstinência de Café',
+      titulo: 'Sem café',
       icone: '☕',
       humor: 'tenso',
       bonus: 2,
-      motivo: 'Precisa de uma pausa para café ou lanche.',
+      motivo: 'Precisa de uma pausa pro café.',
     })
   }
 
   if (n.foco > 78) {
     mods.push({
       id: 'fluxo-mental',
-      titulo: 'Estado de Flow',
+      titulo: 'Em flow',
       icone: '🔬',
       humor: 'focado',
       bonus: 2,
-      motivo: 'Mente afiada e pronta para decisões complexas no Hubbia.',
+      motivo: 'Concentração alta.',
     })
   } else if (n.foco < 30 || n.diversao < 28) {
     mods.push({
       id: 'sobrecarga',
-      titulo: 'Fadiga Cognitiva',
+      titulo: 'Cabeça cansada',
       icone: '🌀',
       humor: 'tenso',
       bonus: 2,
-      motivo: 'Muitas tarefas seguidas sem diversão ou leitura.',
+      motivo: 'Muito trabalho seguido sem pausa.',
     })
   }
 
   if (n.ambiente >= 75) {
     mods.push({
       id: 'escritorio-decorado',
-      titulo: 'Escritório Inspirador',
+      titulo: 'Sala inspiradora',
       icone: '🌿',
       humor: 'inspirado',
       bonus: 2,
-      motivo: 'Plantas e iluminação da sala estimulam novas ideias.',
+      motivo: 'A decoração da sala ajuda.',
     })
   }
 
   if (n.social >= 78) {
     mods.push({
       id: 'sinergia-equipe',
-      titulo: 'Sinergia de Equipe',
+      titulo: 'Equipe afinada',
       icone: '🤝',
       humor: 'confiante',
       bonus: 2,
-      motivo: 'Boas conversas e alinhamento com os colegas do Hubbia.',
+      motivo: 'Conversou bastante com os colegas.',
     })
   } else if (n.social < 28) {
     mods.push({
       id: 'isolado',
-      titulo: 'Trabalhando no Isolamento',
+      titulo: 'Isolado',
       icone: '😶',
       humor: 'entediado',
       bonus: 1,
-      motivo: 'Faz tempo que não troca ideia com nenhum colega.',
+      motivo: 'Faz tempo que não fala com ninguém.',
     })
   }
 
   if (sim.estadoBackend === 'executando' || sim.estadoBackend === 'pensando') {
     mods.push({
       id: 'ia-ativa',
-      titulo: 'Processando IA ao Vivo',
+      titulo: 'Processando',
       icone: '🧠',
       humor: 'focado',
       bonus: 3,
-      motivo: 'O agente está processando raciocínio no servidor Hubbia.',
+      motivo: 'O agente está rodando no servidor.',
     })
   } else if (sim.estadoBackend === 'falando') {
     mods.push({
       id: 'ia-falando',
-      titulo: 'Em Diálogo com o Chefe',
+      titulo: 'Em conversa',
       icone: '💬',
       humor: 'confiante',
       bonus: 3,
-      motivo: 'Comunicando resultados diretamente no Hubbia.',
+      motivo: 'O agente está conversando agora.',
     })
   }
 
   if (mods.length === 0) {
     mods.push({
       id: 'equilibrado',
-      titulo: 'Expediente Equilibrado',
+      titulo: 'Dia equilibrado',
       icone: '😊',
       humor: 'feliz',
       bonus: 1,
-      motivo: 'Todas as necessidades estão em bom nível.',
+      motivo: 'Necessidades em dia.',
     })
   }
 
@@ -585,21 +621,34 @@ export function recalcularHumorEModificadores(sim: EstadoSim): {
 // Usa os slots reais de interação (`roteamento-sims.ts`) para nunca jogar
 // vários Sims no mesmo ponto nem dentro da mobília!
 // ---------------------------------------------------------------------------
+// Ponto da calçada em frente ao lote, pra onde "sair" leva. A calçada fica
+// na frente do meio do lote, uma faixa depois da última linha (moveis3d.ts).
+export function pontoNaRua(dim: DimensoesLote = DIMENSOES_PADRAO): { coluna: number; linha: number } {
+  return { coluna: (dim.colunas - 1) / 2, linha: dim.linhas + 0.9 }
+}
+
+export interface DimensoesLote {
+  colunas: number
+  linhas: number
+}
+const DIMENSOES_PADRAO: DimensoesLote = { colunas: 7, linhas: 7 }
+
 export function obterInteracoesDoMovel(
   movel: MovelSala,
   todosMoveis: MovelSala[],
   simAtivo: EstadoSim,
+  dim: DimensoesLote = DIMENSOES_PADRAO,
 ): OpcaoPieMenu[] {
   const opcoes: OpcaoPieMenu[] = []
   const cat = categoriaDe(movel.peca)
-  const rotulo = rotuloDe(movel.peca)
+  const rotulo = nomeDoMovel(movel.peca)
 
   // Porta / Portal: caminhar até a porta, abri-la e viajar ou passear na rua!
   if (movel.leva || movel.peca.startsWith('doorway')) {
     if (movel.leva) {
       opcoes.push({
         id: `porta-ir-${movel.id}`,
-        titulo: `Entrar em: ${movel.leva}`,
+        titulo: `Ir para ${movel.leva}`,
         icone: '🚪',
         categoria: 'navegacao',
         corDestaque: '#4ade80',
@@ -609,7 +658,7 @@ export function obterInteracoesDoMovel(
         alvoMovelId: movel.id,
         alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
         balaoIcone: '🚪',
-        balaoTexto: `Atravessando porta para ${movel.leva}...`,
+        balaoTexto: `Indo para ${movel.leva}`,
         acaoEspecial: 'trocar_sala',
         salaDestino: movel.leva,
       })
@@ -618,7 +667,7 @@ export function obterInteracoesDoMovel(
     opcoes.push(
       {
         id: `porta-sair-rua-${movel.id}`,
-        titulo: 'Sair para Compromisso Externo (Rua)',
+        titulo: 'Sair pra um compromisso',
         icone: '🚕',
         categoria: 'navegacao',
         corDestaque: '#38bdf8',
@@ -626,14 +675,14 @@ export function obterInteracoesDoMovel(
         posturaAlvo: 'interagindo_em_pe',
         carregandoAlvo: 'tablet',
         efeitos: { social: 28, foco: 22, diversao: 18 },
-        alvoPosicao: { coluna: 3, linha: 7.9 },
+        alvoPosicao: pontoNaRua(dim),
         balaoIcone: '🚕',
-        balaoTexto: 'Saindo pela calçada para compromisso externo!',
+        balaoTexto: 'Já volto',
         acaoEspecial: 'sair_lote',
       },
       {
         id: `porta-entrar-lote-${movel.id}`,
-        titulo: 'Entrar de Volta no Escritório',
+        titulo: 'Voltar pro escritório',
         icone: '🏢',
         categoria: 'navegacao',
         duracaoSegundos: 2,
@@ -642,7 +691,7 @@ export function obterInteracoesDoMovel(
         alvoMovelId: movel.id,
         alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
         balaoIcone: '🏢',
-        balaoTexto: 'De volta ao escritório!',
+        balaoTexto: 'De volta',
         acaoEspecial: 'entrar_lote',
       },
     )
@@ -675,11 +724,11 @@ export function obterInteracoesDoMovel(
         alvoMovelId: alvoAssento.id,
         alvoPosicao: { coluna: alvoAssento.coluna, linha: alvoAssento.linha },
         balaoIcone: '💻',
-        balaoTexto: `Trabalhando em ${simAtivo.funcao}`,
+        balaoTexto: `Mexendo em ${simAtivo.funcao}`,
       },
       {
         id: `otimizar-ia-${movel.id}`,
-        titulo: 'Planejar Estratégia (Foco)',
+        titulo: 'Planejar a semana',
         icone: '🔬',
         categoria: 'trabalho',
         corDestaque: '#06b6d4',
@@ -692,11 +741,11 @@ export function obterInteracoesDoMovel(
         alvoMovelId: alvoAssento.id,
         alvoPosicao: { coluna: alvoAssento.coluna, linha: alvoAssento.linha },
         balaoIcone: '📊',
-        balaoTexto: 'Revisando metas e indicadores!',
+        balaoTexto: 'Revisando prioridades',
       },
       {
         id: `navegar-diversao-${movel.id}`,
-        titulo: 'Ver Memes & Relaxar na Rede',
+        titulo: 'Dar uma pausa na tela',
         icone: '🕹️',
         categoria: 'necessidades',
         autonoma: true,
@@ -706,17 +755,19 @@ export function obterInteracoesDoMovel(
         alvoMovelId: alvoAssento.id,
         alvoPosicao: { coluna: alvoAssento.coluna, linha: alvoAssento.linha },
         balaoIcone: '😄',
-        balaoTexto: 'Haha, olha esse vídeo!',
+        balaoTexto: 'Só um vídeo rápido…',
       },
     )
   }
 
-  // Cozinha / Cafeteira / Geladeira
-  if (cat === 'cozinha' || movel.peca.includes('Coffee') || movel.peca.includes('Fridge')) {
-    opcoes.push(
-      {
+  // Café sai da cafeteira; lanche, da geladeira/micro-ondas/torradeira.
+  // Armário de cozinha não oferece nada: a cafeteira costuma ficar EM CIMA
+  // dele, e os dois oferecendo expresso mandavam dois agentes pro mesmo
+  // ponto.
+  if (movel.peca.includes('Coffee')) {
+    opcoes.push({
         id: `cafe-expresso-${movel.id}`,
-        titulo: 'Preparar Expresso Duplo',
+        titulo: 'Fazer um expresso',
         icone: '☕',
         categoria: 'necessidades',
         corDestaque: '#84cc16',
@@ -728,11 +779,13 @@ export function obterInteracoesDoMovel(
         alvoMovelId: movel.id,
         alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
         balaoIcone: '☕',
-        balaoTexto: 'Nada como um expresso fresquinho!',
-      },
-      {
+        balaoTexto: 'Expresso saindo',
+    })
+  }
+  if (/Fridge|Microwave|toaster/.test(movel.peca)) {
+    opcoes.push({
         id: `lanche-rapido-${movel.id}`,
-        titulo: 'Fazer Lanche Saudável',
+        titulo: 'Fazer um lanche',
         icone: '🥪',
         categoria: 'necessidades',
         autonoma: true,
@@ -742,9 +795,8 @@ export function obterInteracoesDoMovel(
         alvoMovelId: movel.id,
         alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
         balaoIcone: '🥗',
-        balaoTexto: 'Recarregando as energias!',
-      },
-    )
+        balaoTexto: 'Recarregando',
+    })
   }
 
   // Sofás, poltronas e cadeiras de descanso/reunião
@@ -752,7 +804,7 @@ export function obterInteracoesDoMovel(
     opcoes.push(
       {
         id: `descansar-sofa-${movel.id}`,
-        titulo: 'Relaxar & Recuperar Energia',
+        titulo: 'Descansar',
         icone: '🛋️',
         categoria: 'necessidades',
         corDestaque: '#22c55e',
@@ -763,11 +815,11 @@ export function obterInteracoesDoMovel(
         alvoMovelId: movel.id,
         alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
         balaoIcone: '😌',
-        balaoTexto: 'Pausa merecida no estofado...',
+        balaoTexto: 'Pausa merecida',
       },
       {
         id: `cochilo-sofa-${movel.id}`,
-        titulo: 'Tirar Cochilo Revigorante',
+        titulo: 'Tirar um cochilo',
         icone: '💤',
         categoria: 'necessidades',
         autonoma: true,
@@ -777,7 +829,7 @@ export function obterInteracoesDoMovel(
         alvoMovelId: movel.id,
         alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
         balaoIcone: '💤',
-        balaoTexto: 'Zzz... recarregando 100%!',
+        balaoTexto: 'Zzz…',
       },
     )
   }
@@ -786,7 +838,7 @@ export function obterInteracoesDoMovel(
   if (cat === 'guardar' || movel.peca.startsWith('book')) {
     opcoes.push({
       id: `ler-livro-${movel.id}`,
-      titulo: 'Ler Livro da Especialidade',
+      titulo: 'Ler sobre a área',
       icone: '📚',
       categoria: 'trabalho',
       corDestaque: '#8b5cf6',
@@ -799,7 +851,7 @@ export function obterInteracoesDoMovel(
       alvoMovelId: movel.id,
       alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
       balaoIcone: '📖',
-      balaoTexto: 'Estudando novos conceitos!',
+      balaoTexto: 'Estudando',
     })
   }
 
@@ -808,7 +860,7 @@ export function obterInteracoesDoMovel(
     opcoes.push(
       {
         id: `admirar-planta-${movel.id}`,
-        titulo: 'Admirar Planta & Respirar',
+        titulo: 'Respirar perto da planta',
         icone: '🌿',
         categoria: 'ambiente',
         corDestaque: '#06b6d4',
@@ -819,11 +871,11 @@ export function obterInteracoesDoMovel(
         alvoMovelId: movel.id,
         alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
         balaoIcone: '🌿',
-        balaoTexto: 'Que paz olhar o verde do escritório!',
+        balaoTexto: 'Que paz',
       },
       {
         id: `cuidar-planta-${movel.id}`,
-        titulo: 'Cuidar da Planta (Biofilia)',
+        titulo: 'Regar a planta',
         icone: '💧',
         categoria: 'ambiente',
         autonoma: true,
@@ -833,7 +885,7 @@ export function obterInteracoesDoMovel(
         alvoMovelId: movel.id,
         alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
         balaoIcone: '🌱',
-        balaoTexto: 'Cuidando do jardim do escritório!',
+        balaoTexto: 'Cuidando do verde',
       },
     )
   }
@@ -842,7 +894,7 @@ export function obterInteracoesDoMovel(
   if (cat === 'eletro') {
     opcoes.push({
       id: `curtir-som-${movel.id}`,
-      titulo: 'Curtir Música / Mídia',
+      titulo: 'Colocar uma música',
       icone: '🎵',
       categoria: 'necessidades',
       autonoma: true,
@@ -852,7 +904,7 @@ export function obterInteracoesDoMovel(
       alvoMovelId: movel.id,
       alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
       balaoIcone: '🎵',
-      balaoTexto: 'Esse som deixa o escritório incrível!',
+      balaoTexto: 'Essa é boa',
     })
   }
 
@@ -860,7 +912,7 @@ export function obterInteracoesDoMovel(
   if (cat === 'mesas') {
     opcoes.push({
       id: `reuniao-mesa-${movel.id}`,
-      titulo: 'Revisar Pauta na Mesa',
+      titulo: 'Revisar a pauta',
       icone: '📋',
       categoria: 'trabalho',
       autonoma: true,
@@ -871,14 +923,14 @@ export function obterInteracoesDoMovel(
       alvoMovelId: movel.id,
       alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
       balaoIcone: '📋',
-      balaoTexto: 'Organizando a pauta da equipe!',
+      balaoTexto: 'Organizando a pauta',
     })
   }
 
   // Opção universal em qualquer móvel: Examinar
   opcoes.push({
     id: `examinar-${movel.id}`,
-    titulo: `Examinar ${rotulo}`,
+    titulo: `Ver ${rotulo}`,
     icone: '🔍',
     categoria: 'ambiente',
     duracaoSegundos: 4,
@@ -887,7 +939,7 @@ export function obterInteracoesDoMovel(
     alvoMovelId: movel.id,
     alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
     balaoIcone: '✨',
-    balaoTexto: `Ótimo acabamento em ${rotulo}!`,
+    balaoTexto: `Olhando ${rotulo}`,
   })
 
   return opcoes
@@ -896,6 +948,7 @@ export function obterInteracoesDoMovel(
 export function obterInteracoesDoSim(
   alvoSim: EstadoSim,
   simAtivo: EstadoSim,
+  dim: DimensoesLote = DIMENSOES_PADRAO,
 ): OpcaoPieMenu[] {
   const mesmoSim = alvoSim.id === simAtivo.id
 
@@ -903,7 +956,7 @@ export function obterInteracoesDoSim(
     return [
       {
         id: `abrir-painel-${alvoSim.id}`,
-        titulo: `Abrir Painel (${alvoSim.nome})`,
+        titulo: 'Abrir painel',
         icone: '🗂️',
         categoria: 'hubbia',
         corDestaque: '#4ade80',
@@ -911,13 +964,13 @@ export function obterInteracoesDoSim(
         posturaAlvo: simAtivo.postura.corpo,
         efeitos: {},
         balaoIcone: '🗂️',
-        balaoTexto: `Abrindo painel de ${alvoSim.nome}`,
+        balaoTexto: alvoSim.nome,
         acaoEspecial: 'abrir_painel_hubbia',
         alvoSimId: alvoSim.id,
       },
       {
         id: `pausa-cafe-proprio-${alvoSim.id}`,
-        titulo: 'Tomar Expresso Rápido',
+        titulo: 'Tomar um café',
         icone: '☕',
         categoria: 'necessidades',
         corDestaque: '#84cc16',
@@ -927,11 +980,11 @@ export function obterInteracoesDoSim(
         carregandoAlvo: 'xicara_cafe',
         efeitos: { cafeina: 42, energia: 28, diversao: 10 },
         balaoIcone: '☕',
-        balaoTexto: 'Pausa rápida pro expresso!',
+        balaoTexto: 'Pausa pro café',
       },
       {
         id: `alongar-proprio-${alvoSim.id}`,
-        titulo: 'Alongamento Ergonômico',
+        titulo: 'Alongar',
         icone: '🧘',
         categoria: 'necessidades',
         autonoma: true,
@@ -939,27 +992,27 @@ export function obterInteracoesDoSim(
         posturaAlvo: 'interagindo_em_pe',
         efeitos: { energia: 26, diversao: 16, foco: 12 },
         balaoIcone: '🧘',
-        balaoTexto: 'Alongando as costas e respirando fundo!',
+        balaoTexto: 'Esticando as costas',
       },
       {
         id: `passear-rua-${alvoSim.id}`,
-        titulo: 'Sair para Tomar Ar na Calçada',
+        titulo: 'Tomar um ar lá fora',
         icone: '🌳',
         categoria: 'navegacao',
         corDestaque: '#38bdf8',
         duracaoSegundos: 8,
         posturaAlvo: 'interagindo_em_pe',
         efeitos: { diversao: 28, energia: 18, ambiente: 20 },
-        alvoPosicao: { coluna: 3, linha: 7.8 },
+        alvoPosicao: pontoNaRua(dim),
         balaoIcone: '🌳',
-        balaoTexto: 'Saindo para respirar ar puro na calçada!',
+        balaoTexto: 'Vou tomar um ar',
         acaoEspecial: 'sair_lote',
       },
       ...(simAtivo.foraDoLote
         ? [
             {
               id: `voltar-escritorio-${alvoSim.id}`,
-              titulo: 'Entrar de Volta no Escritório',
+              titulo: 'Voltar pro escritório',
               icone: '🏢',
               categoria: 'navegacao' as const,
               corDestaque: '#4ade80',
@@ -968,7 +1021,7 @@ export function obterInteracoesDoSim(
               efeitos: { foco: 12 },
               alvoPosicao: { coluna: simAtivo.colunaCasa, linha: simAtivo.linhaCasa },
               balaoIcone: '🏢',
-              balaoTexto: 'Voltando para dentro do escritório!',
+              balaoTexto: 'Voltando',
               acaoEspecial: 'entrar_lote' as const,
             },
           ]
@@ -988,12 +1041,12 @@ export function obterInteracoesDoSim(
       efeitos: {},
       alvoSimId: alvoSim.id,
       balaoIcone: '💎',
-      balaoTexto: `${alvoSim.nome} ativo!`,
+      balaoTexto: alvoSim.nome,
       acaoEspecial: 'selecionar_sim',
     },
     {
       id: `abrir-painel-${alvoSim.id}`,
-      titulo: `Abrir Painel de ${alvoSim.nome}`,
+      titulo: `Abrir painel de ${alvoSim.nome}`,
       icone: '🗂️',
       categoria: 'hubbia',
       corDestaque: '#38bdf8',
@@ -1002,12 +1055,12 @@ export function obterInteracoesDoSim(
       efeitos: {},
       alvoSimId: alvoSim.id,
       balaoIcone: '🗂️',
-      balaoTexto: `Consultando ${alvoSim.nome}`,
+      balaoTexto: alvoSim.nome,
       acaoEspecial: 'abrir_painel_hubbia',
     },
     {
       id: `social-papo-${alvoSim.id}`,
-      titulo: `Bater Papo com ${alvoSim.nome}`,
+      titulo: `Conversar com ${alvoSim.nome}`,
       icone: '💬',
       categoria: 'social',
       autonoma: true,
@@ -1017,11 +1070,11 @@ export function obterInteracoesDoSim(
       habilidadeAfetada: 'carisma',
       alvoSimId: alvoSim.id,
       balaoIcone: '💬',
-      balaoTexto: `Trocando ideia com ${alvoSim.nome}!`,
+      balaoTexto: `Papo com ${alvoSim.nome}`,
     },
     {
       id: `social-projeto-${alvoSim.id}`,
-      titulo: `Alinhar Projeto com ${alvoSim.nome}`,
+      titulo: `Alinhar projeto com ${alvoSim.nome}`,
       icone: '🤝',
       categoria: 'trabalho',
       corDestaque: '#8b5cf6',
@@ -1033,11 +1086,11 @@ export function obterInteracoesDoSim(
       habilidadeAfetada: 'carisma',
       alvoSimId: alvoSim.id,
       balaoIcone: '📈',
-      balaoTexto: `Sincronizando dados com ${alvoSim.nome}!`,
+      balaoTexto: `Alinhando com ${alvoSim.nome}`,
     },
     {
       id: `social-piada-${alvoSim.id}`,
-      titulo: 'Contar Piada de Escritório',
+      titulo: 'Contar uma piada',
       icone: '😄',
       categoria: 'social',
       autonoma: true,
@@ -1047,11 +1100,11 @@ export function obterInteracoesDoSim(
       habilidadeAfetada: 'carisma',
       alvoSimId: alvoSim.id,
       balaoIcone: '😂',
-      balaoTexto: `Rindo muito com ${alvoSim.nome}!`,
+      balaoTexto: `Rindo com ${alvoSim.nome}`,
     },
     {
       id: `social-cafe-${alvoSim.id}`,
-      titulo: `Tomar Café com ${alvoSim.nome}`,
+      titulo: `Tomar café com ${alvoSim.nome}`,
       icone: '☕',
       categoria: 'necessidades',
       corDestaque: '#84cc16',
@@ -1062,12 +1115,17 @@ export function obterInteracoesDoSim(
       efeitos: { cafeina: 36, social: 28, energia: 20 },
       alvoSimId: alvoSim.id,
       balaoIcone: '☕',
-      balaoTexto: `Hora do café com ${alvoSim.nome}!`,
+      balaoTexto: `Café com ${alvoSim.nome}`,
     },
   ]
 }
 
-export function obterInteracoesDoChao(coluna: number, linha: number, linhasSala = 7): OpcaoPieMenu[] {
+export function obterInteracoesDoChao(
+  coluna: number,
+  linha: number,
+  linhasSala = 7,
+  colunasSala = 7,
+): OpcaoPieMenu[] {
   const c = Number(coluna.toFixed(2))
   const l = Number(linha.toFixed(2))
   const clicouForaDoLote = l > linhasSala - 0.5
@@ -1075,7 +1133,7 @@ export function obterInteracoesDoChao(coluna: number, linha: number, linhasSala 
   const opcoes: OpcaoPieMenu[] = [
     {
       id: `ir-aqui-${c}-${l}`,
-      titulo: clicouForaDoLote ? 'Passear até a Calçada / Jardim' : 'Ir até Aqui',
+      titulo: clicouForaDoLote ? 'Passear até ali' : 'Ir até aqui',
       icone: clicouForaDoLote ? '🌳' : '👣',
       categoria: 'navegacao',
       corDestaque: '#6ec71f',
@@ -1084,25 +1142,12 @@ export function obterInteracoesDoChao(coluna: number, linha: number, linhasSala 
       efeitos: clicouForaDoLote ? { diversao: 12, ambiente: 10 } : {},
       alvoPosicao: { coluna: c, linha: l },
       balaoIcone: clicouForaDoLote ? '🌳' : '👣',
-      balaoTexto: clicouForaDoLote ? 'Saindo para a calçada...' : 'Caminhando...',
+      balaoTexto: clicouForaDoLote ? 'Dando uma volta' : 'Indo',
       acaoEspecial: clicouForaDoLote ? 'sair_lote' : 'entrar_lote',
     },
     {
-      id: `pausa-cafe-chao-${c}-${l}`,
-      titulo: 'Pausa para Expresso Aqui',
-      icone: '☕',
-      categoria: 'necessidades',
-      duracaoSegundos: 6,
-      posturaAlvo: 'interagindo_em_pe',
-      carregandoAlvo: 'xicara_cafe',
-      efeitos: { cafeina: 38, energia: 22, diversao: 10 },
-      alvoPosicao: { coluna: c, linha: l },
-      balaoIcone: '☕',
-      balaoTexto: 'Apreciando um café fresquinho!',
-    },
-    {
       id: `alongar-chao-${c}-${l}`,
-      titulo: 'Alongar & Energizar Aqui',
+      titulo: 'Alongar aqui',
       icone: '🧘',
       categoria: 'necessidades',
       duracaoSegundos: 5,
@@ -1110,11 +1155,11 @@ export function obterInteracoesDoChao(coluna: number, linha: number, linhasSala 
       efeitos: { energia: 25, diversao: 18, foco: 10 },
       alvoPosicao: { coluna: c, linha: l },
       balaoIcone: '🧘',
-      balaoTexto: 'Renovando a postura e a energia!',
+      balaoTexto: 'Esticando as costas',
     },
     {
       id: `chamar-todos-${c}-${l}`,
-      titulo: 'Reunir Equipe Aqui',
+      titulo: 'Reunir a equipe aqui',
       icone: '📣',
       categoria: 'social',
       corDestaque: '#38bdf8',
@@ -1123,12 +1168,12 @@ export function obterInteracoesDoChao(coluna: number, linha: number, linhasSala 
       efeitos: { social: 25, foco: 15 },
       alvoPosicao: { coluna: c, linha: l },
       balaoIcone: '📣',
-      balaoTexto: 'Pessoal, reunião relâmpago aqui!',
+      balaoTexto: 'Reunião rápida',
       acaoEspecial: 'chamar_todos',
     },
     {
       id: `sair-compromisso-${c}-${l}`,
-      titulo: 'Sair para Compromisso Externo (Rua)',
+      titulo: 'Sair pra um compromisso',
       icone: '🚕',
       categoria: 'navegacao',
       corDestaque: '#38bdf8',
@@ -1136,9 +1181,9 @@ export function obterInteracoesDoChao(coluna: number, linha: number, linhasSala 
       posturaAlvo: 'interagindo_em_pe',
       carregandoAlvo: 'tablet',
       efeitos: { social: 28, foco: 20, diversao: 15 },
-      alvoPosicao: { coluna: 3, linha: linhasSala + 1.1 },
+      alvoPosicao: pontoNaRua({ colunas: colunasSala, linhas: linhasSala }),
       balaoIcone: '🚕',
-      balaoTexto: 'Indo até a rua para compromisso externo!',
+      balaoTexto: 'Já volto',
       acaoEspecial: 'sair_lote',
     },
   ]
@@ -1182,7 +1227,7 @@ export function criarEstadoMundoSims(sala: SalaDados): EstadoMundoSims {
   const sims: Record<string, EstadoSim> = {}
   const ocupantesAtuais: OcupanteRota[] = []
 
-  // 1. Sims originais do Hubbia (com customizações salvas no CAS se houver)
+  // 1. Os 4 agentes (com a aparência/traços salvos no criador, se houver)
   AGENTES.forEach((agente, idx) => {
     const reg = registrosCAS[agente.id]
     const movelAssento = sala.moveis.find((m) => m.agente === agente.id) ?? null
@@ -1203,7 +1248,7 @@ export function criarEstadoMundoSims(sala: SalaDados): EstadoMundoSims {
     const relacionamentos: RelacionamentoSim[] = [
       {
         alvoId: 'chefe',
-        nome: 'Chefe (Você)',
+        nome: 'Você',
         amizade: 82,
         sinergia: 88,
         rotulo: 'Parceiro Estratégico',
@@ -1272,6 +1317,8 @@ export function criarEstadoMundoSims(sala: SalaDados): EstadoMundoSims {
       tracos,
       estadoBackend: 'idle',
       desempenhoCarreira: 76 + idx * 4,
+      // primeira decisão escalonada — senão os quatro levantariam juntos
+      respiroSegundos: 0.5 + idx * 0.7,
     }
 
     const { humor, modificadores } = recalcularHumorEModificadores(sim)
@@ -1280,7 +1327,7 @@ export function criarEstadoMundoSims(sala: SalaDados): EstadoMundoSims {
     sims[agente.id] = sim
   })
 
-  // 2. Sims/Agentes extras criados pelo usuário no Create-A-Sim (CAS)
+  // 2. Personagens extras criados no criador de personagem
   let mundoInicial: EstadoMundoSims = {
     simAtivoId: AGENTES[0].id,
     velocidade: 1,
@@ -1303,9 +1350,8 @@ export function criarEstadoMundoSims(sala: SalaDados): EstadoMundoSims {
   return mundoInicial
 }
 
-// Integra ou atualiza um Sim criado/editado no Create-A-Sim (CAS) dentro do mundo vivo!
-// Se for um Sim recém-criado (`chegarPelaRua = true`), ele nasce no Portal da Rua e
-// caminha para dentro do escritório cumprimentando a equipe!
+// Integra ou atualiza um personagem criado/editado no criador dentro do mundo.
+// Recém-criado (`chegarPelaRua = true`) nasce na calçada e caminha pra dentro.
 export function integrarSimDoCASNoMundo(
   mundo: EstadoMundoSims,
   registro: RegistroSimCAS,
@@ -1390,7 +1436,7 @@ export function integrarSimDoCASNoMundo(
     balao: {
       tipo: 'fala',
       icone: '👋',
-      texto: `Olá equipe! ${registro.nome} chegando no Hubbia!`,
+      texto: `Oi, pessoal! Sou ${registro.nome}`,
       expiraEmMS: Date.now() + 7000,
     },
     habilidades: registro.habilidadesIniciais ?? [
@@ -1401,10 +1447,10 @@ export function integrarSimDoCASNoMundo(
     relacionamentos: [
       {
         alvoId: 'chefe',
-        nome: 'Chefe (Você)',
+        nome: 'Você',
         amizade: 80,
         sinergia: 85,
-        rotulo: 'Líder do Hubbia',
+        rotulo: 'Chefe',
       },
       ...Object.values(mundo.sims).map((outro) => ({
         alvoId: outro.id,
@@ -1457,7 +1503,7 @@ export function integrarSimDoCASNoMundo(
       novoSim.id,
       {
         id: `chegada-lote-${novoSim.id}`,
-        titulo: 'Entrar no Escritório (Chegada)',
+        titulo: 'Chegar no escritório',
         icone: '🏢',
         categoria: 'navegacao',
         corDestaque: '#4ade80',
@@ -1466,7 +1512,7 @@ export function integrarSimDoCASNoMundo(
         efeitos: { social: 10 },
         alvoPosicao: posCasa,
         balaoIcone: '👋',
-        balaoTexto: `Prazer em conhecer todos! Sou ${novoSim.nome}!`,
+        balaoTexto: 'Prazer, pessoal',
         acaoEspecial: 'entrar_lote',
       },
       true,
@@ -1478,18 +1524,23 @@ export function integrarSimDoCASNoMundo(
 }
 
 // ---------------------------------------------------------------------------
-// AUTONOMIA (`autonomy/autonomy_modes.pyc` & `PostureScoring`)
+// AUTONOMIA — agente livre escolhe sozinho, da mesma lista do menu radial
 // ---------------------------------------------------------------------------
+// Se a menor necessidade está acima disso e o agente tem cadeira, ele volta
+// pra mesa trabalhar em vez de "resolver" uma necessidade cheia.
+const CONFORTAVEL = 62
+
 export function escolherInteracaoAutonoma(
   sim: EstadoSim,
   mundo: EstadoMundoSims,
   sala: SalaDados,
+  sorte: () => number = Math.random,
 ): OpcaoPieMenu | null {
   // Se o Sim estava fora do lote e terminou o compromisso externo, volta para dentro!
   if (sim.foraDoLote) {
     return {
       id: `auto-voltar-lote-${sim.id}`,
-      titulo: 'Retornar ao Escritório',
+      titulo: 'Voltar pro escritório',
       icone: '🏢',
       categoria: 'navegacao',
       autonoma: true,
@@ -1498,7 +1549,7 @@ export function escolherInteracaoAutonoma(
       efeitos: {},
       alvoPosicao: { coluna: sim.colunaCasa, linha: sim.linhaCasa },
       balaoIcone: '🏢',
-      balaoTexto: 'Voltando do compromisso externo!',
+      balaoTexto: 'Voltando',
       acaoEspecial: 'entrar_lote',
     }
   }
@@ -1514,16 +1565,15 @@ export function escolherInteracaoAutonoma(
   entradas.sort((a, b) => a.valor - b.valor)
   const maisBaixa = entradas[0]
 
-  if (maisBaixa.valor > 62 && sim.movelCasaId) {
-    const movelCasa = sala.moveis.find((m) => m.id === sim.movelCasaId)
-    if (movelCasa) {
-      const opcoesCasa = obterInteracoesDoMovel(movelCasa, sala.moveis, sim)
-      const trabalhar = opcoesCasa.find((o) => o.id.startsWith('trabalhar-'))
-      if (trabalhar) return trabalhar
-    }
-  }
+  const movelCasa = sim.movelCasaId ? sala.moveis.find((m) => m.id === sim.movelCasaId) : undefined
+  const trabalhar = movelCasa
+    ? obterInteracoesDoMovel(movelCasa, sala.moveis, sim, sala).find((o) => o.id.startsWith('trabalhar-'))
+    : undefined
 
-  return escolherInteracaoParaNecessidade(sim, maisBaixa.chave, mundo, sala)
+  if (maisBaixa.valor > CONFORTAVEL && trabalhar) return trabalhar
+  // nada livre que resolva (a única cafeteira ocupada, por exemplo): volta
+  // pra mesa em vez de ficar parado esperando
+  return escolherInteracaoParaNecessidade(sim, maisBaixa.chave, mundo, sala, sorte) ?? trabalhar ?? null
 }
 
 export function escolherInteracaoParaNecessidade(
@@ -1531,17 +1581,20 @@ export function escolherInteracaoParaNecessidade(
   necessidade: ChaveNecessidade,
   mundo: EstadoMundoSims,
   sala: SalaDados,
+  sorte: () => number = Math.random,
 ): OpcaoPieMenu | null {
   const candidatas: OpcaoPieMenu[] = []
 
   for (const m of sala.moveis) {
-    for (const op of obterInteracoesDoMovel(m, sala.moveis, sim)) {
+    for (const op of obterInteracoesDoMovel(m, sala.moveis, sim, sala)) {
       if (op.autonoma) candidatas.push(op)
     }
   }
 
   for (const outro of Object.values(mundo.sims)) {
-    for (const op of obterInteracoesDoSim(outro, sim)) {
+    // colega lá fora não está disponível pra conversa
+    if (outro.id !== sim.id && outro.foraDoLote) continue
+    for (const op of obterInteracoesDoSim(outro, sim, sala)) {
       if (op.autonoma) candidatas.push(op)
     }
   }
@@ -1552,7 +1605,7 @@ export function escolherInteracaoParaNecessidade(
 
   for (const op of candidatas) {
     const ganhoAlvo = op.efeitos[necessidade] ?? 0
-    if (ganhoAlvo <= 0 && necessidade !== 'ambiente') continue
+    if (ganhoAlvo <= 0) continue
 
     if (op.alvoMovelId) {
       const movel = sala.moveis.find((m) => m.id === op.alvoMovelId)
@@ -1569,11 +1622,15 @@ export function escolherInteracaoParaNecessidade(
       if (ocupadoPorOutro) continue
     }
 
-    let nota = ganhoAlvo * 2.5
+    // perto ganha de longe; a própria mesa ganha bônus; e um pouco de
+    // sorte pra ninguém repetir o mesmo gesto sempre
+    const alvo = op.alvoPosicao ?? (op.alvoSimId ? mundo.sims[op.alvoSimId] : undefined)
+    const distancia = alvo ? Math.hypot(alvo.coluna - sim.coluna, alvo.linha - sim.linha) : 0
+    let nota = ganhoAlvo * 2.5 - distancia * 3
     if (op.alvoMovelId && op.alvoMovelId === sim.movelCasaId) {
       nota += 18
     }
-    nota += Math.random() * 8
+    nota += sorte() * 8
 
     if (nota > maiorNota) {
       maiorNota = nota
@@ -1585,7 +1642,7 @@ export function escolherInteracaoParaNecessidade(
 }
 
 // ---------------------------------------------------------------------------
-// FILA DE INTERAÇÕES (`SIState`) + ROTEAMENTO A* E RESERVA DE SLOTS
+// FILA DE INTERAÇÕES + ROTA A* E RESERVA DE ENCAIXE NO MÓVEL
 // ---------------------------------------------------------------------------
 export function enfileirarInteracaoSim(
   mundo: EstadoMundoSims,
@@ -1763,7 +1820,7 @@ function prepararInteracaoComRota(
 }
 
 // ---------------------------------------------------------------------------
-// PONTE COM RODADA DO BACKEND HUBBIA (`notificarResultadoDaRodada`)
+// PONTE COM A RODADA DO BACKEND — quem falou/trabalhou ganha um balão
 // ---------------------------------------------------------------------------
 export function aplicarInteracoesBackendNoMundo(
   mundo: EstadoMundoSims,
@@ -1772,13 +1829,17 @@ export function aplicarInteracoesBackendNoMundo(
   const novoMundo = { ...mundo, sims: { ...mundo.sims } }
 
   for (const inter of interacoes) {
-    const simEncontrado = Object.values(novoMundo.sims).find(
-      (s) => s.nome.toLowerCase() === inter.agente_nome.toLowerCase(),
-    )
+    // O backend identifica o agente pelo NOME original (AGENTES); o nome
+    // exibido pode ter sido trocado no criador, então ele é só o plano B.
+    const nomeBackend = inter.agente_nome.toLowerCase()
+    const idOriginal = AGENTES.find((a) => a.nome.toLowerCase() === nomeBackend)?.id
+    const simEncontrado =
+      (idOriginal && novoMundo.sims[idOriginal]) ||
+      Object.values(novoMundo.sims).find((s) => s.nome.toLowerCase() === nomeBackend)
     if (!simEncontrado) continue
 
-    const textoCurto =
-      (inter.mensagem || inter.motivo || inter.aviso || `${simEncontrado.nome} concluiu ação da rodada`).slice(0, 68)
+    // o balão quebra em linhas e corta sozinho — aqui vai o texto inteiro
+    const textoCurto = inter.mensagem || inter.motivo || inter.aviso || 'Terminei uma tarefa'
     const icone = inter.tipo === 'social' ? '💬' : inter.aviso ? '⚠️' : '⚡'
 
     novoMundo.sims[simEncontrado.id] = {
@@ -1797,20 +1858,42 @@ export function aplicarInteracoesBackendNoMundo(
 }
 
 // ---------------------------------------------------------------------------
-// PASSO DE SIMULAÇÃO POR TICK DE QUADRO (`time_service.pyc` + `routing`)
+// O QUADRO — chamado todo frame pelo laço da cena 3D
 // ---------------------------------------------------------------------------
+
+// 1 segundo real em velocidade 1 = 1 minuto no relógio do escritório; as
+// velocidades 2 e 3 multiplicam por 2 e 3 (o que o botão diz).
+const MINUTOS_POR_SEGUNDO = 1
+// Teto do passo: aba em segundo plano volta com um dt enorme, e sem isso
+// todo mundo "teletransportaria" até o destino num quadro só.
+const DT_MAXIMO = 0.1
+// Queda por segundo, em velocidade 1. Café cai mais rápido que foco: é o
+// que faz a ida à cafeteira ser o ritmo natural do dia.
+const DECAIMENTO = { energia: 0.3, cafeina: 0.36, social: 0.24, diversao: 0.26, foco: 0.16 } as const
+// Pontos de habilidade por segundo de prática: ~3 min por nível em
+// velocidade 1. Antes era 3.8/s e o nível 8 virava 10 em menos de 1 min.
+const GANHO_HABILIDADE = 0.55
+// Relação por segundo de interação social — pros DOIS lados.
+const GANHO_AMIZADE = 1.2
+const GANHO_SINERGIA = 1
+const GANHO_DESEMPENHO = 0.4
+// Segundos parado entre uma ação e outra. Sem isso o agente emendava uma
+// na outra no mesmo quadro (parece robô), e a autonomia — que testa todos
+// os móveis e calcula encaixe — rodava 60x por segundo quando nada servia.
+const RESPIRO = { min: 1.2, max: 3.5 }
+
 export function avancarSimulacaoSims(
   mundo: EstadoMundoSims,
   sala: SalaDados,
   deltaSegundosReais: number,
   agoraMS = Date.now(),
+  sorte: () => number = Math.random,
 ): EstadoMundoSims {
   if (mundo.velocidade === 0 || deltaSegundosReais <= 0) return mundo
 
-  const multiplicador = mundo.velocidade === 1 ? 1 : mundo.velocidade === 2 ? 2.25 : 4.2
-  const dt = Math.min(deltaSegundosReais, 0.25) * multiplicador
+  const dt = Math.min(deltaSegundosReais, DT_MAXIMO) * mundo.velocidade
 
-  let minutosDoDia = mundo.minutosDoDia + dt * 0.85
+  let minutosDoDia = mundo.minutosDoDia + dt * MINUTOS_POR_SEGUNDO
   let diaDaSemana = mundo.diaDaSemana
   if (minutosDoDia >= 24 * 60) {
     minutosDoDia -= 24 * 60
@@ -1820,6 +1903,10 @@ export function avancarSimulacaoSims(
   const pontuacaoAmbienteSala = calcularPontuacaoAmbiente(sala.moveis)
   const novosSims: Record<string, EstadoSim> = {}
   let salaPendenteViagem: string | null = mundo.salaPendenteViagem ?? null
+  // ganho de relação do LADO DE LÁ (quem recebeu o papo), aplicado depois
+  // do laço — mexer no outro agente no meio dele leria meio mundo velho,
+  // meio novo
+  const relacaoRecebida: { de: string; para: string }[] = []
 
   for (const [id, simOriginal] of Object.entries(mundo.sims)) {
     const sim: EstadoSim = {
@@ -1848,12 +1935,9 @@ export function avancarSimulacaoSims(
       sim.movelCasaId = movelAssento.id
     }
 
-    // Decaimento natural das necessidades
-    sim.necessidades.energia = limitar0a100(sim.necessidades.energia - dt * 0.32)
-    sim.necessidades.cafeina = limitar0a100(sim.necessidades.cafeina - dt * 0.38)
-    sim.necessidades.social = limitar0a100(sim.necessidades.social - dt * 0.26)
-    sim.necessidades.diversao = limitar0a100(sim.necessidades.diversao - dt * 0.28)
-    sim.necessidades.foco = limitar0a100(sim.necessidades.foco - dt * 0.18)
+    for (const chave of Object.keys(DECAIMENTO) as (keyof typeof DECAIMENTO)[]) {
+      sim.necessidades[chave] = limitar0a100(sim.necessidades[chave] - dt * DECAIMENTO[chave])
+    }
 
     if (sim.interacaoAtual) {
       const inter = { ...sim.interacaoAtual }
@@ -1915,8 +1999,8 @@ export function avancarSimulacaoSims(
             passoRestante -= dist
             sim.caminho.shift()
           } else {
-            sim.coluna = Number((sim.coluna + (dx / dist) * passoRestante).toFixed(3))
-            sim.linha = Number((sim.linha + (dy / dist) * passoRestante).toFixed(3))
+            sim.coluna += (dx / dist) * passoRestante
+            sim.linha += (dy / dist) * passoRestante
             passoRestante = 0
           }
         }
@@ -1980,32 +2064,16 @@ export function avancarSimulacaoSims(
         }
 
         if (op.habilidadeAfetada) {
-          sim.habilidades = sim.habilidades.map((h) => {
-            if (h.id !== op.habilidadeAfetada) return h
-            let novoProg = h.progresso + dt * 3.8
-            let novoNivel = h.nivel
-            if (novoProg >= 100 && novoNivel < 10) {
-              novoProg -= 100
-              novoNivel += 1
-            }
-            return { ...h, nivel: novoNivel, progresso: Math.min(100, Number(novoProg.toFixed(1))) }
-          })
+          sim.habilidades = sim.habilidades.map((h) => (h.id === op.habilidadeAfetada ? praticar(h, dt) : h))
         }
 
         if (op.alvoSimId && op.alvoSimId !== sim.id) {
-          sim.relacionamentos = sim.relacionamentos.map((r) =>
-            r.alvoId === op.alvoSimId
-              ? {
-                  ...r,
-                  amizade: limitar0a100(r.amizade + dt * 1.5),
-                  sinergia: limitar0a100(r.sinergia + dt * 1.2),
-                }
-              : r,
-          )
+          sim.relacionamentos = sim.relacionamentos.map((r) => (r.alvoId === op.alvoSimId ? aproximar(r, dt) : r))
+          relacaoRecebida.push({ de: sim.id, para: op.alvoSimId })
         }
 
         if (op.categoria === 'trabalho') {
-          sim.desempenhoCarreira = limitar0a100(sim.desempenhoCarreira + dt * 0.45)
+          sim.desempenhoCarreira = limitar0a100(sim.desempenhoCarreira + dt * GANHO_DESEMPENHO)
         }
 
         if (inter.progresso >= 1) {
@@ -2019,14 +2087,21 @@ export function avancarSimulacaoSims(
             sim.destinoLinha = prep.destino.linha
           } else {
             sim.interacaoAtual = null
-            sim.postura.carregando = 'nada'
+            sim.respiroSegundos = RESPIRO.min + sorte() * (RESPIRO.max - RESPIRO.min)
+            // sentado continua sentado; em pé larga o que tinha na mão
+            sim.postura = {
+              ...sim.postura,
+              corpo: sim.postura.corpo === 'interagindo_em_pe' ? 'em_pe' : sim.postura.corpo,
+              carregando: 'nada',
+            }
           }
         } else {
           sim.interacaoAtual = inter
         }
       }
-    } else if (mundo.autonomiaAtiva) {
-      const autonoma = escolherInteracaoAutonoma(sim, { ...mundo, sims: { ...mundo.sims, ...novosSims } }, sala)
+    } else if (mundo.autonomiaAtiva && (sim.respiroSegundos = Math.max(0, (sim.respiroSegundos ?? 0) - dt)) === 0) {
+      const autonoma = escolherInteracaoAutonoma(sim, { ...mundo, sims: { ...mundo.sims, ...novosSims } }, sala, sorte)
+      if (!autonoma) sim.respiroSegundos = RESPIRO.max
       if (autonoma) {
         const prep = prepararInteracaoComRota(sim, autonoma, { ...mundo, sims: { ...mundo.sims, ...novosSims } }, sala)
         sim.interacaoAtual = prep.instancia
@@ -2045,7 +2120,7 @@ export function avancarSimulacaoSims(
 
     // Verificação contínua de Espaço Pessoal e anti-colisão com móveis quando em pé:
     // Se um Sim em pé acabar muito perto de outro Sim ou de um móvel recém-movido,
-    // afasta-se suavemente para manter o espaço pessoal (`jig_visualizer.pyc`)!
+    // afasta-se suavemente para manter o espaço pessoal.
     if (sim.postura.corpo === 'em_pe' && !sim.foraDoLote) {
       const ocupantesTemp = construirOcupantesRota({ ...mundo.sims, ...novosSims })
       if (
@@ -2059,24 +2134,27 @@ export function avancarSimulacaoSims(
         )
       ) {
         const livre = encontrarPosicaoLivrePerto(sim.coluna, sim.linha, sala, ocupantesTemp, sim.id)
-        sim.coluna = Number((sim.coluna + (livre.coluna - sim.coluna) * 0.35).toFixed(3))
-        sim.linha = Number((sim.linha + (livre.linha - sim.linha) * 0.35).toFixed(3))
+        // passo proporcional ao tempo (era 35% POR CHAMADA — com o motor
+        // rodando todo quadro, viraria um tranco)
+        const k = 1 - Math.exp(-6 * dt)
+        sim.coluna += (livre.coluna - sim.coluna) * k
+        sim.linha += (livre.linha - sim.linha) * k
       }
     }
 
     if (!sim.balao) {
-      if (sim.necessidades.energia < 22) {
+      if (nivelDaNecessidade(sim.necessidades.energia) === 'critico') {
         sim.balao = {
           tipo: 'pensamento',
           icone: '🪫',
-          texto: 'Preciso descansar urgente!',
+          texto: 'Preciso descansar',
           expiraEmMS: agoraMS + 4000,
         }
-      } else if (sim.necessidades.cafeina < 22) {
+      } else if (nivelDaNecessidade(sim.necessidades.cafeina) === 'critico') {
         sim.balao = {
           tipo: 'pensamento',
           icone: '☕',
-          texto: 'Cadê meu café?!',
+          texto: 'Cadê o café?',
           expiraEmMS: agoraMS + 4000,
         }
       }
@@ -2086,6 +2164,11 @@ export function avancarSimulacaoSims(
     sim.humor = humor
     sim.modificadores = modificadores
     novosSims[id] = sim
+  }
+
+  for (const { de, para } of relacaoRecebida) {
+    const alvo = novosSims[para]
+    if (alvo) alvo.relacionamentos = alvo.relacionamentos.map((r) => (r.alvoId === de ? aproximar(r, dt) : r))
   }
 
   return {
@@ -2108,6 +2191,26 @@ export function formatarRelogioSim(minutosDoDia: number, diaDaSemana: number): s
   return `${dia} ${h}:${m}`
 }
 
+function praticar(h: HabilidadeSim, dt: number): HabilidadeSim {
+  if (h.nivel >= 10) return { ...h, progresso: 100 }
+  let progresso = h.progresso + dt * GANHO_HABILIDADE
+  let nivel = h.nivel
+  if (progresso >= 100) {
+    progresso -= 100
+    nivel += 1
+  }
+  return { ...h, nivel, progresso: nivel >= 10 ? 100 : progresso }
+}
+
+function aproximar(r: RelacionamentoSim, dt: number): RelacionamentoSim {
+  return {
+    ...r,
+    amizade: limitar0a100(r.amizade + dt * GANHO_AMIZADE),
+    sinergia: limitar0a100(r.sinergia + dt * GANHO_SINERGIA),
+  }
+}
+
+// Sem arredondar (ver o cabeçalho do arquivo).
 function limitar0a100(v: number): number {
-  return Math.max(0, Math.min(100, Number(v.toFixed(1))))
+  return Math.max(0, Math.min(100, v))
 }

@@ -1,27 +1,27 @@
 import * as THREE from 'three'
 import { obterAparenciaSim, type AparenciaSimCAS } from './cas-sims'
 import {
-  calcularCorPlumbBob,
-  COR_PLUMBBOB_VERDE,
+  calcularCorDiamante,
+  COR_NIVEL,
   type EstadoSim,
 } from './simulacao-sims'
 import { texturaTecido } from './texturas3d'
 
 // ---------------------------------------------------------------------------
-// PERSONAGEM 3D ARTICULADO ORGÂNICO COM BLENDING SUAVE (ARB / THE SIMS 4)
+// PERSONAGEM 3D ARTICULADO
 //
-// Evolução do modelo 3D inspirada nos subsistemas reais de The Sims 4:
-//   - `native/animation/arb.pyc` (Animation Result Buffer): em vez de zerar e
-//     trocar rotações de forma mecânica/abrupta entre estados, todas as 18
-//     articulações do esqueleto passam por amortecimento exponencial contínuo
-//     (`damp`), gerando transições 100% fluidas entre caminhar, sentar,
-//     digitar, beber café, ler e gesticular!
-//   - `routing/walkstyle/walkstyle_behavior.pyc`: 4 estilos de caminhada
-//     ('padrao', 'energizado', 'confiante', 'sereno') + articulação de
-//     tornozelo/pé (heel-to-toe roll) sincronizada com a velocidade real.
-//   - `cas/cas.pyc`: suporte completo a Create-A-Sim (tons de pele, íris dos
-//     olhos com esclera e brilho especular, 7 cortes de cabelo, 4 estilos de
-//     roupa com textura de tecido, 3 portes físicos, óculos e headset).
+// Boneco montado com primitivas (cápsula, esfera, cilindro) num esqueleto
+// de grupos aninhados — pelve → coluna → peito → pescoço → cabeça, mais
+// braços e pernas em 3 segmentos. Nenhum arquivo de modelo: aparência
+// (pele, cabelo, roupa, porte, óculos) vem do criador de personagem
+// (cas-sims.ts) e troca ao vivo.
+//
+// Animação = POSE ALVO por postura (andando, sentado, em pé, interagindo)
+// + amortecimento exponencial de cada articulação até ela. É isso que
+// deixa a troca de postura suave sem nenhuma curva de animação pronta.
+// O amortecimento usa o dt REAL do quadro (1 - e^(-k·dt)); antes havia um
+// piso de 0.08s que, a 60fps, fazia tudo 5x mais rápido que o pretendido
+// (e mais rápido ainda a 144Hz).
 // ---------------------------------------------------------------------------
 
 export interface ArticulacoesSim3D {
@@ -51,10 +51,9 @@ export interface ArticulacoesSim3D {
   propCafe: THREE.Group
   propLivro: THREE.Group
   propTablet: THREE.Group
-  plumbBobGrupo: THREE.Group
-  plumbBobMesh: THREE.Mesh
-  plumbBobHalo: THREE.Mesh
-  plumbBobLuz: THREE.PointLight
+  diamanteGrupo: THREE.Group
+  diamanteMesh: THREE.Mesh
+  diamanteHalo: THREE.Mesh
   anelSelecaoChao: THREE.Mesh
 }
 
@@ -103,6 +102,22 @@ function amortecerEuler(
   eulerAtual.z = amortecerValor(eulerAtual.z, rzAlvo, velocidade, dt)
 }
 
+// Tira e libera os filhos de um grupo que é reconstruído (roupa, cabelo).
+// Geometria é sempre exclusiva; material só é liberado se não for um dos
+// compartilhados do boneco (pele, roupa...), que continuam em uso. Antes
+// os filhos só eram removidos — a cada troca no criador, GPU vazando.
+function esvaziarGrupo(grupo: THREE.Group, materiaisCompartilhados: Set<THREE.Material>) {
+  for (const filho of [...grupo.children]) {
+    grupo.remove(filho)
+    filho.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return
+      o.geometry.dispose()
+      const mats = Array.isArray(o.material) ? o.material : [o.material]
+      for (const m of mats) if (!materiaisCompartilhados.has(m)) m.dispose()
+    })
+  }
+}
+
 export function criarPersonagemSim3D(
   agenteId: string,
   corIdentidade: number,
@@ -144,15 +159,18 @@ export function criarPersonagemSim3D(
   const matEscuro = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2 })
   const matBrilhoOlho = new THREE.MeshBasicMaterial({ color: 0xffffff })
   const matBoca = new THREE.MeshStandardMaterial({ color: 0xc25953, roughness: 0.38 })
+  const materiaisCompartilhados = new Set<THREE.Material>([
+    matPele, matCabelo, matRoupa, matCamisa, matCalca, matSapato, matEsclera, matIris, matEscuro, matBrilhoOlho, matBoca,
+  ])
 
   const grupoRaiz = new THREE.Group()
   grupoRaiz.name = `sim-${agenteId}`
 
-  // Anel de seleção luminoso no chão (estilo The Sims 4)
+  // Anel de seleção no chão
   const geoAnel = new THREE.RingGeometry(0.27, 0.34, 36)
   geoAnel.rotateX(-Math.PI / 2)
   const matAnel = new THREE.MeshBasicMaterial({
-    color: COR_PLUMBBOB_VERDE,
+    color: COR_NIVEL.bom.num,
     side: THREE.DoubleSide,
     transparent: true,
     opacity: 0.85,
@@ -161,7 +179,7 @@ export function criarPersonagemSim3D(
   anelSelecaoChao.position.y = 0.015
   grupoRaiz.add(anelSelecaoChao)
 
-  // --- PELVE (b__Pelvis__, altura padrão em pé = 0.56m) ---
+  // --- PELVE (altura em pé = 0.56m) ---
   const pelve = new THREE.Group()
   pelve.position.set(0, 0.56, 0)
   grupoRaiz.add(pelve)
@@ -177,7 +195,7 @@ export function criarPersonagemSim3D(
   malhaCinto.position.set(0, 0.055, 0)
   pelve.add(malhaCinto)
 
-  // --- COLUNA E PEITO (b__Spine0__ / b__Spine1__) ---
+  // --- COLUNA E PEITO ---
   const coluna = new THREE.Group()
   coluna.position.set(0, 0.06, 0)
   pelve.add(coluna)
@@ -191,9 +209,7 @@ export function criarPersonagemSim3D(
   peito.add(grupoRoupaTorso)
 
   function construirRoupaTorso(estiloRoupa: AparenciaSimCAS['estiloRoupa']) {
-    while (grupoRoupaTorso.children.length > 0) {
-      grupoRoupaTorso.remove(grupoRoupaTorso.children[0])
-    }
+    esvaziarGrupo(grupoRoupaTorso, materiaisCompartilhados)
 
     // Torso orgânico esculpido
     const torsoBase = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.138, 0.36, 20), matRoupa)
@@ -245,7 +261,7 @@ export function criarPersonagemSim3D(
     }
   }
 
-  // --- PESCOÇO E CABEÇA (b__Neck__ / b__Head__) ---
+  // --- PESCOÇO E CABEÇA ---
   const pescoco = new THREE.Group()
   pescoco.position.set(0, 0.385, 0)
   peito.add(pescoco)
@@ -327,9 +343,7 @@ export function criarPersonagemSim3D(
   cabeca.add(grupoCabeloEAcessorios)
 
   function construirCabeloEAcessorios(ap: AparenciaSimCAS) {
-    while (grupoCabeloEAcessorios.children.length > 0) {
-      grupoCabeloEAcessorios.remove(grupoCabeloEAcessorios.children[0])
-    }
+    esvaziarGrupo(grupoCabeloEAcessorios, materiaisCompartilhados)
 
     // Calota capilar base
     const topoCabelo = new THREE.Mesh(
@@ -478,7 +492,7 @@ export function criarPersonagemSim3D(
   const bracoEsq = criarBraco(-1)
   const bracoDir = criarBraco(1)
 
-  // --- OBJETOS CARREGADOS NAS MÃOS (PostureAspectCarry) ---
+  // --- OBJETOS NA MÃO (café, livro, tablet) ---
   const propCafe = new THREE.Group()
   const caneca = new THREE.Mesh(
     new THREE.CylinderGeometry(0.042, 0.036, 0.09, 16),
@@ -561,36 +575,35 @@ export function criarPersonagemSim3D(
   const pernaEsq = criarPerna(-1)
   const pernaDir = criarPerna(1)
 
-  // --- CRISTAL PLUMBBOB 3D REAL + POINT LIGHT (`Default.ini` [PlumbBob]) ---
-  const plumbBobGrupo = new THREE.Group()
-  plumbBobGrupo.position.set(0, 1.58, 0)
-  grupoRaiz.add(plumbBobGrupo)
+  // --- DIAMANTE sobre a cabeça: cor = pior necessidade do agente. Brilho
+  // vem do emissivo, sem luz pontual — uma PointLight por personagem pesava
+  // na GPU e recompilava todos os materiais a cada personagem novo. ---
+  const diamanteGrupo = new THREE.Group()
+  diamanteGrupo.position.set(0, 1.58, 0)
+  grupoRaiz.add(diamanteGrupo)
 
-  const geoPlumb = new THREE.OctahedronGeometry(0.11, 0)
-  geoPlumb.scale(0.75, 1.55, 0.75)
-  const matPlumb = new THREE.MeshStandardMaterial({
-    color: COR_PLUMBBOB_VERDE,
-    emissive: COR_PLUMBBOB_VERDE,
+  const geoDiamante = new THREE.OctahedronGeometry(0.11, 0)
+  geoDiamante.scale(0.75, 1.55, 0.75)
+  const matDiamante = new THREE.MeshStandardMaterial({
+    color: COR_NIVEL.bom.num,
+    emissive: COR_NIVEL.bom.num,
     emissiveIntensity: 0.65,
     roughness: 0.15,
     metalness: 0.25,
     flatShading: true,
   })
-  const plumbBobMesh = new THREE.Mesh(geoPlumb, matPlumb)
-  plumbBobGrupo.add(plumbBobMesh)
+  const diamanteMesh = new THREE.Mesh(geoDiamante, matDiamante)
+  diamanteGrupo.add(diamanteMesh)
 
   const matHalo = new THREE.MeshBasicMaterial({
-    color: COR_PLUMBBOB_VERDE,
+    color: COR_NIVEL.bom.num,
     wireframe: true,
     transparent: true,
     opacity: 0.35,
   })
-  const plumbBobHalo = new THREE.Mesh(geoPlumb.clone().scale(1.18, 1.18, 1.18), matHalo)
-  plumbBobGrupo.add(plumbBobHalo)
+  const diamanteHalo = new THREE.Mesh(geoDiamante.clone().scale(1.18, 1.18, 1.18), matHalo)
+  diamanteGrupo.add(diamanteHalo)
 
-  const plumbBobLuz = new THREE.PointLight(COR_PLUMBBOB_VERDE, 0.9, 2.6)
-  plumbBobLuz.position.set(0, -0.05, 0)
-  plumbBobGrupo.add(plumbBobLuz)
 
   function aplicarAparenciaCAS(novaAparencia: AparenciaSimCAS) {
     aparencia = novaAparencia
@@ -615,8 +628,8 @@ export function criarPersonagemSim3D(
     peito.scale.set(escalaPorteX, 1, escalaPorteX)
 
     habilitarSombraRecursivo(grupoRaiz)
-    plumbBobMesh.castShadow = false
-    plumbBobHalo.castShadow = false
+    diamanteMesh.castShadow = false
+    diamanteHalo.castShadow = false
     anelSelecaoChao.castShadow = false
   }
 
@@ -649,10 +662,9 @@ export function criarPersonagemSim3D(
     propCafe,
     propLivro,
     propTablet,
-    plumbBobGrupo,
-    plumbBobMesh,
-    plumbBobHalo,
-    plumbBobLuz,
+    diamanteGrupo,
+    diamanteMesh,
+    diamanteHalo,
     anelSelecaoChao,
   }
 
@@ -700,29 +712,33 @@ export function criarPersonagemSim3D(
     anguloAtualY += diffAngulo * (1 - Math.exp(-11 * dt))
     grupoRaiz.rotation.y = anguloAtualY
 
-    // 2. PlumbBob 3D e Anel de Seleção no Chão
-    const corPlumb = sim ? calcularCorPlumbBob(sim.necessidades).corNum : COR_PLUMBBOB_VERDE
-    ;(plumbBobMesh.material as THREE.MeshStandardMaterial).color.setHex(corPlumb)
-    ;(plumbBobMesh.material as THREE.MeshStandardMaterial).emissive.setHex(corPlumb)
-    ;(plumbBobHalo.material as THREE.MeshBasicMaterial).color.setHex(corPlumb)
-    plumbBobLuz.color.setHex(corPlumb)
-    plumbBobLuz.intensity = amortecerValor(plumbBobLuz.intensity, ativo ? 1.15 : 0.35, 8, dt)
+    // 2. Diamante e anel de seleção no chão
+    const corDiamante = sim ? calcularCorDiamante(sim.necessidades).corNum : COR_NIVEL.bom.num
+    ;(diamanteMesh.material as THREE.MeshStandardMaterial).color.setHex(corDiamante)
+    ;(diamanteMesh.material as THREE.MeshStandardMaterial).emissive.setHex(corDiamante)
+    ;(diamanteHalo.material as THREE.MeshBasicMaterial).color.setHex(corDiamante)
+    ;(diamanteMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = amortecerValor(
+      (diamanteMesh.material as THREE.MeshStandardMaterial).emissiveIntensity,
+      ativo ? 0.9 : 0.45,
+      8,
+      dt,
+    )
 
-    const escalaPlumbAlvo = ativo ? 1.06 : 0.54
-    const novaEscalaPlumb = amortecerValor(plumbBobGrupo.scale.x, escalaPlumbAlvo, 10, dt)
-    plumbBobGrupo.scale.setScalar(novaEscalaPlumb)
-    plumbBobMesh.rotation.y = tempoSegundos * 2.1 + semente
-    plumbBobHalo.rotation.y = -tempoSegundos * 1.35
+    const escalaDiamanteAlvo = ativo ? 1.06 : 0.54
+    const novaEscalaDiamante = amortecerValor(diamanteGrupo.scale.x, escalaDiamanteAlvo, 10, dt)
+    diamanteGrupo.scale.setScalar(novaEscalaDiamante)
+    diamanteMesh.rotation.y = tempoSegundos * 2.1 + semente
+    diamanteHalo.rotation.y = -tempoSegundos * 1.35
 
     ;(anelSelecaoChao.material as THREE.MeshBasicMaterial).color.setHex(
-      ativo ? corPlumb : corIdentidade,
+      ativo ? corDiamante : corIdentidade,
     )
     ;(anelSelecaoChao.material as THREE.MeshBasicMaterial).opacity = ativo
       ? 0.75 + Math.sin(tempoSegundos * 3.8) * 0.2
       : 0.3
     anelSelecaoChao.scale.setScalar(ativo ? 1.08 : 0.85)
 
-    // 3. Props carregados nas mãos (PostureAspectCarry)
+    // 3. O que está na mão
     const carregando = sim?.postura.carregando ?? 'nada'
     propCafe.visible = carregando === 'xicara_cafe'
     propLivro.visible = carregando === 'livro'
@@ -753,7 +769,7 @@ export function criarPersonagemSim3D(
       boca.scale.x = amortecerValor(boca.scale.x, 1, 14, dt)
     }
 
-    // 5. Cálculo da Pose Alvo (ARB Target Pose) e Amortecimento Exponencial (Pose Blending)
+    // 5. Pose alvo da postura atual (o amortecimento vem no passo 6)
     const postura = sim?.postura.corpo ?? 'em_pe'
     const fase = tempoSegundos * 2.1 + semente
 
@@ -775,7 +791,7 @@ export function criarPersonagemSim3D(
     let coxaDRx = 0, coxaDRy = 0, coxaDRz = 0
     let pantDRx = 0
     let peDRx = 0
-    let plumbYAlvo = 1.58 + Math.sin(tempoSegundos * 2.8) * 0.035
+    let diamanteYAlvo = 1.58 + Math.sin(tempoSegundos * 2.8) * 0.035
 
     if (postura === 'andando' || distMov > 0.002) {
       // Frequência da passada sincronizada com a velocidade real para os pés não deslizarem!
@@ -865,7 +881,7 @@ export function criarPersonagemSim3D(
       pescRx = 0.04
       cabRy = Math.sin(tempoSegundos * 1.3 + semente) * 0.16
       cabRx = -0.04 + Math.sin(tempoSegundos * 2.1) * 0.035
-      plumbYAlvo = 1.42 + Math.sin(tempoSegundos * 2.8) * 0.035
+      diamanteYAlvo = 1.42 + Math.sin(tempoSegundos * 2.8) * 0.035
     } else if (postura === 'sentado_sofa') {
       pelveYAlvo = 0.39
       pelveRx = -0.1
@@ -889,7 +905,7 @@ export function criarPersonagemSim3D(
 
       cabRx = -0.08 + Math.sin(fase) * 0.04
       cabRy = Math.sin(fase * 0.6) * 0.2
-      plumbYAlvo = 1.38 + Math.sin(tempoSegundos * 2.8) * 0.035
+      diamanteYAlvo = 1.38 + Math.sin(tempoSegundos * 2.8) * 0.035
     } else if (postura === 'interagindo_em_pe') {
       pelveYAlvo = 0.56 + Math.sin(fase * 1.3) * 0.008
       pelveRz = Math.sin(fase * 0.7) * 0.025
@@ -964,10 +980,10 @@ export function criarPersonagemSim3D(
       }
     }
 
-    // 6. Aplica amortecimento exponencial (damp) em todas as articulações!
-    // No primeiro quadro (spawn) ou se dt >= 0.015 num salto de postura em testes, usa resposta ágil
-    const velDamp = primeiroQuadro ? 1000 : postura === 'andando' ? 24 : 18
-    const dtEfetivo = primeiroQuadro ? 1 : Math.max(dt, 0.08)
+    // 6. Amortecimento de todas as articulações até a pose alvo. No
+    // primeiro quadro vai direto (senão o boneco nasceria "desmontando").
+    const velDamp = primeiroQuadro ? 1000 : postura === 'andando' ? 20 : 14
+    const dtEfetivo = primeiroQuadro ? 1 : dt
     pelve.position.y = amortecerValor(pelve.position.y, pelveYAlvo, velDamp, dtEfetivo)
     amortecerEuler(pelve.rotation, pelveRx, pelveRy, pelveRz, velDamp, dtEfetivo)
     amortecerEuler(coluna.rotation, colRx, colRy, colRz, velDamp, dtEfetivo)
@@ -991,11 +1007,11 @@ export function criarPersonagemSim3D(
     amortecerEuler(pernaDir.panturrilha.rotation, pantDRx, 0, 0, velDamp, dtEfetivo)
     amortecerEuler(pernaDir.pe.rotation, peDRx, 0, 0, velDamp, dtEfetivo)
 
-    plumbBobGrupo.position.y = amortecerValor(plumbBobGrupo.position.y, plumbYAlvo, 12, dtEfetivo)
+    diamanteGrupo.position.y = amortecerValor(diamanteGrupo.position.y, diamanteYAlvo, 12, dtEfetivo)
   }
 
   function obterPosicaoCabecaMundo(alvo: THREE.Vector3): THREE.Vector3 {
-    plumbBobGrupo.getWorldPosition(alvo)
+    diamanteGrupo.getWorldPosition(alvo)
     alvo.y += 0.26
     return alvo
   }

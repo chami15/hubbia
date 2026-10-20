@@ -13,12 +13,13 @@ import {
 } from './texturas3d'
 
 // ---------------------------------------------------------------------------
-// MUNDO, PORTAIS E MOBÍLIA 3D NÍTIDA ESTILO THE SIMS 4
+// LOTE E MOBÍLIA 3D
 //
-// Utiliza texturas procedurais de alta nitidez (`texturas3d.ts`), modelos 3D
-// detalhados para todas as categorias do catálogo e portas articuladas com
-// pivô (`visualization/portal_visualizer.pyc`) que se abrem suavemente quando
-// um Sim atravessa ou entra/sai de lugares!
+// O terreno em volta (gramado, calçada, rua, árvores), a laje e o piso do
+// escritório, as 4 paredes com janela (que se cortam na frente da câmera)
+// e um modelo 3D por categoria do catálogo, com texturas procedurais de
+// texturas3d.ts. Porta tem a folha num pivô, que a cena 3D abre quando
+// alguém chega perto.
 // ---------------------------------------------------------------------------
 
 export type ModoParedesSims = 'cortadas' | 'altas' | 'baixas'
@@ -67,7 +68,7 @@ export function criarLoteVizinhanca3D(
   const cx = (colunas - 1) / 2
   const cz = (linhas - 1) / 2
 
-  // 1. Gramado amplo da vizinhança com textura nítida (The Sims 4 Lot Surroundings)
+  // 1. Gramado em volta do lote
   const geoGrama = new THREE.PlaneGeometry(56, 56)
   geoGrama.rotateX(-Math.PI / 2)
   const matGrama = new THREE.MeshStandardMaterial({
@@ -119,7 +120,7 @@ export function criarLoteVizinhanca3D(
   passarela.receiveShadow = true
   grupo.add(passarela)
 
-  // Caixa de correio e poste de luz do lote (clássico ponto de chegada do The Sims!)
+  // Caixa de correio e poste na frente do lote (ponto de chegada de quem vem da rua)
   const caixaCorreio = new THREE.Group()
   const hasteCorreio = new THREE.Mesh(
     new THREE.CylinderGeometry(0.035, 0.04, 0.85, 10),
@@ -208,7 +209,7 @@ export function criarLoteVizinhanca3D(
   pisoInterativo.name = 'piso-interativo'
   grupo.add(pisoInterativo)
 
-  // 6. As 4 Paredes 3D com Janelas e Modo Cutaway (The Sims 4 Wall Cutaway)
+  // 6. As 4 paredes com janela; as da frente da câmera se cortam (modo 'cortadas')
   const paredes: Parede3DControlavel[] = [
     criarParedeComJanela3D(
       largLote + ESPESSURA_PAREDE_3D,
@@ -248,12 +249,14 @@ export function criarLoteVizinhanca3D(
     grupo.add(p.malhaAlta, p.malhaCortada)
   }
 
+  // reaproveitado todo quadro (antes um Vector3 novo por chamada)
+  const vetorCamera = new THREE.Vector3()
   function atualizarModoParedes(
     modo: ModoParedesSims,
     posicaoCamera: THREE.Vector3,
     centroLote: THREE.Vector3,
   ) {
-    const dirCamera = new THREE.Vector3().subVectors(posicaoCamera, centroLote).normalize()
+    const dirCamera = vetorCamera.subVectors(posicaoCamera, centroLote).normalize()
 
     for (const p of paredes) {
       if (modo === 'altas') {

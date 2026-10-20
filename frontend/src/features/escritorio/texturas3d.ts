@@ -1,12 +1,13 @@
 import * as THREE from 'three'
 
 // ---------------------------------------------------------------------------
-// GERADOR E CACHE DE TEXTURAS PBR DE ALTA NITIDEZ (`texturas3d.ts`)
+// TEXTURAS PROCEDURAIS (com cache)
 //
 // Gera texturas procedurais em Canvas High-DPI (512x512 / 1024x1024) com
 // filtro anisotrópico e mapas de rugosidade/relevo (bumpMap) para que pisos,
 // madeiras, tecidos, gramado, asfalto e telas de computador fiquem nítidos
-// mesmo dando zoom próximo na câmera 3D do The Sims 4.
+// mesmo com a câmera bem perto. Cada textura é gerada uma vez por chave
+// e reaproveitada — por isso quem libera material NUNCA libera o `map`.
 // ---------------------------------------------------------------------------
 
 const cacheTexturas = new Map<string, THREE.CanvasTexture>()
@@ -165,7 +166,7 @@ export function texturaTelaMonitor(especialidade = 'geral'): THREE.CanvasTexture
   const { canvas, ctx } = criarCanvas(256, 160)
   if (!ctx) return null
 
-  // Fundo escuro de IDE / Dashboard Hubbia
+  // Fundo escuro de IDE / painel
   ctx.fillStyle = '#0f172a'
   ctx.fillRect(0, 0, 256, 160)
 

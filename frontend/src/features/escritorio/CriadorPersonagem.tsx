@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { AGENTES } from './agentes'
 import * as THREE from 'three'
 import {
   BIBLIOTECA_TRACOS_CAS,
@@ -19,15 +20,14 @@ import { criarPersonagemSim3D, type PersonagemSim3D } from './personagem3d'
 import type { AspectoCarregarPostura, AspectoCorpoPostura, EstadoSim } from './simulacao-sims'
 
 // ---------------------------------------------------------------------------
-// ESTÚDIO CREATE-A-SIM (CAS) 3D — CRIAÇÃO E PERSONALIZAÇÃO DE SIMS / AGENTES
+// CRIADOR DE PERSONAGEM
 //
-// Inspirado em `cas/cas.pyc` e no estúdio 3D de criação de personagens de
-// The Sims 4:
-//   - Plataforma giratória 3D interativa (Three.js) com iluminação de estúdio,
-//     zoom de rosto/corpo inteiro e teste ao vivo de animações
-//   - Edição completa dos 4 Sims nativos (Cifra, Agenda, Vita, Norte)
-//   - Criação de novos Agentes/Sims customizados que chegam caminhando pela
-//     calçada/portal da rua e entram para a equipe do Hubbia!
+// Palco 3D giratório (o mesmo boneco de personagem3d.ts, com pose de teste)
+// + abas de aparência e traços. Edita os 4 agentes ou cria um personagem
+// novo, que chega pela calçada. Os dados moram em cas-sims.ts.
+//
+// O NOME dos 4 agentes não é editável: é por ele que o backend é ligado à
+// cena (estado ao vivo, balão de rodada). Personagem novo é só do jogo.
 // ---------------------------------------------------------------------------
 
 interface Props {
@@ -39,7 +39,7 @@ interface Props {
 
 type AbaCAS = 'identidade' | 'genetica' | 'cabelo' | 'roupas'
 
-export function CriadorSimCAS({
+export function CriadorPersonagem({
   simInicialId,
   aoSalvarSim,
   aoRemoverSim,
@@ -52,6 +52,8 @@ export function CriadorSimCAS({
     registros[simInicialId] ? simInicialId : 'cifra',
   )
   const [modoNovoSim, setModoNovoSim] = useState(false)
+  // os 4 agentes: nome travado (ver cabeçalho)
+  const nomeTravado = !modoNovoSim && AGENTES.some((a) => a.id === idSelecionado)
   const [abaAtiva, setAbaAtiva] = useState<AbaCAS>('identidade')
 
   // Estado editável do Sim no estúdio
@@ -73,6 +75,7 @@ export function CriadorSimCAS({
   const anguloPlataformaRef = useRef(0)
 
   const palco3DRef = useRef<HTMLDivElement>(null)
+  const inicialRef = useRef({ cor: corIdentidade, aparencia })
   const personagemPreviewRef = useRef<PersonagemSim3D | null>(null)
   const posePreviewRef = useRef(posePreview)
   posePreviewRef.current = posePreview
@@ -94,7 +97,7 @@ export function CriadorSimCAS({
 
   function iniciarCriacaoNovoSim() {
     setModoNovoSim(true)
-    setNome(' Íris')
+    setNome('Íris')
     setFuncao('Marketing & Growth')
     setEspecialidade('marketing')
     setCorIdentidade(0x7c3aed)
@@ -150,18 +153,18 @@ export function CriadorSimCAS({
     })
   }
 
-  // Monta o Palco 3D Turntable do Create-A-Sim
+  // Monta o palco 3D giratório
   useEffect(() => {
     const container = palco3DRef.current
     if (!container) return
 
     const cena = new THREE.Scene()
-    cena.background = new THREE.Color(0x0f172a)
+    cena.background = new THREE.Color(0x14161b)
 
     const w = container.clientWidth || 340
     const h = container.clientHeight || 480
     const camera = new THREE.PerspectiveCamera(34, w / h, 0.1, 30)
-    camera.position.set(0, 1.05, 2.75)
+    camera.position.set(0, 1.0, 3.4)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setSize(w, h)
@@ -182,7 +185,7 @@ export function CriadorSimCAS({
     luzRecorte.position.set(-2.5, 2.5, -2)
     cena.add(luzRecorte)
 
-    // Pedestal circular luminoso estilo Create-A-Sim
+    // Pedestal circular
     const pedestal = new THREE.Mesh(
       new THREE.CylinderGeometry(0.62, 0.68, 0.08, 36),
       new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.4, roughness: 0.3 }),
@@ -193,13 +196,15 @@ export function CriadorSimCAS({
 
     const anelLuz = new THREE.Mesh(
       new THREE.RingGeometry(0.56, 0.61, 36),
-      new THREE.MeshBasicMaterial({ color: 0x6ec71f, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: 0x5eead4, side: THREE.DoubleSide }),
     )
     anelLuz.rotation.x = -Math.PI / 2
     anelLuz.position.y = 0.004
     cena.add(anelLuz)
 
-    const p3d = criarPersonagemSim3D('preview-cas', corIdentidade, aparencia)
+    // aparência inicial via ref: o palco monta UMA vez; as trocas seguintes
+    // chegam pelo efeito de baixo (aplicarAparenciaCAS), sem remontar o 3D
+    const p3d = criarPersonagemSim3D('preview-cas', inicialRef.current.cor, inicialRef.current.aparencia)
     personagemPreviewRef.current = p3d
     cena.add(p3d.grupoRaiz)
 
@@ -233,11 +238,13 @@ export function CriadorSimCAS({
       const t = agoraMS / 1000
 
       // Zoom suave entre Corpo Inteiro e Rosto (Close-up)
-      const zAlvo = zoomRostoRef.current ? 1.25 : 2.65
-      const yAlvo = zoomRostoRef.current ? 1.22 : 0.86
-      camera.position.z += (zAlvo - camera.position.z) * 0.14
-      camera.position.y += (yAlvo - camera.position.y) * 0.14
-      camera.lookAt(0, zoomRostoRef.current ? 1.18 : 0.78, 0)
+      // corpo inteiro: longe o bastante pra caber o diamante sobre a cabeça
+      const zAlvo = zoomRostoRef.current ? 1.25 : 3.4
+      const yAlvo = zoomRostoRef.current ? 1.22 : 1.0
+      const k = 1 - Math.exp(-9 * dt)
+      camera.position.z += (zAlvo - camera.position.z) * k
+      camera.position.y += (yAlvo - camera.position.y) * k
+      camera.lookAt(0, zoomRostoRef.current ? 1.18 : 0.88, 0)
 
       const pose = posePreviewRef.current
       const simFalso = {
@@ -285,9 +292,10 @@ export function CriadorSimCAS({
   }, [aparencia])
 
   function salvarEConcluir() {
-    const nomeLimpo = nome.trim() || 'Novo Agente'
+    const nomeLimpo = (nomeTravado ? registros[idSelecionado]?.nome : nome)?.trim() || 'Novo personagem'
     const idFinal = modoNovoSim
-      ? `sim_${nomeLimpo.toLowerCase().replace(/[^a-z0-9]/g, '')}_${Date.now().toString().slice(-4)}`
+      ? // tira acento antes do filtro — senão "Íris" virava "ris"
+        `sim_${nomeLimpo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'novo'}_${Date.now().toString(36).slice(-5)}`
       : idSelecionado
 
     const registroFinal: RegistroSimCAS = {
@@ -327,46 +335,46 @@ export function CriadorSimCAS({
         justifyContent: 'center',
         padding: 18,
         userSelect: 'none',
+        fontFamily: 'var(--fonte-corpo)',
       }}
     >
       <div
         style={{
           width: 'min(1080px, 96vw)',
           height: 'min(690px, 92dvh)',
-          borderRadius: 22,
-          background: 'rgba(15, 23, 42, 0.97)',
-          border: '1.5px solid rgba(110, 199, 31, 0.5)',
+          borderRadius: 'var(--radius-deck)',
+          background: 'var(--deck)',
+          border: '1.5px solid rgba(var(--accent-rgb), 0.5)',
           boxShadow: '0 28px 64px rgba(0,0,0,0.85)',
-          color: '#f8fafc',
+          color: 'var(--ink)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
         }}
       >
-        {/* TOPO DO ESTÚDIO CREATE-A-SIM */}
+        {/* topo */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '12px 18px',
-            background: 'linear-gradient(90deg, rgba(110, 199, 31, 0.18), rgba(15, 23, 42, 0.95))',
+            background: 'var(--deck-2)',
             borderBottom: '1px solid rgba(255,255,255,0.12)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 22 }}>🧬</span>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: '#a3e635' }}>
-                Criar um Sim / Agente (Create-A-Sim 3D)
+              <div style={{ fontFamily: 'var(--fonte-display)', fontSize: 16, fontWeight: 800 }}>
+                Personagens
               </div>
-              <div style={{ fontSize: 11, color: '#cbd5e1' }}>
-                Personalize genética, cortes de cabelo, roupas, estilo de caminhada e traços ou crie um novo Agente para o Hubbia
+              <div style={{ fontSize: 11, color: 'var(--ink-dim)' }}>
+                Aparência e traços dos agentes, ou um personagem novo pro escritório
               </div>
             </div>
           </div>
 
-          {/* Seletor de Sims Existentes + Botão Criar Novo Sim */}
+          {/* personagens existentes + criar novo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             {Object.values(registros).map((reg) => {
               const ativo = !modoNovoSim && idSelecionado === reg.id
@@ -378,9 +386,9 @@ export function CriadorSimCAS({
                   style={{
                     padding: '6px 11px',
                     borderRadius: 999,
-                    border: ativo ? '1.5px solid #6ec71f' : '1px solid rgba(255,255,255,0.16)',
-                    background: ativo ? 'rgba(110, 199, 31, 0.24)' : 'rgba(255,255,255,0.06)',
-                    color: ativo ? '#a3e635' : '#e2e8f0',
+                    border: ativo ? '1.5px solid var(--accent)' : '1px solid rgba(255,255,255,0.16)',
+                    background: ativo ? 'rgba(var(--accent-rgb), 0.24)' : 'rgba(255,255,255,0.06)',
+                    color: ativo ? 'var(--accent)' : 'var(--ink)',
                     fontSize: 11.5,
                     fontWeight: 700,
                     cursor: 'pointer',
@@ -397,15 +405,15 @@ export function CriadorSimCAS({
               style={{
                 padding: '6px 12px',
                 borderRadius: 999,
-                border: modoNovoSim ? '1.5px solid #38bdf8' : '1px solid rgba(56, 189, 248, 0.5)',
-                background: modoNovoSim ? 'rgba(56, 189, 248, 0.28)' : 'rgba(56, 189, 248, 0.14)',
-                color: '#7dd3fc',
+                border: modoNovoSim ? '1.5px solid var(--info)' : '1px solid rgba(var(--info-rgb), 0.5)',
+                background: modoNovoSim ? 'rgba(var(--info-rgb), 0.28)' : 'rgba(var(--info-rgb), 0.14)',
+                color: 'var(--info)',
                 fontSize: 11.5,
                 fontWeight: 800,
                 cursor: 'pointer',
               }}
             >
-              + Novo Agente Sim
+              + Novo personagem
             </button>
 
             <button
@@ -418,7 +426,7 @@ export function CriadorSimCAS({
                 borderRadius: '50%',
                 border: '1px solid rgba(255,255,255,0.2)',
                 background: 'rgba(255,255,255,0.08)',
-                color: '#f8fafc',
+                color: 'var(--ink)',
                 fontSize: 15,
                 cursor: 'pointer',
               }}
@@ -488,10 +496,10 @@ export function CriadorSimCAS({
                 </button>
               </div>
 
-              {/* Botões para testar a fluidez das animações no próprio CAS */}
+              {/* poses de teste da animação */}
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
                 {[
-                  { rotulo: '🧍 Em Pé', corpo: 'em_pe' as const, carregando: 'nada' as const },
+                  { rotulo: '🧍 Em pé', corpo: 'em_pe' as const, carregando: 'nada' as const },
                   { rotulo: '🚶 Andar', corpo: 'andando' as const, carregando: 'nada' as const },
                   { rotulo: '💻 Digitar', corpo: 'sentado_cadeira' as const, carregando: 'nada' as const },
                   { rotulo: '☕ Café', corpo: 'interagindo_em_pe' as const, carregando: 'xicara_cafe' as const },
@@ -515,9 +523,9 @@ export function CriadorSimCAS({
                       style={{
                         padding: '3px 8px',
                         borderRadius: 999,
-                        border: ativo ? '1px solid #6ec71f' : '1px solid rgba(255,255,255,0.14)',
-                        background: ativo ? 'rgba(110, 199, 31, 0.22)' : 'rgba(255,255,255,0.05)',
-                        color: ativo ? '#a3e635' : '#cbd5e1',
+                        border: ativo ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.14)',
+                        background: ativo ? 'rgba(var(--accent-rgb), 0.22)' : 'rgba(255,255,255,0.05)',
+                        color: ativo ? 'var(--accent)' : 'var(--ink-dim)',
                         fontSize: 10.5,
                         fontWeight: 700,
                         cursor: 'pointer',
@@ -533,7 +541,7 @@ export function CriadorSimCAS({
 
           {/* COLUNA DIREITA: ABAS DE PERSONALIZAÇÃO */}
           <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            {/* Abas do CAS */}
+            {/* abas */}
             <div
               style={{
                 display: 'flex',
@@ -545,10 +553,10 @@ export function CriadorSimCAS({
             >
               {(
                 [
-                  { id: 'identidade' as AbaCAS, icone: '💎', titulo: 'Identidade, Traços & Caminhada' },
-                  { id: 'genetica' as AbaCAS, icone: '🧬', titulo: 'Pele, Olhos & Porte Físico' },
-                  { id: 'cabelo' as AbaCAS, icone: '💇', titulo: 'Cabelo, Óculos & Headset' },
-                  { id: 'roupas' as AbaCAS, icone: '👔', titulo: 'Roupas & Cores' },
+                  { id: 'identidade' as AbaCAS, icone: '🪪', titulo: 'Identidade' },
+                  { id: 'genetica' as AbaCAS, icone: '🧑', titulo: 'Rosto e corpo' },
+                  { id: 'cabelo' as AbaCAS, icone: '💇', titulo: 'Cabelo e acessórios' },
+                  { id: 'roupas' as AbaCAS, icone: '👔', titulo: 'Roupa' },
                 ] as const
               ).map((aba) => {
                 const ativa = abaAtiva === aba.id
@@ -560,9 +568,9 @@ export function CriadorSimCAS({
                     style={{
                       padding: '7px 13px',
                       borderRadius: 10,
-                      border: ativa ? '1px solid #6ec71f' : '1px solid rgba(255,255,255,0.12)',
-                      background: ativa ? 'rgba(110, 199, 31, 0.22)' : 'rgba(255,255,255,0.04)',
-                      color: ativa ? '#a3e635' : '#cbd5e1',
+                      border: ativa ? '1px solid var(--accent)' : '1px solid rgba(255,255,255,0.12)',
+                      background: ativa ? 'rgba(var(--accent-rgb), 0.22)' : 'rgba(255,255,255,0.04)',
+                      color: ativa ? 'var(--accent)' : 'var(--ink-dim)',
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -580,30 +588,32 @@ export function CriadorSimCAS({
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
-                      <label style={estiloLabel()}>Nome do Sim / Agente</label>
+                      <label style={estiloLabel()}>Nome</label>
                       <input
                         type="text"
                         value={nome}
                         onChange={(e) => setNome(e.target.value)}
-                        style={estiloInput()}
-                        placeholder="Ex: Íris, Orion, Cifra..."
+                        disabled={nomeTravado}
+                        title={nomeTravado ? 'O nome dos 4 agentes liga a cena ao backend — não dá pra trocar aqui' : undefined}
+                        style={{ ...estiloInput(), opacity: nomeTravado ? 0.6 : 1, cursor: nomeTravado ? 'not-allowed' : 'text' }}
+                        placeholder="Ex: Íris, Orion…"
                       />
                     </div>
                     <div>
-                      <label style={estiloLabel()}>Cargo / Área no Hubbia</label>
+                      <label style={estiloLabel()}>Função</label>
                       <input
                         type="text"
                         value={funcao}
                         onChange={(e) => setFuncao(e.target.value)}
                         style={estiloInput()}
-                        placeholder="Ex: Finanças, Marketing, IA & Dados..."
+                        placeholder="Ex: marketing, dados…"
                       />
                     </div>
                   </div>
 
-                  {/* Estilo de Caminhada (`walkstyle_behavior.pyc`) */}
+                  {/* Jeito de andar */}
                   <div>
-                    <div style={estiloLabel()}>Estilo de Caminhada 3D (Walkstyle)</div>
+                    <div style={estiloLabel()}>Jeito de andar</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                       {ESTILOS_CAMINHADA_INFO.map((est) => {
                         const ativo = aparencia.estiloCaminhada === est.id
@@ -619,14 +629,14 @@ export function CriadorSimCAS({
                           >
                             <div style={{ fontSize: 18 }}>{est.icone}</div>
                             <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 2 }}>{est.nome}</div>
-                            <div style={{ fontSize: 9.5, color: '#94a3b8', marginTop: 2 }}>{est.descricao}</div>
+                            <div style={{ fontSize: 9.5, color: 'var(--ink-dim)', marginTop: 2 }}>{est.descricao}</div>
                           </button>
                         )
                       })}
                     </div>
                   </div>
 
-                  {/* Biblioteca de Traços de Personalidade (`traits.pyc`) */}
+                  {/* Traços de personalidade */}
                   <div>
                     <div style={estiloLabel()}>
                       Traços de Personalidade ({tracosIds.length}/3 selecionados)
@@ -645,7 +655,7 @@ export function CriadorSimCAS({
                               <span style={{ fontSize: 16 }}>{traco.icone}</span>
                               <span style={{ fontSize: 11.5, fontWeight: 700 }}>{traco.nome}</span>
                             </div>
-                            <div style={{ fontSize: 9.5, color: '#94a3b8', marginTop: 3 }}>
+                            <div style={{ fontSize: 9.5, color: 'var(--ink-dim)', marginTop: 3 }}>
                               {traco.descricao}
                             </div>
                           </button>
@@ -659,7 +669,7 @@ export function CriadorSimCAS({
               {abaAtiva === 'genetica' && (
                 <>
                   <div>
-                    <div style={estiloLabel()}>Tom de Pele</div>
+                    <div style={estiloLabel()}>Tom de pele</div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       {TONS_DE_PELE_CAS.map((tom) => (
                         <button
@@ -673,7 +683,7 @@ export function CriadorSimCAS({
                   </div>
 
                   <div>
-                    <div style={estiloLabel()}>Cor da Íris dos Olhos</div>
+                    <div style={estiloLabel()}>Cor dos olhos</div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       {CORES_OLHOS_CAS.map((olho) => (
                         <button
@@ -690,7 +700,7 @@ export function CriadorSimCAS({
                   </div>
 
                   <div>
-                    <div style={estiloLabel()}>Porte Físico</div>
+                    <div style={estiloLabel()}>Porte</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                       {(
                         [
@@ -720,7 +730,7 @@ export function CriadorSimCAS({
               {abaAtiva === 'cabelo' && (
                 <>
                   <div>
-                    <div style={estiloLabel()}>Estilo de Cabelo 3D</div>
+                    <div style={estiloLabel()}>Cabelo</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                       {ESTILOS_CABELO_INFO.map((cab) => (
                         <button
@@ -755,7 +765,7 @@ export function CriadorSimCAS({
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <div>
-                      <div style={estiloLabel()}>Óculos 3D</div>
+                      <div style={estiloLabel()}>Óculos</div>
                       <div style={{ display: 'flex', gap: 8 }}>
                         {(
                           [
@@ -780,7 +790,7 @@ export function CriadorSimCAS({
                     </div>
 
                     <div>
-                      <div style={estiloLabel()}>Acessório Tech</div>
+                      <div style={estiloLabel()}>Acessório</div>
                       <button
                         type="button"
                         onClick={() => {
@@ -801,7 +811,7 @@ export function CriadorSimCAS({
               {abaAtiva === 'roupas' && (
                 <>
                   <div>
-                    <div style={estiloLabel()}>Modelo de Roupa Superior</div>
+                    <div style={estiloLabel()}>Modelo</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                       {ESTILOS_ROUPA_INFO.map((r) => (
                         <button
@@ -821,7 +831,7 @@ export function CriadorSimCAS({
                   </div>
 
                   <div>
-                    <div style={estiloLabel()}>Cor Principal da Roupa & Identidade</div>
+                    <div style={estiloLabel()}>Cor principal (vira a cor do personagem)</div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       {CORES_ROUPA_CAS.map((c) => (
                         <button
@@ -838,7 +848,7 @@ export function CriadorSimCAS({
                   </div>
 
                   <div>
-                    <div style={estiloLabel()}>Cor da Camisa Interna / Detalhe</div>
+                    <div style={estiloLabel()}>Cor do detalhe</div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       {CORES_ROUPA_CAS.map((c) => (
                         <button
@@ -852,7 +862,7 @@ export function CriadorSimCAS({
                   </div>
 
                   <div>
-                    <div style={estiloLabel()}>Cor da Calça</div>
+                    <div style={estiloLabel()}>Calça</div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       {CORES_ROUPA_CAS.map((c) => (
                         <button
@@ -868,12 +878,12 @@ export function CriadorSimCAS({
               )}
             </div>
 
-            {/* RODAPÉ DE AÇÃO DO CAS */}
+            {/* rodapé */}
             <div
               style={{
                 padding: '12px 20px',
                 borderTop: '1px solid rgba(255,255,255,0.12)',
-                background: 'rgba(15, 23, 42, 0.96)',
+                background: 'var(--deck)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -895,7 +905,7 @@ export function CriadorSimCAS({
                       cursor: 'pointer',
                     }}
                   >
-                    🗑️ Remover Agente Customizado
+                    Remover personagem
                   </button>
                 )}
               </div>
@@ -909,7 +919,7 @@ export function CriadorSimCAS({
                     borderRadius: 10,
                     border: '1px solid rgba(255,255,255,0.2)',
                     background: 'rgba(255,255,255,0.06)',
-                    color: '#e2e8f0',
+                    color: 'var(--ink)',
                     fontSize: 12,
                     fontWeight: 700,
                     cursor: 'pointer',
@@ -923,18 +933,16 @@ export function CriadorSimCAS({
                   style={{
                     padding: '9px 20px',
                     borderRadius: 10,
-                    border: '1.5px solid #6ec71f',
-                    background: 'linear-gradient(135deg, #6ec71f, #22c55e)',
-                    color: '#052e16',
+                    border: '1.5px solid var(--accent)',
+                    background: 'var(--accent)',
+                    color: 'var(--deck)',
                     fontSize: 12.5,
                     fontWeight: 800,
                     cursor: 'pointer',
-                    boxShadow: '0 8px 22px rgba(110, 199, 31, 0.35)',
+                    boxShadow: '0 8px 22px rgba(var(--accent-rgb), 0.35)',
                   }}
                 >
-                  {modoNovoSim
-                    ? '✓ Criar Sim & Enviar para o Escritório'
-                    : '✓ Salvar Aparência no Escritório'}
+                  {modoNovoSim ? 'Criar e mandar pro escritório' : 'Salvar'}
                 </button>
               </div>
             </div>
@@ -952,7 +960,7 @@ function estiloLabel(): React.CSSProperties {
     fontWeight: 800,
     textTransform: 'uppercase',
     letterSpacing: '0.06em',
-    color: '#94a3b8',
+    color: 'var(--ink-dim)',
     marginBottom: 6,
   }
 }
@@ -964,7 +972,7 @@ function estiloInput(): React.CSSProperties {
     borderRadius: 10,
     border: '1px solid rgba(255,255,255,0.18)',
     background: 'rgba(0,0,0,0.35)',
-    color: '#f8fafc',
+    color: 'var(--ink)',
     fontSize: 13,
     fontWeight: 600,
     outline: 'none',
@@ -975,9 +983,9 @@ function estiloCardOpcao(ativo: boolean): React.CSSProperties {
   return {
     padding: '9px 10px',
     borderRadius: 11,
-    border: ativo ? '1.5px solid #6ec71f' : '1px solid rgba(255,255,255,0.12)',
-    background: ativo ? 'rgba(110, 199, 31, 0.2)' : 'rgba(255,255,255,0.04)',
-    color: '#f8fafc',
+    border: ativo ? '1.5px solid var(--accent)' : '1px solid rgba(255,255,255,0.12)',
+    background: ativo ? 'rgba(var(--accent-rgb), 0.2)' : 'rgba(255,255,255,0.04)',
+    color: 'var(--ink)',
     textAlign: 'left',
     cursor: 'pointer',
   }
@@ -989,8 +997,8 @@ function estiloCirculoCor(hex: string, ativo: boolean, _titulo?: string): React.
     height: 34,
     borderRadius: '50%',
     background: hex,
-    border: ativo ? '3px solid #6ec71f' : '2px solid rgba(255,255,255,0.3)',
-    boxShadow: ativo ? '0 0 12px rgba(110, 199, 31, 0.7)' : 'none',
+    border: ativo ? '3px solid var(--accent)' : '2px solid rgba(255,255,255,0.3)',
+    boxShadow: ativo ? '0 0 12px rgba(var(--accent-rgb), 0.7)' : 'none',
     cursor: 'pointer',
   }
 }
@@ -1000,9 +1008,9 @@ function estiloBotaoPalco(ativo: boolean): React.CSSProperties {
     flex: 1,
     padding: '5px 8px',
     borderRadius: 8,
-    border: ativo ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.14)',
-    background: ativo ? 'rgba(56, 189, 248, 0.22)' : 'rgba(255,255,255,0.06)',
-    color: ativo ? '#7dd3fc' : '#e2e8f0',
+    border: ativo ? '1px solid var(--info)' : '1px solid rgba(255,255,255,0.14)',
+    background: ativo ? 'rgba(var(--info-rgb), 0.22)' : 'rgba(255,255,255,0.06)',
+    color: ativo ? 'var(--info)' : 'var(--ink)',
     fontSize: 11,
     fontWeight: 700,
     cursor: 'pointer',

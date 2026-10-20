@@ -164,6 +164,30 @@ body,
   box-shadow: 0 0 8px rgba(var(--good-rgb), 0.6);
 }
 
+/* Menu radial do modo simulação — realce no hover/foco sem mudar de
+   tamanho (scale empurraria a pílula pra cima da vizinha). */
+.menu-radial-item {
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.menu-radial-item:hover,
+.menu-radial-item:focus-visible {
+  background: var(--deck-2) !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+  outline: none;
+}
+
+/* Botões do HUD da simulação: mesmo realce discreto em todos. */
+.hud-botao {
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.hud-botao:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.26) !important;
+}
+.hud-botao:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.7);
+  outline-offset: 1px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

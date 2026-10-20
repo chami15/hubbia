@@ -2,12 +2,16 @@ import { AGENTES, type AgenteVisual } from './agentes'
 import type { HabilidadeSim, TracoPersonalidade } from './simulacao-sims'
 
 // ---------------------------------------------------------------------------
-// CREATE-A-SIM (CAS) — ESTÚDIO DE CRIAÇÃO E PERSONALIZAÇÃO DE SIMS / AGENTES
+// CRIADOR DE PERSONAGEM — dados
 //
-// Extraído da engenharia reversa de `Data\Simulation\Gameplay\simulation.zip`:
-//   - `cas/cas.pyc` e `sims/sim_info.pyc` (partes corporais, genética, roupas)
-//   - `traits/traits.pyc` (traços de personalidade que afetam autonomia e humor)
-//   - `routing/walkstyle/walkstyle_behavior.pyc` (estilos de caminhada)
+// Aparência (pele, olhos, cabelo, roupa, porte, acessórios, jeito de
+// andar) e traços de cada personagem, salvos no localStorage do
+// navegador. Os 4 agentes têm um registro padrão; personagens novos
+// criados pelo chefe são `customizado: true`.
+//
+// Personagem novo é só VISUAL/JOGO: não existe no backend, não tem painel
+// nem participa de rodada de tick. Os 4 agentes, sim — e por isso o NOME
+// deles não é editável aqui (é por ele que o backend é ligado à cena).
 // ---------------------------------------------------------------------------
 
 export type EstiloCabeloCAS =

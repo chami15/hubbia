@@ -26,8 +26,8 @@ import { Maquete } from './maquete'
 import { conferirSala, type MovelSala, type SalaDados } from './sala-dados'
 import { CHAVES_PALETA } from './sala-conferir'
 import {
-  calcularCorPlumbBob,
-  COR_PLUMBBOB_VERDE,
+  calcularCorDiamante,
+  COR_NIVEL,
   INFO_HUMORES,
   type EstadoMundoSims,
   type EstadoSim,
@@ -38,11 +38,10 @@ import type { EstadoAgente } from '../../types/agente'
 //   - piso, laje e paredes são DESENHADOS (Graphics) → cor 100% livre,
 //     nenhuma emenda entre tiles, e a laje grossa que dá o ar de maquete
 //   - móveis são SPRITES do pack → arte de verdade
-//   - Sims (agentes) vivem na camada de móveis com ordenação isométrica
-//     dinâmica por profundidade (coluna + linha), suportando tanto o
-//     modo Corpo Inteiro (The Sims 4, com PlumbBob 3D giratório,
-//     caminhada, posturas e balões de pensamento/fala) quanto o modo
-//     Crachá clássico.
+//   - agentes vivem na camada de móveis com profundidade recalculada a
+//     cada quadro (coluna + linha), em corpo inteiro (diamante, balão) ou
+//     no crachá redondo de antes. É a maquete 2D — o modo principal agora
+//     é o mundo 3D (cena3d.ts); a 2D continua dona do editor de salas.
 
 async function carregarRetratos(): Promise<Map<string, Texture>> {
   const mapa = new Map<string, Texture>()
@@ -147,10 +146,9 @@ function criarAnelAnimado(cor: number, raioTela: number): { grafico: Container; 
 }
 
 // ---------------------------------------------------------------------------
-// PLUMBBOB 3D FACETADO GIRATÓRIO (`Default.ini` [PlumbBob])
-// Desenha uma bipirâmide hexagonal com iluminação por faceta que gira no eixo Y.
+// DIAMANTE sobre a cabeça — bipirâmide com luz por faceta, girando no eixo Y
 // ---------------------------------------------------------------------------
-function desenharPlumbBob3D(
+function desenharDiamante(
   g: Graphics,
   corBase: number,
   faseGiro: number,
@@ -165,7 +163,7 @@ function desenharPlumbBob3D(
   const corEscura = escurecer(corBase, 0.28)
   const corBorda = clarear(corBase, 0.72)
 
-  // Halo suave ao redor do PlumbBob
+  // Halo suave ao redor do diamante
   g.circle(0, 0, 17 * escala).fill({ color: corBase, alpha: 0.18 })
 
   // Anel circular de progresso quando o Sim está executando uma interação
@@ -214,7 +212,7 @@ function desenharPlumbBob3D(
 }
 
 // ---------------------------------------------------------------------------
-// AVATAR COMPLETO DO SIM (Corpo Inteiro + Crachá + PlumbBob + Balão)
+// AVATAR DO AGENTE (corpo inteiro + crachá + diamante + balão)
 // ---------------------------------------------------------------------------
 interface AvatarSimVisual {
   container: Container
@@ -238,7 +236,7 @@ function criarAvatarSim(
   const container = new Container()
   const raioTela = DIAMETRO_CRACHA / 2
 
-  // --- 1. Sub-container do modo CORPO INTEIRO (The Sims 4) ---
+  // --- 1. Corpo inteiro ---
   const grupoCorpo = new Container()
 
   // Sombra elíptica no piso isométrico + anel de seleção no chão
@@ -293,11 +291,11 @@ function criarAvatarSim(
   grupoCracha.addChild(sombraCracha, spriteCracha, mascaraCracha, anelCracha)
   grupoCracha.visible = false
 
-  // --- 3. PlumbBob 3D flutuando acima da cabeça ---
-  const graficoPlumbBob = new Graphics()
-  graficoPlumbBob.y = -ALTURA_CORPO_SIM - 26
+  // --- 3. Diamante acima da cabeça ---
+  const graficoDiamante = new Graphics()
+  graficoDiamante.y = -ALTURA_CORPO_SIM - 26
 
-  // --- 4. Balão de Pensamento / Fala (`balloon_request.pyc`) ---
+  // --- 4. Balão de pensamento / fala ---
   const grupoBalao = new Container()
   grupoBalao.y = -ALTURA_CORPO_SIM - 66
   grupoBalao.visible = false
@@ -312,9 +310,9 @@ function criarAvatarSim(
   textoBalao.anchor.set(0.5, 0.5)
   grupoBalao.addChild(fundoBalao, textoBalao)
 
-  container.addChild(grupoCorpo, grupoCracha, graficoPlumbBob, grupoBalao)
+  container.addChild(grupoCorpo, grupoCracha, graficoDiamante, grupoBalao)
 
-  let faseGiroPlumbBob = (agenteId.charCodeAt(0) % 7) * 0.8
+  let faseGiroDiamante = (agenteId.charCodeAt(0) % 7) * 0.8
   let chaveBalaoAnterior = ''
   let chaveEtiquetaAnterior = ''
 
@@ -329,7 +327,7 @@ function criarAvatarSim(
     const alt = 30
 
     fundoBalao.clear()
-    // Sombra e corpo branco estilo The Sims 4
+    // Sombra e corpo branco
     fundoBalao.roundRect(-larg / 2, -alt / 2 + 2, larg, alt, 14).fill({ color: 0x000000, alpha: 0.22 })
     fundoBalao.roundRect(-larg / 2, -alt / 2, larg, alt, 14).fill(0xffffff)
     fundoBalao
@@ -386,12 +384,12 @@ function criarAvatarSim(
       sombraChao.ellipse(0, 0, 28, 13).fill({ color: 0x000000, alpha: 0.28 })
 
       anelChao.clear()
-      const corPlumb = sim ? calcularCorPlumbBob(sim.necessidades).corNum : COR_PLUMBBOB_VERDE
+      const corDiamante = sim ? calcularCorDiamante(sim.necessidades).corNum : COR_NIVEL.bom.num
       if (ativo) {
-        anelChao.ellipse(0, 0, 34, 16).stroke({ width: 3, color: corPlumb, alpha: 0.92 })
+        anelChao.ellipse(0, 0, 34, 16).stroke({ width: 3, color: corDiamante, alpha: 0.92 })
         anelChao.ellipse(0, 0, 39, 19).stroke({
           width: 1.5,
-          color: corPlumb,
+          color: corDiamante,
           alpha: 0.35 + 0.25 * Math.sin(tempoTotalMS * 0.005),
         })
       } else {
@@ -423,26 +421,26 @@ function criarAvatarSim(
         })
         fundoEtiqueta.roundRect(-largEtiq / 2, -10, largEtiq, 20, 10).stroke({
           width: ativo ? 1.5 : 1,
-          color: ativo ? corPlumb : corIdentidade,
+          color: ativo ? corDiamante : corIdentidade,
           alpha: 0.85,
         })
       }
     }
 
-    // PlumbBob 3D giratório (grande para o Sim ativo, compacto para os outros)
-    faseGiroPlumbBob += deltaMS * 0.0026
-    const corPlumb = sim ? calcularCorPlumbBob(sim.necessidades).corNum : COR_PLUMBBOB_VERDE
+    // Diamante (grande no selecionado, compacto nos outros)
+    faseGiroDiamante += deltaMS * 0.0026
+    const corDiamante = sim ? calcularCorDiamante(sim.necessidades).corNum : COR_NIVEL.bom.num
     const progresso = sim?.interacaoAtual?.progresso ?? 0
-    const escalaPlumb = ativo ? 1.05 : 0.52
-    const basePlumbY = modoCorpoInteiro ? -ALTURA_CORPO_SIM - (ativo ? 22 : 10) : -raioTela - 24
-    graficoPlumbBob.y = basePlumbY + Math.sin(tempoTotalMS * 0.0045) * 4.5
-    graficoPlumbBob.alpha = ativo ? 1 : 0.78
-    desenharPlumbBob3D(graficoPlumbBob, corPlumb, faseGiroPlumbBob, escalaPlumb, progresso)
+    const escalaDiamante = ativo ? 1.05 : 0.52
+    const baseDiamanteY = modoCorpoInteiro ? -ALTURA_CORPO_SIM - (ativo ? 22 : 10) : -raioTela - 24
+    graficoDiamante.y = baseDiamanteY + Math.sin(tempoTotalMS * 0.0045) * 4.5
+    graficoDiamante.alpha = ativo ? 1 : 0.78
+    desenharDiamante(graficoDiamante, corDiamante, faseGiroDiamante, escalaDiamante, progresso)
 
     // Balão de pensamento / fala
     if (sim?.balao) {
       grupoBalao.visible = true
-      grupoBalao.y = basePlumbY - (ativo ? 38 : 26) + Math.sin(tempoTotalMS * 0.005) * 2.5
+      grupoBalao.y = baseDiamanteY - (ativo ? 38 : 26) + Math.sin(tempoTotalMS * 0.005) * 2.5
       desenharBalao(sim.balao.tipo, sim.balao.icone, sim.balao.texto)
     } else {
       grupoBalao.visible = false
@@ -871,10 +869,10 @@ export async function criarCena(dados: SalaDados, opcoes: OpcoesCena = {}): Prom
       marcadorDestino.clear()
       marcadorDestino.ellipse(x, y, raioPulso, raioPulso * 0.5).stroke({
         width: 2.5,
-        color: COR_PLUMBBOB_VERDE,
+        color: COR_NIVEL.bom.num,
         alpha: 0.85,
       })
-      marcadorDestino.circle(x, y, 4).fill({ color: COR_PLUMBBOB_VERDE, alpha: 0.9 })
+      marcadorDestino.circle(x, y, 4).fill({ color: COR_NIVEL.bom.num, alpha: 0.9 })
       marcadorDestino.visible = true
     } else {
       marcadorDestino.visible = false

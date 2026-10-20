@@ -644,3 +644,35 @@ Se o chefe quiser os arquivos exatos: soltar os PNGs/SVGs em
 componentes (`IconeAvancarTick`, `IconeMensagens`, `IconeConfiguracoes`)
 por `<img src="..." />` — a troca é local a esse arquivo, nada mais
 depende do formato interno do ícone.
+
+---
+
+## Modo simulação: decisões em aberto — Frontend
+
+O modo simulação passou por um pente fino (laço por quadro, padrão
+Console, bugs de autonomia, de clique e de memória — ver PARTE 11 do
+guia técnico). Ficaram de fora de propósito, porque cada um é decisão de
+produto, não ajuste:
+
+- **Dois relógios.** O HUD mostra o relógio do JOGO (1 min por segundo,
+  local) e o servidor tem o relógio simulado do tick. Unificar, separar
+  visualmente ou esconder um deles?
+- **O mundo some ao recarregar.** Necessidade, habilidade e relação
+  recomeçam do zero a cada reload (trocar de sala recarrega a página).
+  Persistir no `localStorage` é simples; no backend faria do jogo parte
+  do produto — decisão de escopo.
+- **Personagem criado no criador** é só do jogo (sem backend, sem painel).
+  Fica assim, vira agente de verdade depois, ou sai?
+- **O chefe na sala.** Ele tem mesa (`chefe-mesa`) e aparece nas
+  relações, mas não é personagem.
+- **Maquete 2D.** Continua montada (é dona do editor) e com o visual do
+  modo simulação antigo (retrato 2D). Vale manter os dois modos, ou a 2D
+  vira só o editor?
+- **Agente sem lugar na sala atual** continua sendo simulado (anda, gasta
+  necessidade). Na 3D aparece sempre; na 2D, só quem tem cadeira na sala.
+- **Telas estreitas.** O HUD foi ajustado pra 1280px+.
+- **Nomes internos herdados** (`CAS`, `Sims`, `hubbia` em ids de ação):
+  renomear é mecânico, mas mexe em muito arquivo — melhor numa rodada só
+  disso.
+
+**Status:** pra debater com o chefe antes de qualquer código.

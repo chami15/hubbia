@@ -142,8 +142,20 @@ frontend/
         catalogo.ts         → as 140 peças agrupadas por categoria
         persistencia.ts     → as três camadas: fonte / rascunho / sessão
         edicao.ts           → o modo de edição (tecla E)
-        cena.ts             → desenha o que NÃO é mobília (piso, laje, paredes, crachás)
-        Escritorio.tsx      → ciclo de vida do canvas Pixi + painéis
+        cena.ts             → maquete 2D: desenha o que NÃO é mobília (piso, laje, paredes, agentes)
+        camera.ts           → câmera da maquete 2D (pan/zoom/seguir) — mexe no container, a cena nem sabe
+        cena3d.ts           → mundo 3D (three.js): câmera orbital, móveis, personagens e o LAÇO
+        moveis3d.ts         → lote 3D (terreno, paredes que se cortam) + um modelo por categoria
+        personagem3d.ts     → boneco articulado (primitivas) com pose alvo + amortecimento
+        texturas3d.ts       → texturas procedurais com cache
+        simulacao-sims.ts   → o motor do modo simulação (necessidade, humor, fila, autonomia)
+        roteamento-sims.ts  → rota A*, colisão, encaixe nos móveis, posição de conversa
+        cas-sims.ts         → dados do criador de personagem (aparência, traços)
+        catalogo-jogo.ts    → o que cada peça do catálogo faz no jogo
+        HudSimulacao.tsx    → HUD do modo simulação (+ InspetorAgente, hud-estilos, AvatarAgente)
+        MenuRadial.tsx      → menu de opções que abre no clique
+        CatalogoConstrucao.tsx / CriadorPersonagem.tsx → modo construir / personagens
+        Escritorio.tsx      → ciclo de vida do canvas Pixi + laço do motor + painéis
   scripts/
     medir-ancoras.py        → mede o "pé" de cada sprite e regera ancoras.ts
 ```
@@ -802,6 +814,120 @@ Se a abertura/fechamento for animada (slide-in), vale a mesma regra de
 performance da PARTE 5: só `transform`/`opacity`, nunca animar
 `width`/`left`/`right` — isso forçaria recálculo de layout a cada
 frame.
+
+---
+
+# PARTE 11 — O modo simulação (mundo 3D)
+
+Camada de jogo por cima do escritório: cada agente tem necessidades
+(energia, café, foco, social, diversão; ambiente vem da sala), humor,
+habilidades e relações, anda pela sala desviando de móvel (A*) e escolhe
+sozinho o que fazer (autonomia). O chefe clica num móvel, colega ou ponto
+do chão e escolhe uma opção no menu radial. O modo principal é o mundo
+3D (three.js); a maquete 2D isométrica (PixiJS) continua montada, mesmo
+escondida, porque é a dona do editor de salas.
+
+**Nada disso vai pro backend** — é estado só do frontend, recomeça a cada
+recarga (aparência e traços do criador de personagem ficam no
+localStorage). O único fio com o servidor é o estado real do agente
+(`idle/pensando/falando/executando`, vira modificador de humor) e o balão
+que uma rodada de tick provoca.
+
+## Quem faz o quê
+
+- `simulacao-sims.ts` — o motor. `avancarSimulacaoSims(mundo, sala, dt)`
+  é **pura**: devolve o mundo seguinte sem tocar no anterior (testável sem
+  canvas). Também gera as opções do menu (`obterInteracoesDo*`); a
+  autonomia escolhe da MESMA lista, filtrando `autonoma` — o agente nunca
+  faz sozinho algo que o chefe não poderia mandar.
+- `roteamento-sims.ts` — pegada de cada móvel, rota A* em grade de meio
+  tile, encaixe (sofá tem 3 lugares, mesa tem frente e lados) e posição
+  de conversa.
+- `cena3d.ts` + `personagem3d.ts` + `moveis3d.ts` — desenho 3D.
+- `Escritorio.tsx` — liga tudo: dono do mundo (ref), menus, painéis.
+
+## O laço: motor dentro do requestAnimationFrame da cena 3D
+
+O mundo mora numa **ref** no `Escritorio`. A cada quadro, a cena 3D chama
+`aoQuadro(dt)`: o Escritorio avança o motor (em subpassos de até 0.1s) e
+devolve o mundo novo, que a cena anima e desenha no mesmo quadro. O React
+(HUD) só recebe uma "foto" a cada `INTERVALO_HUD_MS` (140ms); ação do
+chefe passa por `atualizarMundo`, que muda a ref e publica na hora. Com a
+maquete 2D na tela, o laço continua (o motor roda nele) mas não desenha.
+
+Antes o motor rodava num `setInterval` de 250ms com o estado no React: o
+boneco recebia posição nova 4x por segundo (andava aos trancos e
+alternava entre pose de andar e de parado) e o HUD inteiro re-renderizava
+a cada passo.
+
+**Regra:** um laço só. Motor, câmera e personagens no mesmo quadro.
+
+**Regra:** suavização por tempo, nunca por quadro. `x += (alvo - x) *
+0.14` a cada quadro é o dobro mais rápido a 120Hz que a 60Hz; o certo é
+`k = 1 - exp(-rigidez * dt)`. Vale pra câmera, pro amortecimento das
+articulações (havia um piso de 0.08s no dt que fazia tudo 5x mais
+rápido) e pro "afastar pra manter espaço pessoal" do motor.
+
+**Regra:** nada de arredondar dentro do motor. Com passo de 1 quadro, a
+queda de uma necessidade é ~0.005 — arredondar pra uma casa engolia o
+decaimento inteiro. Arredondar é assunto de tela.
+
+**Regra:** autonomia com respiro. Agente que termina uma ação espera 1–3s
+antes de escolher outra; quando nada serve, espera o máximo. Sem isso a
+autonomia — que testa todos os móveis e calcula encaixe — rodava a cada
+quadro.
+
+## Etiquetas sobre os personagens
+
+Nome, humor e balão de cada personagem são DOM (HudSimulacao →
+`EtiquetasDaCena`), mas a POSIÇÃO é escrita pela cena 3D, todo quadro,
+direto no `style.transform` (`translate3d`, só composição). O React só
+decide o conteúdo. Antes as posições iam pro estado do React a 20Hz:
+re-render do Escritorio inteiro e etiqueta sempre um passo atrás.
+
+## Memória da GPU
+
+Geometria e material criados com `new` ficam na GPU até `dispose()`.
+Móvel 3D é refeito a cada edição da sala, e roupa/cabelo do boneco a
+cada troca no criador — os dois agora liberam o que tiram (`liberarObjeto`
+em cena3d.ts, `esvaziarGrupo` em personagem3d.ts). Textura NUNCA é
+liberada junto: vem do cache compartilhado de texturas3d.ts.
+
+Sem `PointLight` por personagem: cada luz dinâmica pesa em todo material
+e recompila shader quando o número de luzes muda (personagem novo).
+
+## Clique × arraste
+
+O `pointerup` da cena 3D é ouvido na janela (pra arraste que sai do
+canvas), então ele só vira clique se o gesto COMEÇOU no canvas — senão um
+clique num botão do HUD abria o menu do que estivesse atrás. Na 2D, quem
+trata clique pergunta `camera.acabouDeArrastar()` antes de abrir menu.
+
+Fora do modo construir, toda peça da 2D é `eventMode: 'static'` (editor,
+`aplicarInteratividade`) — antes só porta era.
+
+## Uma régua só pra "está mal"
+
+`nivelDaNecessidade` (bom/atenção/baixo/crítico) decide a cor do
+diamante, da barra do inspetor e quando o agente reclama. Cores saem da
+paleta Console (`COR_NIVEL`), assim como as dos humores.
+
+## Personagem criado × agente
+
+Os 4 agentes existem no backend; personagem criado no criador é só do
+jogo — sem painel, sem rodada. Por isso: o NOME dos 4 não é editável no
+criador (é por ele que a cena é ligada ao backend), o botão "Painel" só
+aparece pra eles, e o retrato de quem não tem arte é a inicial sobre a
+cor (`AvatarAgente`).
+
+## Propriedade intelectual
+
+A mecânica (necessidade, humor, menu radial, indicador sobre a cabeça,
+criador de personagem) é gênero, não dono. O que NÃO entra no código:
+valores, nomes de arquivo, nomes internos ou estrutura copiados de jogo
+de terceiros. Cores e números aqui são da paleta e do ajuste do próprio
+projeto. (Alguns identificadores herdados — `CAS`, `Sims` — ficaram por
+ora; o texto de tela já não usa.)
 
 ---
 

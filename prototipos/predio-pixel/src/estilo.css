@@ -1,0 +1,144 @@
+/* Tokens do "Console" do hubbia (os mesmos nomes do frontend), com fontes do sistema no lugar das ConsoleDisplay/
+   ConsoleCorpo, que só existem no frontend. */
+:root {
+  --void: #0b0e14;
+  --deck: #131823;
+  --deck-2: #1a2030;
+  --linha: #263046;
+  --ink: #e6ebf4;
+  --ink-2: #9aa6bb;
+  --accent: #5eead4;
+  --good: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --raio: 10px;
+  --fonte: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--void);
+  color: var(--ink);
+  font: 14px/1.45 var(--fonte);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+a { color: var(--accent); }
+code { font-family: var(--mono); font-size: 12px; }
+canvas.px { image-rendering: pixelated; display: block; }
+
+/* ------------------------------------------------------------ barra */
+.barra {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 16px;
+  background: var(--deck);
+  border-bottom: 1px solid var(--linha);
+  flex-wrap: wrap;
+}
+.marca { display: flex; align-items: center; gap: 8px; }
+.marca strong { font-size: 16px; letter-spacing: 0.3px; }
+.marca-sub { color: var(--ink-2); font-size: 12px; }
+.marca-ponto { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.abas { display: flex; gap: 4px; }
+.abas button {
+  font: inherit;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.abas button[aria-selected='true'] { color: var(--ink); background: var(--deck-2); border-color: var(--linha); }
+.hora { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 12px; }
+.hora input { accent-color: var(--accent); width: 160px; }
+.hora output { font-family: var(--mono); color: var(--ink); min-width: 44px; }
+
+/* ------------------------------------------------------------ prédio */
+.palco { display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+.moldura { position: relative; display: grid; place-items: center; overflow: auto; padding: 16px; min-height: 0; }
+.moldura canvas { border-radius: 6px; box-shadow: 0 10px 40px rgb(0 0 0 / 0.45); cursor: default; }
+.moldura canvas.mira { cursor: pointer; }
+
+.gaveta {
+  background: var(--deck);
+  border-left: 1px solid var(--linha);
+  padding: 16px;
+  overflow-y: auto;
+}
+.gaveta h2 { margin: 0; font-size: 18px; }
+.gaveta .vazio { color: var(--ink-2); }
+.cartao { border: 1px solid var(--linha); background: var(--deck-2); border-radius: var(--raio); padding: 12px; margin-bottom: 12px; }
+.agente-topo { display: flex; gap: 12px; align-items: center; }
+.agente-topo canvas { border-radius: 8px; background: var(--void); border: 2px solid var(--cor, var(--accent)); }
+.dominio { color: var(--ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; }
+.rotulo { color: var(--ink-2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; margin: 0 0 6px; }
+.agora { font-size: 15px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--void);
+  border: 1px solid var(--linha);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.chips button[aria-pressed='true'] { border-color: var(--cor, var(--accent)); box-shadow: inset 0 0 0 1px var(--cor, var(--accent)); }
+.chips button[data-status='precisa_de_voce'][aria-pressed='true'] { border-color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
+.atalho { display: grid; gap: 8px; }
+.atalho label { display: grid; gap: 3px; font-size: 12px; color: var(--ink-2); }
+.atalho input {
+  font: inherit;
+  color: var(--ink);
+  background: var(--void);
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+.botao {
+  font: inherit;
+  width: 100%;
+  color: var(--void);
+  background: var(--cor, var(--accent));
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.botao[disabled] { opacity: 0.45; cursor: not-allowed; }
+.dica { color: var(--ink-2); font-size: 12px; margin: 6px 0 0; }
+.lista-agentes { display: grid; gap: 8px; margin-top: 12px; }
+.lista-agentes button {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  font: inherit; color: var(--ink); text-align: left;
+  background: var(--deck-2); border: 1px solid var(--linha); border-radius: var(--raio);
+  padding: 8px; cursor: pointer;
+}
+.lista-agentes canvas { border-radius: 6px; background: var(--void); }
+.lista-agentes small { display: block; color: var(--ink-2); }
+.selo { width: 8px; height: 8px; border-radius: 50%; margin-left: auto; flex: none; }
+
+/* ------------------------------------------------------------ catálogo */
+.catalogo { padding: 20px 24px 48px; overflow: auto; }
+.catalogo section { background: var(--deck); border: 1px solid var(--linha); border-radius: var(--raio); padding: 14px 16px 16px; margin-bottom: 18px; }
+.catalogo h2 { margin: 0 0 4px; font-size: 17px; }
+.catalogo .desc { margin: 0 0 12px; color: var(--ink-2); font-size: 13px; }
+.grade { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.celula { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.celula span { font-size: 11px; color: var(--ink-2); }
+.celula canvas { background: #e9ecf1; border-radius: 4px; }
+
+.rodape { padding: 8px 16px; font-size: 12px; color: var(--ink-2); border-top: 1px solid var(--linha); background: var(--deck); }
+
+@media (max-width: 900px) {
+  .palco { grid-template-columns: 1fr; }
+  .gaveta { border-left: 0; border-top: 1px solid var(--linha); }
+}

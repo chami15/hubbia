@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Prédio hubbia — protótipo pixel</title>
+    <link rel="stylesheet" href="/src/estilo.css" />
+  </head>
+  <body>
+    <header class="barra">
+      <div class="marca">
+        <span class="marca-ponto"></span>
+        <strong>hubbia</strong>
+        <span class="marca-sub">prédio · protótipo pixel</span>
+      </div>
+      <nav class="abas" role="tablist">
+        <button role="tab" data-aba="predio" aria-selected="true">Prédio</button>
+        <button role="tab" data-aba="catalogo" aria-selected="false">Catálogo da arte</button>
+      </nav>
+      <label class="hora">
+        <span>Hora</span>
+        <input id="hora" type="range" min="0" max="23.75" step="0.25" />
+        <output id="hora-valor"></output>
+      </label>
+    </header>
+
+    <main id="aba-predio" class="palco">
+      <div id="moldura" class="moldura">
+        <canvas id="mundo" class="px"></canvas>
+      </div>
+      <aside id="gaveta" class="gaveta" aria-live="polite"></aside>
+    </main>
+
+    <main id="aba-catalogo" class="catalogo" hidden></main>
+
+    <footer class="rodape">
+      Arte procedural do <a href="https://github.com/marmottajr/habblaud" target="_blank" rel="noopener">habblaud</a>
+      (MIT, © 2026 Márcio Junior) — ver <code>src/habblaud/LICENSE</code>.
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

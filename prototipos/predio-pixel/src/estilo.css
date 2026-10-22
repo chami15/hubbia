@@ -113,6 +113,7 @@ canvas.px { image-rendering: pixelated; display: block; }
   font-weight: 600;
   cursor: pointer;
 }
+.botao-sec { color: var(--ink); background: var(--deck-2); border: 1px solid var(--linha); font-weight: 500; }
 .botao[disabled] { opacity: 0.45; cursor: not-allowed; }
 .dica { color: var(--ink-2); font-size: 12px; margin: 6px 0 0; }
 .lista-agentes { display: grid; gap: 8px; margin-top: 12px; }

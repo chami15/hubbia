@@ -15,7 +15,12 @@ npm run build      # typecheck + build
 
 ## O que tem
 
-- **Prédio** (40 x 26 tiles): recepção com elevadores, salas da Cifra, Agenda, Vita e Norte, corredor e copa.
+- **Prédio montado pelos agentes escolhidos**: recepção e copa fixas à esquerda; cada agente ocupa uma vaga (duas por
+  coluna, acima e abaixo do corredor). "+ Adicionar agente" (ou clicar numa vaga) constrói a sala com animação de obra e o
+  agente chega pelo elevador; "Dispensar" faz ele ir embora e a sala desmontada vira vaga. Sem vaga livre, o prédio ganha
+  uma coluna (até 8 salas). As vagas ficam salvas neste navegador.
+- **7 agentes no catálogo**: Cifra, Agenda, Vita e Norte (os que existem) e Lume (estudos), Lar (casa e compras) e Rota
+  (viagens) como conceito — arte e sala prontas, backend ainda não.
 - **Agentes com aparência fixa** (`src/agentes.ts`): roupa na cor do agente, acessórios que combinam com cada um.
 - **Dinâmica** (`src/sim.ts`): caminho com A* na grade, pausas (estante, café, bebedouro, fliperama...), status
   `trabalhando` / `ocioso` / `precisa de você` (corre até a mesa e levanta a mão com o alerta) / `dormindo`.
@@ -23,7 +28,7 @@ npm run build      # typecheck + build
   quadro branco, relógio na hora real, janela e céu que seguem o controle "Hora".
 - **Gaveta do agente**: clique num agente (ou na sala dele) — status simulável, o atalho de campo único da Vita
   e o lugar onde vai entrar o painel real de cada agente.
-- **Catálogo**: agentes, as 20 poses, itens na mão, os 46 móveis, ícones, telas, pisos e paredes.
+- **Catálogo**: agentes, as salas de cada um, as 20 poses, itens na mão, os 46 móveis, ícones, telas, pisos e paredes.
 
 ## Organização
 
@@ -32,8 +37,9 @@ npm run build      # typecheck + build
 | `src/habblaud/art/` | Módulo de arte do habblaud **sem alterações** (só os caminhos dos imports). Puro: PixelBuf → canvas, com cache. |
 | `src/habblaud/shared/` | Dependências da arte: `appearance.ts`, `hash.ts`, `world/appearance-flat.ts` (cópias) e um `i18n.ts` mínimo. |
 | `src/habblaud/LICENSE` | Licença MIT do habblaud — **precisa acompanhar** qualquer cópia da arte. |
-| `src/agentes.ts` | Identidade visual e textos dos 4 agentes. |
-| `src/predio.ts` | Planta, móveis, lugares, grade de caminhada e desenho por quadro. |
+| `src/agentes.ts` | Catálogo de agentes: identidade visual e textos. |
+| `src/salas.ts` | Modelos de sala (móveis, lugares, piso, parede) — **um agente novo = uma entrada aqui e outra em agentes.ts**. |
+| `src/predio.ts` | Monta o prédio a partir das vagas (salas, grade de caminhada), obra/desmontagem e desenho por quadro. |
 | `src/sim.ts` | Comportamento dos agentes (sem DOM). |
 | `src/main.ts` | Laço, câmera, seleção e gaveta. |
 | `src/catalogo.ts` | Vitrine da arte. |

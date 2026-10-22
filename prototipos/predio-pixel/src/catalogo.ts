@@ -13,7 +13,8 @@ import {
   type ScreenMode,
   type WallStyle,
 } from './habblaud/art/api';
-import { AGENTES } from './agentes';
+import { CATALOGO } from './agentes';
+import { H, desenharPredio, montarPredio } from './predio';
 
 const ESCALA = 3;
 
@@ -67,13 +68,13 @@ function secao(raiz: HTMLElement, titulo: string, desc: string): HTMLElement {
   return g;
 }
 
-function celula(grade: HTMLElement, w: number, h: number, rotulo: string, pintar: Pintor, fundo = '#e9ecf1'): void {
+function celula(grade: HTMLElement, w: number, h: number, rotulo: string, pintar: Pintor, fundo = '#e9ecf1', escala = ESCALA): void {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   c.className = 'px';
-  c.style.width = `${w * ESCALA}px`;
-  c.style.height = `${h * ESCALA}px`;
+  c.style.width = `${w * escala}px`;
+  c.style.height = `${h * escala}px`;
   const cel = document.createElement('div');
   cel.className = 'celula';
   const sp = document.createElement('span');
@@ -90,7 +91,7 @@ function blit(ctx: CanvasRenderingContext2D, s: { canvas: HTMLCanvasElement; ax:
 }
 
 export function montarCatalogo(raiz: HTMLElement): void {
-  const aparencias = AGENTES.map((d) => ({ d, a: art.appearanceFromSeed(d.seed, { look: d.look, parts: d.parts }) }));
+  const aparencias = CATALOGO.map((d) => ({ d, a: art.appearanceFromSeed(d.seed, { look: d.look, parts: d.parts }) }));
 
   const ag = secao(raiz, 'Os agentes', 'Aparência fixa de cada agente (roupa na cor dele), nas quatro direções, andando.');
   const DIRS: readonly Dir[] = ['down', 'left', 'up', 'right'];
@@ -100,7 +101,29 @@ export function montarCatalogo(raiz: HTMLElement): void {
     });
   }
 
-  const po = secao(raiz, 'Poses', 'As 20 poses do módulo, revezando os quatro agentes. As sentadas aparecem sobre uma banqueta.');
+  // Cada sala montada sozinha no prédio e recortada: a mesma sala que entra quando a pessoa adiciona o agente.
+  const sl = secao(raiz, 'Salas', 'O modelo de sala de cada agente (salas.ts): só peças do catálogo, nenhum desenho novo.');
+  for (const d of CATALOGO) {
+    const p = montarPredio([d.id, null]);
+    const tmp = document.createElement('canvas');
+    tmp.width = p.W;
+    tmp.height = H;
+    const ESC = 2;
+    const w = 14 * TILE;
+    const h = 11 * TILE;
+    let ultimo = -1e9;
+    celula(sl, w, h, `${d.nome} · ${d.dominio}`, (ctx, t) => {
+      // O prédio inteiro é desenhado a cada 400 ms (as telas animam devagar); o recorte vai a todo quadro.
+      if (t - ultimo > 400) {
+        ultimo = t;
+        const tctx = tmp.getContext('2d') as CanvasRenderingContext2D;
+        desenharPredio(tctx, p, { t, hora: 12, agora: new Date(), telas: { [d.id]: d.tela }, luz: {}, elevadores: [0, 0], obras: new Map() }, [], () => undefined);
+      }
+      ctx.drawImage(tmp, 12 * TILE, 0, w, h, 0, 0, w, h);
+    }, '#1b1f2a', ESC);
+  }
+
+  const po = secao(raiz, 'Poses', 'As 20 poses do módulo, revezando os agentes. As sentadas aparecem sobre uma banqueta.');
   POSES.forEach(([pose, nome], i) => {
     const { a } = aparencias[i % aparencias.length];
     const sentada = SENTADAS.includes(pose);

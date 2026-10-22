@@ -69,3 +69,12 @@ export function IconeSalaDeMaquinas({ tamanho = 22 }: Props) {
     </svg>
   )
 }
+
+export function IconePredio({ tamanho = 22 }: Props) {
+  return (
+    <svg width={tamanho} height={tamanho} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <rect x={4} y={3} width={16} height={18} rx={1.5} />
+      <path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M10 21v-3h4v3" />
+    </svg>
+  )
+}

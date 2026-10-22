@@ -1,65 +1,42 @@
-import { PASTA_AGENTES, RECORTES, type AgenteVisual } from '../escritorio/agentes'
+import { useMemo } from 'react'
+import * as art from '../predio/habblaud/art/index'
+import { corCss, type AgenteVisual } from '../predio/agentes'
 
-// O mesmo crachá circular do escritório, só que em DOM em vez de Pixi.
-//
-// Reusa as MESMAS constantes de RECORTES (cx, cy, raio) que cena.ts usa
-// pra recortar o retrato no canvas — os 4 retratos têm enquadramento
-// diferente, e calibrar isso duas vezes garantiria que um dia os dois
-// lados divergissem sem ninguém notar.
-//
-// A conta é a tradução direta do que o Pixi faz:
-//   Pixi:  sprite.anchor.set(cx, cy);  escala = raioTela / (raio * larguraOriginal)
-//   DOM:   left/top 50% + translate(-cx*100%, -cy*100%);  largura = raioTela / raio
-//
-// Funciona porque porcentagem em `translate` é relativa ao tamanho do
-// PRÓPRIO elemento — que é exatamente a semântica de `anchor` do Pixi.
-
-export function corCss(cor: number): string {
-  return `#${cor.toString(16).padStart(6, '0')}`
-}
+// O busto do agente em pixel art — o MESMO personagem que anda pelo prédio (a arte gera o busto a partir da
+// aparência, então os dois nunca divergem). Antes era a foto recortada em círculo; o redesenho do prédio trocou
+// tudo pela arte procedural do habblaud.
 
 interface Props {
   agente: AgenteVisual
-  /** diâmetro do círculo, em px */
+  /** lado do quadro, em px */
   tamanho: number
-  /** espessura do anel colorido em volta; 0 remove o anel */
+  /** espessura da moldura colorida em volta; 0 remove */
   anel?: number
 }
 
 export function RetratoAgente({ agente, tamanho, anel = 3 }: Props) {
-  const recorte = RECORTES[agente.id]
-  // sem recorte medido, mostra o retrato inteiro encolhido em vez de
-  // sumir com ele — degradar é melhor que não desenhar nada
-  const larguraImagem = recorte ? tamanho / 2 / recorte.raio : tamanho
-  const deslocX = recorte ? recorte.cx * 100 : 50
-  const deslocY = recorte ? recorte.cy * 100 : 50
-
+  // o busto tem 20 px de lado; gera numa escala inteira que cubra o tamanho pedido e o CSS ajusta o resto
+  const escala = Math.max(1, Math.ceil(tamanho / 20))
+  const src = useMemo(
+    () => art.avatarCanvas(agente.seed, { look: agente.look, parts: agente.parts, scale: escala }).toDataURL(),
+    [agente.seed, agente.look, agente.parts, escala],
+  )
   return (
-    <div
+    <img
+      src={src}
+      alt={agente.nome}
+      width={tamanho}
+      height={tamanho}
       style={{
         width: tamanho,
         height: tamanho,
-        borderRadius: '50%',
-        overflow: 'hidden',
-        position: 'relative',
         flexShrink: 0,
         boxSizing: 'border-box',
+        imageRendering: 'pixelated',
+        borderRadius: Math.round(tamanho / 6),
         border: anel > 0 ? `${anel}px solid ${corCss(agente.cor)}` : undefined,
-        background: 'rgba(0,0,0,0.25)',
+        background: '#0b0e14',
       }}
-    >
-      <img
-        src={`${PASTA_AGENTES}/${agente.arquivo}`}
-        alt={agente.nome}
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
-          width: larguraImagem,
-          maxWidth: 'none',
-          transform: `translate(-${deslocX}%, -${deslocY}%)`,
-        }}
-      />
-    </div>
+    />
   )
 }

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { AGENTES } from '../escritorio/agentes'
+import { AGENTES, ehConceito } from '../predio/agentes'
 import { useAgentes } from '../../hooks/useAgentes'
 import { PainelAgente, type LarguraPainel } from './PainelAgente'
 import { EsqueletoPainel } from './EsqueletoPainel'
@@ -45,7 +45,7 @@ export function PainelDoAgente({ agenteId, aoFechar }: Props) {
 
   // A junção é por ESPECIALIDADE — o id numérico do backend não tem
   // relação com o id string do escritório (ver guia-tecnico, PARTE 10).
-  const backend = doBackend?.find((a) => a.especialidade === agente.especialidade)
+  const backend = agente.especialidade ? doBackend?.find((a) => a.especialidade === agente.especialidade) : undefined
 
   return (
     <PainelAgente
@@ -59,7 +59,26 @@ export function PainelDoAgente({ agenteId, aoFechar }: Props) {
         {agenteId === 'vita' && <PainelSaude />}
         {agenteId === 'norte' && <PainelNorte />}
         {agenteId === 'cifra' && <PainelFinanceiro />}
+        {ehConceito(agente) && <PainelConceito nome={agente.nome} funcao={agente.funcao} />}
       </Suspense>
     </PainelAgente>
+  )
+}
+
+// Agente conceito (Lume, Lar, Rota): a arte e a sala já existem no prédio, o backend ainda não. O painel diz isso
+// em vez de abrir vazio — e deixa claro que ele está ali só para mostrar como o prédio cresce.
+function PainelConceito({ nome, funcao }: { nome: string; funcao: string }) {
+  return (
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, lineHeight: 1.5, color: 'var(--ink)' }}>
+      <div style={{ fontSize: 10, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--ink-dim)' }}>agente conceito</div>
+      <p style={{ margin: 0 }}>
+        {nome} ({funcao.replace(' (conceito)', '')}) ainda não existe no backend: a aparência e a sala estão prontas, o trabalho
+        dele não.
+      </p>
+      <p style={{ margin: 0, color: 'var(--ink-dim)' }}>
+        Quando o agente ganhar backend, é só preencher a especialidade em features/predio/agentes.ts e criar o painel dele
+        aqui em PainelDoAgente.
+      </p>
+    </div>
   )
 }

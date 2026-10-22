@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useConversaAgenda, type FalaChat } from '../../hooks/useAgenda'
-import { corCss } from '../agentes/RetratoAgente'
-import type { AgenteVisual } from '../escritorio/agentes'
+import { corCss, type AgenteVisual } from '../predio/agentes'
 
 // O conteúdo do painel do Agenda: chat.
 //

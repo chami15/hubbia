@@ -2,8 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAgentes } from '../../hooks/useAgentes'
 import { useMarcarMensagemLida, useMensagens, useResponderMensagem } from '../../hooks/useMensagens'
 import { mensagemDeErro } from '../../api/client'
-import { AGENTES } from '../escritorio/agentes'
-import { corCss } from './RetratoAgente'
+import { AGENTES, corCss } from '../predio/agentes'
 import type { Mensagem } from '../../types/mensagens'
 
 // Mensagens do módulo de interação (docs/frontend-design.md) — duas

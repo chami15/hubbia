@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import type { AgenteVisual } from '../escritorio/agentes'
+import { corCss, type AgenteVisual } from '../predio/agentes'
 import type { EstadoAgente } from '../../types/agente'
-import { corCss, RetratoAgente } from './RetratoAgente'
+import { RetratoAgente } from './RetratoAgente'
 
 // O quadro comum dos painéis de agente: barra de topo com retrato, nome,
 // função e estado + o conteúdo específico daquele agente por dentro.

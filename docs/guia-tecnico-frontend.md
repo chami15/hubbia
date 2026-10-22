@@ -13,6 +13,54 @@ módulo de agentes.
 
 ---
 
+# PARTE 0 — O prédio pixel (substitui o escritório isométrico)
+
+**Estado atual.** A tela do hub deixou de ser o escritório isométrico em
+PixiJS (sprites do Kenney + modo de edição) e virou um **prédio em pixel
+art procedural**, com a arte extraída do habblaud (MIT; estudo completo
+em `docs/estudo-habblaud.md`). As PARTES 3 a 7 abaixo ficam como
+histórico de como o escritório isométrico funcionava — o código dele
+saiu da árvore, mas segue na branch `frontend`.
+
+**Por que trocou.** A exibição era a pedra no sapato: cada agente ou
+sala nova exigia sprite, âncora medida e sala desenhada à mão no editor.
+No prédio, tudo é desenhado em código a partir de dado: agente novo é
+uma aparência (peças do personagem) e sala nova é uma lista de móveis.
+Nenhum arquivo de imagem.
+
+**Onde mora** (`src/features/predio/`):
+
+| Arquivo | O quê |
+| --- | --- |
+| `habblaud/` | Módulo de arte copiado do habblaud, com o `LICENSE` (obrigatório pela MIT). Só duas mudanças: caminhos dos imports e os construtores sem *parameter property* (o tsconfig usa `erasableSyntaxOnly`) — marcadas com `(hubbia)`. |
+| `agentes.ts` | Registro único dos agentes: nome, cor, especialidade (a ponte com GET /agentes), função e aparência pixel. Substitui `escritorio/agentes.ts`. `especialidade: null` = agente conceito (sem backend). |
+| `salas.ts` | Modelos de sala em coordenadas locais (servem em cima ou embaixo do corredor). Regras para um modelo funcionar estão no topo do arquivo. |
+| `predio.ts` | Monta o prédio a partir das vagas (recepção e copa fixas; duas vagas por coluna; cresce para a direita até 8), grade de caminhada, divisórias e o desenho por quadro (canvas 2D, ampliado pelo CSS sem suavização). |
+| `sim.ts` | Comportamento (sem DOM): A* na grade, pausas, chegada pelo elevador, dispensa. |
+| `mundo.ts` | O prédio vivo e imperativo (como a cena do Pixi era): canvas, laço, câmera, clique. O React só empurra dados e escuta cliques. |
+| `vagas.ts` | Quem está em cada vaga — por enquanto no `localStorage`; é a única peça que muda quando "agentes ativos por chefe" for para o backend. |
+| `PainelPredio.tsx` | Gerência: quem está no prédio (abrir, dispensar) e o catálogo (adicionar, inclusive clicando numa vaga). |
+
+**Do backend para o prédio** (`Escritorio.tsx`, `statusNoPredio`):
+mensagem não lida para o chefe → *precisa de você* (corre para a mesa e
+levanta a mão); `pensando`/`executando` → *trabalhando*; `falando` →
+*conversando*; `idle` → *ocioso* (e *dormindo* de madrugada, pela hora
+simulada do tick). Dia e noite seguem a `hora_simulada`.
+
+**Painéis.** Não mudaram: clicar num agente (ou na sala dele) abre o
+mesmo `PainelDoAgente`; o Motriz abre a sala de máquinas (é o trabalho
+dele). Os painéis abrem DENTRO da área do prédio, então a barra do topo
+(relógio, mensagens, configurações, sala de máquinas, avançar tick)
+nunca some. O retrato do agente (`RetratoAgente`) virou o busto em pixel
+gerado pela mesma arte — o personagem do painel é o mesmo que anda.
+
+**Testes.** `src/features/predio/__testes__/predio.test.ts`: toda sala do
+catálogo tem todos os lugares alcançáveis em cima e embaixo do corredor,
+o prédio cheio também, e a simulação leva o agente até a mesa. Ao mexer
+num modelo de sala, é esse teste que pega móvel fechando caminho.
+
+---
+
 # PARTE 1 — O caminho até aqui (e os erros pelo caminho)
 
 Esta seção existe porque o frontend foi reconstruído **cinco vezes**

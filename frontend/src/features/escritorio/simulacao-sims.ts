@@ -782,20 +782,68 @@ export function obterInteracoesDoMovel(
         balaoTexto: 'Expresso saindo',
     })
   }
-  if (/Fridge|Microwave|toaster/.test(movel.peca)) {
+  if (/Fridge|Microwave|toaster|Stove|Blender|Bar/.test(movel.peca)) {
     opcoes.push({
-        id: `lanche-rapido-${movel.id}`,
-        titulo: 'Fazer um lanche',
-        icone: '🥪',
-        categoria: 'necessidades',
-        autonoma: true,
-        duracaoSegundos: 8,
-        posturaAlvo: 'interagindo_em_pe',
-        efeitos: { cafeina: 40, energia: 16, social: 6 },
-        alvoMovelId: movel.id,
-        alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
-        balaoIcone: '🥗',
-        balaoTexto: 'Recarregando',
+      id: `lanche-rapido-${movel.id}`,
+      titulo: movel.peca.includes('Blender') ? 'Fazer uma vitamina' : 'Fazer um lanche',
+      icone: movel.peca.includes('Blender') ? '\u{1F964}' : '\u{1F96A}',
+      categoria: 'necessidades',
+      autonoma: true,
+      duracaoSegundos: 8,
+      posturaAlvo: 'interagindo_em_pe',
+      efeitos: { cafeina: 40, energia: 16, social: 6 },
+      alvoMovelId: movel.id,
+      alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
+      balaoIcone: movel.peca.includes('Blender') ? '\u{1F964}' : '\u{1F957}',
+      balaoTexto: 'Recarregando',
+    })
+  }
+  if (movel.peca === 'kitchenSink') {
+    opcoes.push({
+      id: `lavar-caneca-${movel.id}`,
+      titulo: 'Lavar a caneca',
+      icone: '\u{1F6B0}',
+      categoria: 'ambiente',
+      autonoma: true,
+      duracaoSegundos: 5,
+      posturaAlvo: 'interagindo_em_pe',
+      efeitos: { foco: 12, ambiente: 8 },
+      alvoMovelId: movel.id,
+      alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
+      balaoIcone: '\u{1FAE7}',
+      balaoTexto: 'Deixando tudo limpo',
+    })
+  }
+  if (movel.peca === 'bathroomMirror') {
+    opcoes.push({
+      id: `ensaiar-discurso-${movel.id}`,
+      titulo: 'Ensaiar apresentação',
+      icone: '\u{1FA9E}',
+      categoria: 'trabalho',
+      autonoma: true,
+      duracaoSegundos: 8,
+      posturaAlvo: 'interagindo_em_pe',
+      efeitos: { foco: 20, social: 18 },
+      habilidadeAfetada: 'carisma',
+      alvoMovelId: movel.id,
+      alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
+      balaoIcone: '\u{1F3A4}',
+      balaoTexto: 'Treinando o discurso',
+    })
+  } else if (cat === 'banho') {
+    opcoes.push({
+      id: `refrescar-banho-${movel.id}`,
+      titulo: 'Refrescar o rosto',
+      icone: '\u{1F4A7}',
+      categoria: 'necessidades',
+      autonoma: true,
+      duracaoSegundos: 6,
+      posturaAlvo: 'interagindo_em_pe',
+      efeitos: { energia: 22, foco: 16 },
+      alvoMovelId: movel.id,
+      alvoPosicao: { coluna: movel.coluna, linha: movel.linha },
+      balaoIcone: '\u2728',
+      balaoTexto: 'Renovado',
     })
   }
 

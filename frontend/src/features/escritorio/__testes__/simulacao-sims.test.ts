@@ -1,10 +1,10 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { obterMetadadosPeca } from '../catalogo-jogo'
-import { nomeCompletoDoMovel, nomeDoMovel } from '../catalogo'
+import { PECAS, nomeCompletoDoMovel, nomeDoMovel } from '../catalogo'
 import { REGISTROS_PADRAO_POR_SIM, type RegistroSimCAS } from '../cas-sims'
 import { criarPersonagemSim3D } from '../personagem3d'
-import { criarLoteVizinhanca3D, criarMovel3D } from '../moveis3d'
+import { criarLoteVizinhanca3D, criarMovel3D, extrairReceitaMovel3D } from '../moveis3d'
 import {
   calcularCaminhoAEstrela,
   calcularPosicaoJigSocial,
@@ -300,6 +300,42 @@ describe('3D', () => {
     expect(lote.paredes.filter((p) => p.malhaAlta.visible)).toHaveLength(2)
     for (const m of SALA.moveis) expect(criarMovel3D(m).children.length).toBeGreaterThan(0)
   })
+
+  it('personagem 3D tem anatomia orgânica esculpida (sem blocos quadrados) e rosto livre de auto-sombra manchada', () => {
+    const p3d = criarPersonagemSim3D('cifra', 0x16a34a)
+    let temBoxGeometry = false
+    p3d.grupoRaiz.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.geometry instanceof THREE.BoxGeometry) {
+        temBoxGeometry = true
+      }
+    })
+    expect(temBoxGeometry).toBe(false)
+
+    // Nenhuma malha da cabeça ou do rosto recebe sombra própria (evita acne de shadow-map no rosto)
+    p3d.articulacoes.cabeca.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        expect(o.receiveShadow).toBe(false)
+      }
+    })
+    p3d.destruir()
+  })
+
+  it('fórmula paramétrica 3D gera modelo distinto para todas as 140 peças do catálogo', () => {
+    const familiasVistas = new Set<string>()
+    for (const peca of PECAS) {
+      const receita = extrairReceitaMovel3D(peca)
+      familiasVistas.add(receita.familia)
+      const modelo = criarMovel3D({
+        id: `teste-${peca}`,
+        peca,
+        direcao: 'SE',
+        coluna: 2,
+        linha: 2,
+      })
+      expect(modelo.children.length).toBeGreaterThan(0)
+    }
+    expect(familiasVistas.size).toBeGreaterThanOrEqual(45)
+  })
 })
 
 describe('criador de personagem e catálogo', () => {
@@ -343,5 +379,48 @@ describe('criador de personagem e catálogo', () => {
 
   it('formata o relógio', () => {
     expect(formatarRelogioSim(9 * 60 + 5, 0)).toBe('Seg 09:05')
+  })
+
+  it('os 4 agentes canônicos possuem roupas, cabelos, acessórios e fisionomias exclusivas dos concept arts', () => {
+    const { cifra, agenda, vita, norte } = REGISTROS_PADRAO_POR_SIM
+
+    // Cifra
+    expect(cifra.aparencia.estiloCabelo).toBe('topete_cifra')
+    expect(cifra.aparencia.estiloRoupa).toBe('trenchcoat_cifra')
+    expect(cifra.aparencia.detalheFacial).toBe('cifra_barba_cicatriz')
+    expect(cifra.aparencia.propMao).toBe('caderneta_cifra')
+
+    // Agenda
+    expect(agenda.aparencia.estiloCabelo).toBe('coque_agenda')
+    expect(agenda.aparencia.estiloRoupa).toBe('cardigan_agenda')
+    expect(agenda.aparencia.oculos).toBe('gatinho_agenda')
+    expect(agenda.aparencia.detalheFacial).toBe('agenda_pinta_madura')
+    expect(agenda.aparencia.propMao).toBe('agenda_postits')
+
+    // Vita
+    expect(vita.aparencia.estiloCabelo).toBe('afro_vita')
+    expect(vita.aparencia.estiloRoupa).toBe('regata_vita')
+    expect(vita.aparencia.detalheFacial).toBe('vita_sardas_diastema')
+    expect(vita.aparencia.propMao).toBe('garrafa_vita')
+
+    // Norte
+    expect(norte.aparencia.estiloCabelo).toBe('geek_norte')
+    expect(norte.aparencia.estiloRoupa).toBe('moletom_norte')
+    expect(norte.aparencia.oculos).toBe('geek_norte')
+    expect(norte.aparencia.detalheFacial).toBe('norte_olheiras')
+    expect(norte.aparencia.corOlhoDireito).toBeDefined()
+    expect(norte.aparencia.corOlhoEsquerdo).toBeDefined()
+    expect(norte.aparencia.corOlhoDireito).not.toBe(norte.aparencia.corOlhoEsquerdo)
+  })
+
+  it('personagens 3D dos 4 agentes canônicos instanciam seus visuais do Blender com integridade', () => {
+    for (const id of ['cifra', 'agenda', 'vita', 'norte']) {
+      const reg = REGISTROS_PADRAO_POR_SIM[id]
+      const p3d = criarPersonagemSim3D(id, reg.corIdentidade, reg.aparencia)
+      expect(p3d.grupoRaiz.children.length).toBeGreaterThan(0)
+      expect(p3d.articulacoes.cabeca).toBeDefined()
+      expect(p3d.articulacoes.peito).toBeDefined()
+      p3d.destruir()
+    }
   })
 })

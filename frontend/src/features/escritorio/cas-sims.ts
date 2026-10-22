@@ -15,6 +15,10 @@ import type { HabilidadeSim, TracoPersonalidade } from './simulacao-sims'
 // ---------------------------------------------------------------------------
 
 export type EstiloCabeloCAS =
+  | 'topete_cifra'
+  | 'coque_agenda'
+  | 'afro_vita'
+  | 'geek_norte'
   | 'executivo'
   | 'coque'
   | 'rabo_cavalo'
@@ -24,6 +28,10 @@ export type EstiloCabeloCAS =
   | 'curto_cacheado'
 
 export type EstiloRoupaCAS =
+  | 'trenchcoat_cifra'
+  | 'cardigan_agenda'
+  | 'regata_vita'
+  | 'moletom_norte'
   | 'blazer_executivo'
   | 'moletom_tech'
   | 'jaqueta_esportiva'
@@ -40,9 +48,34 @@ export type PorteFisicoCAS =
   | 'padrao'
   | 'atletico'
 
+export type AcessorioOculosCAS =
+  | 'nenhum'
+  | 'gatinho_agenda'
+  | 'geek_norte'
+  | 'redondo'
+  | 'retangular'
+
+export type DetalheFacialCAS =
+  | 'nenhum'
+  | 'cifra_barba_cicatriz'
+  | 'agenda_pinta_madura'
+  | 'vita_sardas_diastema'
+  | 'norte_olheiras'
+
+export type PropMaoCAS =
+  | 'nenhum'
+  | 'caderneta_cifra'
+  | 'agenda_postits'
+  | 'garrafa_vita'
+  | 'cafe'
+  | 'livro'
+  | 'tablet'
+
 export interface AparenciaSimCAS {
   tomPele: number
   corOlhos: number
+  corOlhoDireito?: number
+  corOlhoEsquerdo?: number
   corCabelo: number
   estiloCabelo: EstiloCabeloCAS
   porteFisico: PorteFisicoCAS
@@ -51,7 +84,9 @@ export interface AparenciaSimCAS {
   corRoupaSecundaria: number
   corCalca: number
   corSapato: number
-  oculos: 'nenhum' | 'redondo' | 'retangular'
+  oculos: AcessorioOculosCAS
+  detalheFacial?: DetalheFacialCAS
+  propMao?: PropMaoCAS
   headset: boolean
   estiloCaminhada: EstiloCaminhadaCAS
 }
@@ -68,7 +103,8 @@ export interface RegistroSimCAS {
   habilidadesIniciais?: HabilidadeSim[]
 }
 
-const CHAVE_STORAGE_CAS = 'escritorio:cas:registros-v1'
+const CHAVE_STORAGE_CAS = 'escritorio:cas:registros-v2'
+const CHAVE_STORAGE_ANTIGA = 'escritorio:cas:registros-v1'
 
 export const TONS_DE_PELE_CAS: { nome: string; cor: number; hex: string }[] = [
   { nome: 'Porcelana', cor: 0xfbe5d6, hex: '#fbe5d6' },
@@ -81,12 +117,13 @@ export const TONS_DE_PELE_CAS: { nome: string; cor: number; hex: string }[] = [
 ]
 
 export const CORES_CABELO_CAS: { nome: string; cor: number; hex: string }[] = [
-  { nome: 'Preto Ébano', cor: 0x18181b, hex: '#18181b' },
+  { nome: 'Ruivo Acobreado (Cifra)', cor: 0x9a3412, hex: '#9a3412' },
+  { nome: 'Platinado Prata (Agenda)', cor: 0xcbd5e1, hex: '#cbd5e1' },
+  { nome: 'Verde Esmeralda (Vita)', cor: 0x047857, hex: '#047857' },
+  { nome: 'Preto Ébano (Norte)', cor: 0x18181b, hex: '#18181b' },
   { nome: 'Castanho Escuro', cor: 0x271c15, hex: '#271c15' },
   { nome: 'Castanho Avelã', cor: 0x5c3317, hex: '#5c3317' },
-  { nome: 'Ruivo Acobreado', cor: 0x9a3412, hex: '#9a3412' },
   { nome: 'Loiro Dourado', cor: 0xd4a017, hex: '#d4a017' },
-  { nome: 'Platinado Prata', cor: 0xcbd5e1, hex: '#cbd5e1' },
   { nome: 'Azul Cyber', cor: 0x0284c7, hex: '#0284c7' },
   { nome: 'Roxo Criativo', cor: 0x7c3aed, hex: '#7c3aed' },
 ]
@@ -96,23 +133,30 @@ export const CORES_OLHOS_CAS: { nome: string; cor: number; hex: string }[] = [
   { nome: 'Mel / Âmbar', cor: 0x854d0e, hex: '#854d0e' },
   { nome: 'Verde Esmeralda', cor: 0x15803d, hex: '#15803d' },
   { nome: 'Azul Oceano', cor: 0x0369a1, hex: '#0369a1' },
+  { nome: 'Ciano Cyber (Norte)', cor: 0x06b6d4, hex: '#06b6d4' },
   { nome: 'Cinza Tempestade', cor: 0x475569, hex: '#475569' },
 ]
 
 export const CORES_ROUPA_CAS: { nome: string; cor: number; hex: string }[] = [
+  { nome: 'Caramelo Trenchcoat', cor: 0x92400e, hex: '#92400e' },
   { nome: 'Verde Cifra', cor: 0x16a34a, hex: '#16a34a' },
+  { nome: 'Cardigã Grafite', cor: 0x475569, hex: '#475569' },
   { nome: 'Azul Agenda', cor: 0x2563eb, hex: '#2563eb' },
-  { nome: 'Coral Vita', cor: 0xf97316, hex: '#f97316' },
+  { nome: 'Terracota Vita', cor: 0xc2410c, hex: '#c2410c' },
+  { nome: 'Oliva Jogger', cor: 0x3f6212, hex: '#3f6212' },
+  { nome: 'Preto Moletom Hacker', cor: 0x18181b, hex: '#18181b' },
   { nome: 'Ciano Norte', cor: 0x0891b2, hex: '#0891b2' },
   { nome: 'Roxo Inovação', cor: 0x7c3aed, hex: '#7c3aed' },
   { nome: 'Rosa Criativo', cor: 0xdb2777, hex: '#db2777' },
   { nome: 'Dourado Executivo', cor: 0xd97706, hex: '#d97706' },
-  { nome: 'Grafite Minimalista', cor: 0x334155, hex: '#334155' },
   { nome: 'Branco Gelo', cor: 0xf8fafc, hex: '#f8fafc' },
-  { nome: 'Preto Ônix', cor: 0x0f172a, hex: '#0f172a' },
 ]
 
 export const ESTILOS_CABELO_INFO: { id: EstiloCabeloCAS; nome: string; icone: string }[] = [
+  { id: 'topete_cifra', nome: 'Topete Cifra (Cobre/Prata)', icone: '🦊' },
+  { id: 'coque_agenda', nome: 'Coque Agenda (Lápis)', icone: '👵' },
+  { id: 'afro_vita', nome: 'Afro Vita (Esmeralda/Limão)', icone: '🌿' },
+  { id: 'geek_norte', nome: 'Desfiado Anime (Norte)', icone: '🖤' },
   { id: 'executivo', nome: 'Executivo Clássico', icone: '💼' },
   { id: 'coque', nome: 'Coque Elegante', icone: '👑' },
   { id: 'rabo_cavalo', nome: 'Rabo de Cavalo', icone: '🎀' },
@@ -123,10 +167,40 @@ export const ESTILOS_CABELO_INFO: { id: EstiloCabeloCAS; nome: string; icone: st
 ]
 
 export const ESTILOS_ROUPA_INFO: { id: EstiloRoupaCAS; nome: string; icone: string }[] = [
+  { id: 'trenchcoat_cifra', nome: 'Sobretudo & Colete (Cifra)', icone: '🧥' },
+  { id: 'cardigan_agenda', nome: 'Cardigã & Gola Boneca (Agenda)', icone: '🧶' },
+  { id: 'regata_vita', nome: 'Regata & Jogger (Vita)', icone: '🎽' },
+  { id: 'moletom_norte', nome: 'Moletom Oversized (Norte)', icone: '🕶️' },
   { id: 'blazer_executivo', nome: 'Blazer Executivo', icone: '👔' },
   { id: 'moletom_tech', nome: 'Moletom Tech', icone: '💻' },
   { id: 'jaqueta_esportiva', nome: 'Jaqueta Esportiva', icone: '🧥' },
   { id: 'camisa_social', nome: 'Camisa Social Slim', icone: '👕' },
+]
+
+export const ACESSORIOS_OCULOS_INFO: { id: AcessorioOculosCAS; nome: string; icone: string }[] = [
+  { id: 'nenhum', nome: 'Sem Óculos', icone: '👀' },
+  { id: 'gatinho_agenda', nome: 'Gatinho com Corrente (Agenda)', icone: '👓' },
+  { id: 'geek_norte', nome: 'Retangular Hacker (Norte)', icone: '🕶️' },
+  { id: 'redondo', nome: 'Redondo Intelectual', icone: '🧐' },
+  { id: 'retangular', nome: 'Retangular Executivo', icone: '💼' },
+]
+
+export const DETALHES_FACIAIS_INFO: { id: DetalheFacialCAS; nome: string; icone: string }[] = [
+  { id: 'nenhum', nome: 'Pele Limpa Natural', icone: '✨' },
+  { id: 'cifra_barba_cicatriz', nome: 'Barba Cerrada & Cicatriz (Cifra)', icone: '🧔' },
+  { id: 'agenda_pinta_madura', nome: 'Pinta Facial Elegante (Agenda)', icone: '💄' },
+  { id: 'vita_sardas_diastema', nome: 'Sardas & Diastema (Vita)', icone: '😁' },
+  { id: 'norte_olheiras', nome: 'Olheiras Dev / Hacker (Norte)', icone: '😴' },
+]
+
+export const PROPS_MAO_INFO: { id: PropMaoCAS; nome: string; icone: string }[] = [
+  { id: 'nenhum', nome: 'Mãos Livres', icone: '🖐️' },
+  { id: 'caderneta_cifra', nome: 'Caderneta & Caneta (Cifra)', icone: '📒' },
+  { id: 'agenda_postits', nome: 'Fichário & Post-its (Agenda)', icone: '📑' },
+  { id: 'garrafa_vita', nome: 'Garrafa Térmica (Vita)', icone: '🍶' },
+  { id: 'cafe', nome: 'Xícara de Café', icone: '☕' },
+  { id: 'livro', nome: 'Livro de Estudos', icone: '📖' },
+  { id: 'tablet', nome: 'Tablet Digital', icone: '📱' },
 ]
 
 export const ESTILOS_CAMINHADA_INFO: { id: EstiloCaminhadaCAS; nome: string; icone: string; descricao: string }[] = [
@@ -162,15 +236,17 @@ export const REGISTROS_PADRAO_POR_SIM: Record<string, RegistroSimCAS> = {
     aparencia: {
       tomPele: 0xf1c29b,
       corOlhos: 0x15803d,
-      corCabelo: 0x271c15,
-      estiloCabelo: 'executivo',
+      corCabelo: 0x9a3412,
+      estiloCabelo: 'topete_cifra',
       porteFisico: 'padrao',
-      estiloRoupa: 'blazer_executivo',
-      corRoupaPrincipal: 0x16a34a,
-      corRoupaSecundaria: 0xf8fafc,
+      estiloRoupa: 'trenchcoat_cifra',
+      corRoupaPrincipal: 0x92400e,
+      corRoupaSecundaria: 0x16a34a,
       corCalca: 0x1e293b,
-      corSapato: 0x0f172a,
-      oculos: 'retangular',
+      corSapato: 0x3f2e22,
+      oculos: 'nenhum',
+      detalheFacial: 'cifra_barba_cicatriz',
+      propMao: 'caderneta_cifra',
       headset: false,
       estiloCaminhada: 'confiante',
     },
@@ -186,15 +262,17 @@ export const REGISTROS_PADRAO_POR_SIM: Record<string, RegistroSimCAS> = {
     aparencia: {
       tomPele: 0xf5cba7,
       corOlhos: 0x0369a1,
-      corCabelo: 0x5c3317,
-      estiloCabelo: 'coque',
+      corCabelo: 0xcbd5e1,
+      estiloCabelo: 'coque_agenda',
       porteFisico: 'esguio',
-      estiloRoupa: 'blazer_executivo',
-      corRoupaPrincipal: 0x2563eb,
-      corRoupaSecundaria: 0xe0f2fe,
-      corCalca: 0x334155,
-      corSapato: 0x1e293b,
-      oculos: 'nenhum',
+      estiloRoupa: 'cardigan_agenda',
+      corRoupaPrincipal: 0x475569,
+      corRoupaSecundaria: 0xf8fafc,
+      corCalca: 0x0f172a,
+      corSapato: 0x0f172a,
+      oculos: 'gatinho_agenda',
+      detalheFacial: 'agenda_pinta_madura',
+      propMao: 'agenda_postits',
       headset: false,
       estiloCaminhada: 'padrao',
     },
@@ -210,15 +288,17 @@ export const REGISTROS_PADRAO_POR_SIM: Record<string, RegistroSimCAS> = {
     aparencia: {
       tomPele: 0xe5a97c,
       corOlhos: 0x854d0e,
-      corCabelo: 0x3b1f12,
-      estiloCabelo: 'rabo_cavalo',
+      corCabelo: 0x047857,
+      estiloCabelo: 'afro_vita',
       porteFisico: 'atletico',
-      estiloRoupa: 'jaqueta_esportiva',
-      corRoupaPrincipal: 0xf97316,
+      estiloRoupa: 'regata_vita',
+      corRoupaPrincipal: 0xc2410c,
       corRoupaSecundaria: 0xffedd5,
-      corCalca: 0x1f2937,
-      corSapato: 0xf8fafc,
+      corCalca: 0x3f6212,
+      corSapato: 0x78350f,
       oculos: 'nenhum',
+      detalheFacial: 'vita_sardas_diastema',
+      propMao: 'garrafa_vita',
       headset: false,
       estiloCaminhada: 'energizado',
     },
@@ -232,19 +312,23 @@ export const REGISTROS_PADRAO_POR_SIM: Record<string, RegistroSimCAS> = {
     corIdentidade: 0x06b6d4,
     customizado: false,
     aparencia: {
-      tomPele: 0xebbd96,
-      corOlhos: 0x3b2219,
+      tomPele: 0xfbe5d6,
+      corOlhos: 0x0891b2,
+      corOlhoDireito: 0x3b2219,
+      corOlhoEsquerdo: 0x06b6d4,
       corCabelo: 0x18181b,
-      estiloCabelo: 'moderno',
+      estiloCabelo: 'geek_norte',
       porteFisico: 'padrao',
-      estiloRoupa: 'moletom_tech',
-      corRoupaPrincipal: 0x0891b2,
-      corRoupaSecundaria: 0x0f172a,
-      corCalca: 0x1e293b,
-      corSapato: 0x0f172a,
-      oculos: 'nenhum',
+      estiloRoupa: 'moletom_norte',
+      corRoupaPrincipal: 0x18181b,
+      corRoupaSecundaria: 0x0891b2,
+      corCalca: 0x0f172a,
+      corSapato: 0x0284c7,
+      oculos: 'geek_norte',
+      detalheFacial: 'norte_olheiras',
+      propMao: 'nenhum',
       headset: true,
-      estiloCaminhada: 'padrao',
+      estiloCaminhada: 'sereno',
     },
     tracosIds: ['geek', 'visionario', 'cafeinomano'],
   },
@@ -255,12 +339,27 @@ export function carregarRegistrosCAS(): Record<string, RegistroSimCAS> {
     JSON.stringify(REGISTROS_PADRAO_POR_SIM),
   )
   try {
-    const salvo = localStorage.getItem(CHAVE_STORAGE_CAS)
-    if (!salvo) return base
-    const parseado = JSON.parse(salvo) as Record<string, RegistroSimCAS>
-    for (const [id, reg] of Object.entries(parseado)) {
-      if (reg && reg.id && reg.aparencia) {
-        base[id] = reg
+    const salvoV2 = localStorage.getItem(CHAVE_STORAGE_CAS)
+    if (salvoV2) {
+      const parseado = JSON.parse(salvoV2) as Record<string, RegistroSimCAS>
+      for (const [id, reg] of Object.entries(parseado)) {
+        if (reg && reg.id && reg.aparencia) {
+          base[id] = reg
+        }
+      }
+      return base
+    }
+
+    // Migração de v1 para novos padrões
+    const salvoV1 = localStorage.getItem(CHAVE_STORAGE_ANTIGA)
+    if (salvoV1) {
+      const parseado = JSON.parse(salvoV1) as Record<string, RegistroSimCAS>
+      for (const [id, reg] of Object.entries(parseado)) {
+        if (reg && reg.id && reg.aparencia) {
+          if (reg.customizado) {
+            base[id] = reg
+          }
+        }
       }
     }
   } catch {
@@ -308,6 +407,8 @@ export function obterAparenciaSim(simId: string, corPadrao = 0x3b82f6): Aparenci
     corCalca: 0x1e293b,
     corSapato: 0x0f172a,
     oculos: 'nenhum',
+    detalheFacial: 'nenhum',
+    propMao: 'nenhum',
     headset: false,
     estiloCaminhada: 'padrao',
   }

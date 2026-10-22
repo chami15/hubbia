@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { AGENTES } from './agentes'
 import * as THREE from 'three'
 import {
+  ACESSORIOS_OCULOS_INFO,
   BIBLIOTECA_TRACOS_CAS,
   carregarRegistrosCAS,
   CORES_CABELO_CAS,
   CORES_OLHOS_CAS,
   CORES_ROUPA_CAS,
+  DETALHES_FACIAIS_INFO,
   ESTILOS_CABELO_INFO,
   ESTILOS_CAMINHADA_INFO,
   ESTILOS_ROUPA_INFO,
+  PROPS_MAO_INFO,
   removerSimCustomizadoCAS,
   salvarRegistroCAS,
   TONS_DE_PELE_CAS,
@@ -683,19 +686,116 @@ export function CriadorPersonagem({
                   </div>
 
                   <div>
-                    <div style={estiloLabel()}>Cor dos olhos</div>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      {CORES_OLHOS_CAS.map((olho) => (
-                        <button
-                          key={olho.nome}
-                          type="button"
-                          onClick={() => {
-                            setAparencia((a) => ({ ...a, corOlhos: olho.cor }))
-                            setZoomRosto(true)
-                          }}
-                          style={estiloCirculoCor(olho.hex, aparencia.corOlhos === olho.cor, olho.nome)}
-                        />
-                      ))}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={estiloLabel()}>Cor dos Olhos</div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const temHeterocromia = Boolean(aparencia.corOlhoDireito && aparencia.corOlhoEsquerdo)
+                          if (temHeterocromia) {
+                            setAparencia((a) => {
+                              const copia = { ...a }
+                              delete copia.corOlhoDireito
+                              delete copia.corOlhoEsquerdo
+                              return copia
+                            })
+                          } else {
+                            setAparencia((a) => ({
+                              ...a,
+                              corOlhoDireito: 0x3b2219,
+                              corOlhoEsquerdo: 0x06b6d4,
+                            }))
+                          }
+                          setZoomRosto(true)
+                        }}
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: 6,
+                          background: (aparencia.corOlhoDireito && aparencia.corOlhoEsquerdo) ? 'var(--mint)' : 'rgba(255,255,255,0.08)',
+                          color: (aparencia.corOlhoDireito && aparencia.corOlhoEsquerdo) ? '#000' : 'var(--ink)',
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        👁️ Heterocromia {(aparencia.corOlhoDireito && aparencia.corOlhoEsquerdo) ? '(Ativada)' : '(Desativada)'}
+                      </button>
+                    </div>
+
+                    {!(aparencia.corOlhoDireito && aparencia.corOlhoEsquerdo) ? (
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 6 }}>
+                        {CORES_OLHOS_CAS.map((olho) => (
+                          <button
+                            key={olho.nome}
+                            type="button"
+                            onClick={() => {
+                              setAparencia((a) => ({ ...a, corOlhos: olho.cor }))
+                              setZoomRosto(true)
+                            }}
+                            style={estiloCirculoCor(olho.hex, aparencia.corOlhos === olho.cor, olho.nome)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 6 }}>
+                        <div>
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-dim)', marginBottom: 4 }}>Olho Direito</div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {CORES_OLHOS_CAS.map((olho) => (
+                              <button
+                                key={'dir-' + olho.nome}
+                                type="button"
+                                onClick={() => {
+                                  setAparencia((a) => ({ ...a, corOlhoDireito: olho.cor }))
+                                  setZoomRosto(true)
+                                }}
+                                style={estiloCirculoCor(olho.hex, aparencia.corOlhoDireito === olho.cor, 'Direito: ' + olho.nome)}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-dim)', marginBottom: 4 }}>Olho Esquerdo</div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {CORES_OLHOS_CAS.map((olho) => (
+                              <button
+                                key={'esq-' + olho.nome}
+                                type="button"
+                                onClick={() => {
+                                  setAparencia((a) => ({ ...a, corOlhoEsquerdo: olho.cor }))
+                                  setZoomRosto(true)
+                                }}
+                                style={estiloCirculoCor(olho.hex, aparencia.corOlhoEsquerdo === olho.cor, 'Esquerdo: ' + olho.nome)}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Detalhes Faciais / Fisionomia */}
+                  <div>
+                    <div style={estiloLabel()}>Fisionomia & Detalhes Faciais</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                      {DETALHES_FACIAIS_INFO.map((det) => {
+                        const ativo = (aparencia.detalheFacial ?? 'nenhum') === det.id
+                        return (
+                          <button
+                            key={det.id}
+                            type="button"
+                            onClick={() => {
+                              setAparencia((a) => ({ ...a, detalheFacial: det.id }))
+                              setZoomRosto(true)
+                            }}
+                            style={estiloCardOpcao(ativo)}
+                          >
+                            <span style={{ fontSize: 18 }}>{det.icone}</span>
+                            <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3 }}>{det.nome}</div>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
 
@@ -765,15 +865,9 @@ export function CriadorPersonagem({
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <div>
-                      <div style={estiloLabel()}>Óculos</div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {(
-                          [
-                            { id: 'nenhum', nome: 'Sem Óculos' },
-                            { id: 'redondo', nome: 'Redondo Intelectual' },
-                            { id: 'retangular', nome: 'Executivo' },
-                          ] as const
-                        ).map((oc) => (
+                      <div style={estiloLabel()}>Óculos & Formatos</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                        {ACESSORIOS_OCULOS_INFO.map((oc) => (
                           <button
                             key={oc.id}
                             type="button"
@@ -783,7 +877,8 @@ export function CriadorPersonagem({
                             }}
                             style={estiloCardOpcao(aparencia.oculos === oc.id)}
                           >
-                            <div style={{ fontSize: 11.5, fontWeight: 700 }}>{oc.nome}</div>
+                            <span style={{ fontSize: 16 }}>{oc.icone}</span>
+                            <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2 }}>{oc.nome}</div>
                           </button>
                         ))}
                       </div>
@@ -872,6 +967,31 @@ export function CriadorPersonagem({
                           style={estiloCirculoCor(c.hex, aparencia.corCalca === c.cor, c.nome)}
                         />
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Objeto / Prop pessoal na mão */}
+                  <div>
+                    <div style={estiloLabel()}>Objeto / Prop na Mão</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                      {PROPS_MAO_INFO.map((prop) => {
+                        const ativo = (aparencia.propMao ?? 'nenhum') === prop.id
+                        return (
+                          <button
+                            key={prop.id}
+                            type="button"
+                            onClick={() => {
+                              setAparencia((a) => ({ ...a, propMao: prop.id }))
+                              setPosePreview({ corpo: 'em_pe', carregando: 'nada' })
+                              setZoomRosto(false)
+                            }}
+                            style={estiloCardOpcao(ativo)}
+                          >
+                            <span style={{ fontSize: 18 }}>{prop.icone}</span>
+                            <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3 }}>{prop.nome}</div>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 </>

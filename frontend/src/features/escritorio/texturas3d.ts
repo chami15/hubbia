@@ -3,11 +3,10 @@ import * as THREE from 'three'
 // ---------------------------------------------------------------------------
 // TEXTURAS PROCEDURAIS (com cache)
 //
-// Gera texturas procedurais em Canvas High-DPI (512x512 / 1024x1024) com
-// filtro anisotrópico e mapas de rugosidade/relevo (bumpMap) para que pisos,
-// madeiras, tecidos, gramado, asfalto e telas de computador fiquem nítidos
-// mesmo com a câmera bem perto. Cada textura é gerada uma vez por chave
-// e reaproveitada — por isso quem libera material NUNCA libera o `map`.
+// Gera texturas procedurais em Canvas High-DPI com filtro anisotrópico para
+// que pisos, madeiras, tecidos, gramado, pele e telas de computador fiquem
+// nítidos mesmo com a câmera bem perto. Cada textura é gerada uma vez por
+// chave e reaproveitada — por isso quem libera material NUNCA libera o `map`.
 // ---------------------------------------------------------------------------
 
 const cacheTexturas = new Map<string, THREE.CanvasTexture>()
@@ -53,7 +52,6 @@ export function texturaMadeira(corBaseHex: number, repetirX = 1, repetirY = 1): 
   ctx.fillStyle = `rgb(${r},${g},${b})`
   ctx.fillRect(0, 0, 256, 256)
 
-  // Veios orgânicos da madeira
   for (let i = 0; i < 64; i++) {
     const variacao = (i % 2 === 0 ? 1 : -1) * (6 + (i % 9))
     ctx.strokeStyle = `rgba(${Math.max(0, r + variacao)},${Math.max(0, g + variacao)},${Math.max(0, b + variacao)},0.32)`
@@ -70,8 +68,12 @@ export function texturaMadeira(corBaseHex: number, repetirX = 1, repetirY = 1): 
   return tex
 }
 
-export function texturaPisoLadrilho(corClaroHex: number, corEscuroHex: number): THREE.CanvasTexture | null {
-  const chave = `piso:${corClaroHex}:${corEscuroHex}`
+export function texturaPisoLadrilho(
+  corClaroHex: number,
+  corEscuroHex: number,
+  corJuntaHex = 0x94a3b8,
+): THREE.CanvasTexture | null {
+  const chave = `piso:${corClaroHex}:${corEscuroHex}:${corJuntaHex}`
   if (cacheTexturas.has(chave)) return cacheTexturas.get(chave)!
 
   const { canvas, ctx } = criarCanvas(256, 256)
@@ -81,26 +83,24 @@ export function texturaPisoLadrilho(corClaroHex: number, corEscuroHex: number): 
   ctx.fillStyle = hexCss(corClaroHex)
   ctx.fillRect(0, 0, 256, 256)
 
-  // Tábuas / ladrilhos sutis com bisel de alta definição
-  ctx.strokeStyle = 'rgba(0,0,0,0.12)'
-  ctx.lineWidth = 3
-  ctx.strokeRect(2, 2, 252, 252)
+  ctx.fillStyle = hexCss(corEscuroHex)
+  ctx.fillRect(0, 0, 128, 128)
+  ctx.fillRect(128, 128, 128, 128)
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.14)'
-  ctx.lineWidth = 2
-  ctx.strokeRect(5, 5, 246, 246)
-
-  // Linhas internas de parquet
   ctx.strokeStyle = 'rgba(0,0,0,0.05)'
-  ctx.lineWidth = 1
-  for (let y = 64; y < 256; y += 64) {
+  ctx.lineWidth = 1.5
+  for (let y = 16; y < 256; y += 16) {
     ctx.beginPath()
     ctx.moveTo(0, y)
     ctx.lineTo(256, y)
     ctx.stroke()
   }
 
-  const tex = configurarTexturaNitida(new THREE.CanvasTexture(canvas), 1, 1)
+  ctx.strokeStyle = hexCss(corJuntaHex)
+  ctx.lineWidth = 3
+  ctx.strokeRect(2, 2, 252, 252)
+
+  const tex = configurarTexturaNitida(new THREE.CanvasTexture(canvas), 3.5, 3.5)
   cacheTexturas.set(chave, tex)
   return tex
 }
@@ -118,7 +118,6 @@ export function texturaTecido(corBaseHex: number): THREE.CanvasTexture | null {
   ctx.fillStyle = `rgb(${r},${g},${b})`
   ctx.fillRect(0, 0, 128, 128)
 
-  // Trama de tecido micro-texturizada
   ctx.fillStyle = 'rgba(255,255,255,0.06)'
   for (let y = 0; y < 128; y += 4) {
     for (let x = (y % 8 === 0 ? 0 : 2); x < 128; x += 4) {
@@ -138,7 +137,7 @@ export function texturaTecido(corBaseHex: number): THREE.CanvasTexture | null {
 }
 
 export function texturaGramado(): THREE.CanvasTexture | null {
-  const chave = 'gramado-sims4'
+  const chave = 'gramado-vizinhanca'
   if (cacheTexturas.has(chave)) return cacheTexturas.get(chave)!
 
   const { canvas, ctx } = criarCanvas(256, 256)
@@ -166,19 +165,15 @@ export function texturaTelaMonitor(especialidade = 'geral'): THREE.CanvasTexture
   const { canvas, ctx } = criarCanvas(256, 160)
   if (!ctx) return null
 
-  // Fundo escuro de IDE / painel
   ctx.fillStyle = '#0f172a'
   ctx.fillRect(0, 0, 256, 160)
 
-  // Barra lateral
   ctx.fillStyle = '#1e293b'
   ctx.fillRect(0, 0, 44, 160)
 
-  // Cabeçalho
   ctx.fillStyle = '#38bdf8'
   ctx.fillRect(54, 14, 90, 10)
 
-  // Gráficos de barras e linhas nítidos na tela 3D
   const cores = ['#4ade80', '#38bdf8', '#f59e0b', '#a855f7']
   for (let i = 0; i < 6; i++) {
     const alt = 28 + ((i * 23) % 55)
@@ -186,11 +181,50 @@ export function texturaTelaMonitor(especialidade = 'geral'): THREE.CanvasTexture
     ctx.fillRect(58 + i * 28, 128 - alt, 18, alt)
   }
 
-  // Linhas de código
   ctx.fillStyle = 'rgba(226,232,240,0.65)'
   ctx.fillRect(54, 34, 140, 6)
   ctx.fillRect(54, 46, 110, 6)
   ctx.fillRect(54, 58, 165, 6)
+
+  const tex = configurarTexturaNitida(new THREE.CanvasTexture(canvas), 1, 1)
+  cacheTexturas.set(chave, tex)
+  return tex
+}
+
+export function texturaPeleRosto(corPele: number): THREE.CanvasTexture | null {
+  const chave = `pele-rosto:${corPele}`
+  if (cacheTexturas.has(chave)) return cacheTexturas.get(chave)!
+
+  const { canvas, ctx } = criarCanvas(256, 256)
+  if (!ctx) return null
+
+  const hexCss = (c: number) => `#${c.toString(16).padStart(6, '0')}`
+  const r = (corPele >> 16) & 0xff
+  const g = (corPele >> 8) & 0xff
+  const b = corPele & 0xff
+  const clarear = (f: number) =>
+    ((Math.min(255, Math.round(r + (255 - r) * f)) << 16) |
+      (Math.min(255, Math.round(g + (255 - g) * f)) << 8) |
+      Math.min(255, Math.round(b + (255 - b) * f)))
+
+  ctx.fillStyle = hexCss(corPele)
+  ctx.fillRect(0, 0, 256, 256)
+
+  // Iluminação suave na testa e centro do rosto
+  const luzCentro = ctx.createRadialGradient(128, 112, 8, 128, 118, 96)
+  luzCentro.addColorStop(0, hexCss(clarear(0.12)))
+  luzCentro.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = luzCentro
+  ctx.fillRect(0, 0, 256, 256)
+
+  // Rubor orgânico suave nas maçãs do rosto
+  for (const cx of [98, 158]) {
+    const rubor = ctx.createRadialGradient(cx, 138, 2, cx, 138, 26)
+    rubor.addColorStop(0, 'rgba(244, 114, 114, 0.16)')
+    rubor.addColorStop(1, 'rgba(244, 114, 114, 0)')
+    ctx.fillStyle = rubor
+    ctx.fillRect(0, 0, 256, 256)
+  }
 
   const tex = configurarTexturaNitida(new THREE.CanvasTexture(canvas), 1, 1)
   cacheTexturas.set(chave, tex)

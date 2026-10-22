@@ -1,9 +1,10 @@
 import { categoriaDe, nomeCompletoDoMovel } from './catalogo'
+import { extrairReceitaMovel3D, type FamiliaMovel3D } from './moveis3d'
 import { pontosDeAmbienteDaPeca } from './simulacao-sims'
 
-// O que cada peça do catálogo FAZ no modo simulação — separado do
-// componente (CatalogoConstrucao.tsx) pra ser testável e pra exportar
-// função de um .tsx não quebrar o fast refresh.
+// O que cada peça do catálogo FAZ no modo simulação e sua família de
+// modelagem 3D — separado do componente (CatalogoConstrucao.tsx) pra ser
+// testável e pra exportar função de um .tsx não quebrar o fast refresh.
 
 export type Comodo = 'escritorio' | 'copa' | 'lounge' | 'recepcao'
 
@@ -13,8 +14,8 @@ export interface MetadadosPeca {
   uso: string | null
   ambiente: number
   comodos: Comodo[]
+  familia3d: FamiliaMovel3D
 }
-
 
 const COMODOS_DA_CATEGORIA: Record<string, Comodo[]> = {
   trabalho: ['escritorio'],
@@ -23,6 +24,8 @@ const COMODOS_DA_CATEGORIA: Record<string, Comodo[]> = {
   luz: ['escritorio', 'lounge', 'recepcao'],
   guardar: ['escritorio', 'lounge'],
   cozinha: ['copa'],
+  banho: ['copa', 'lounge'],
+  quarto: ['lounge'],
   eletro: ['lounge', 'recepcao'],
   parede: ['recepcao', 'escritorio'],
   mesas: ['escritorio', 'lounge', 'copa'],
@@ -33,7 +36,11 @@ const COMODOS_DA_CATEGORIA: Record<string, Comodo[]> = {
 // entrar lá, o rótulo entra aqui.
 function usoDaPeca(peca: string, cat: string): string | null {
   if (peca.includes('Coffee')) return 'café'
-  if (/Fridge|Microwave|toaster/.test(peca)) return 'lanche'
+  if (peca.includes('Blender')) return 'vitamina'
+  if (/Fridge|Microwave|toaster|Stove|Bar/.test(peca)) return 'lanche'
+  if (peca === 'kitchenSink') return 'limpar'
+  if (peca === 'bathroomMirror') return 'ensaiar discurso'
+  if (cat === 'banho') return 'refrescar'
   if (/^(chairDesk|desk|computer|laptop)/.test(peca)) return 'trabalhar'
   if (peca.startsWith('doorway')) return 'sair / entrar'
   if (cat === 'assentos' || cat === 'quarto') return 'descansar'
@@ -46,11 +53,12 @@ function usoDaPeca(peca: string, cat: string): string | null {
 
 export function obterMetadadosPeca(peca: string): MetadadosPeca {
   const cat = categoriaDe(peca)
+  const receita = extrairReceitaMovel3D(peca)
   return {
     nomePt: nomeCompletoDoMovel(peca),
     uso: usoDaPeca(peca, cat),
     ambiente: pontosDeAmbienteDaPeca(peca),
     comodos: COMODOS_DA_CATEGORIA[cat] ?? ['lounge', 'recepcao'],
+    familia3d: receita.familia,
   }
 }
-

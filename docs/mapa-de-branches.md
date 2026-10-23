@@ -1,7 +1,7 @@
 # Mapa de branches — experimentos a integrar
 
-> **Nenhuma branch é definitiva.** A maioria são **testes separados** que o chefe e os agentes vão mudar e integrar uns nos outros com o tempo.
-> Este mapa não diz qual "ganha": diz o que cada experimento **tem de bom para colher** e como integrar sem sofrimento.
+> **Nenhuma branch é definitiva.** A maioria são **testes separados** que o chefe e os agentes vão mudar e integrar aos poucos.
+> Este mapa diz o que cada experimento **tem de bom para colher** e como integrar sem sofrimento.
 >
 > Fotografia de **2026-10-23**. Pode estar velha: **o git manda**. Para refazer em dois minutos:
 >
@@ -17,46 +17,93 @@
 ## Genealogia
 
 ```
-main ── Sprint 0 fechada (backend + docs, sem frontend)                                      2026-07-22
+main ── Sprint 0 fechada + arquivos de suporte a IA                                         v0.2.0 / v0.2.1
  │
- ├─ claude/agents-hub-mvp-review-oh6zb0 ── frontend em construção (obsoleta, ancestral de `frontend`)
+ ├─ claude/agents-hub-mvp-review-oh6zb0 ── REDUNDANTE (ancestral de `frontend`)             arquivo/mvp-review-frontend-inicial
  │
- └─ frontend ── escritório isométrico + "Console" + Sprint 2 parcial no backend              2026-08-25
+ └─ frontend ── escritório isométrico + "Console" + Sprint 2 parcial no backend             v0.3.0
      │
-     ├─ feat/predio-pixel ── prédio em pixel art no lugar do isométrico                      2026-10-23
+     ├─ feat/predio-pixel ── prédio em pixel art: frontend PRINCIPAL                        v0.4.0
      │
-     └─ [12/08, 10bb203] ── feat/the-sims ── modo simulação 3D (three.js), do chefe          2026-10-20
-                               └─ claude/modest-wright-cmvki7 ── + pente fino e modelos Blender   2026-10-22
+     └─ [12/08, 10bb203] ── feat/the-sims ── REDUNDANTE (ancestral da modest-wright)        arquivo/the-sims-3d
+                               └─ claude/modest-wright-cmvki7 ── 3D (Sims) + Blender        3d/v0.1
 
-main ── test/hubblaud ── estudo do habblaud + protótipo standalone em `prototipos/`          2026-10-22
+main ── test/hubblaud ── estudo do habblaud + protótipo standalone                          arquivo/hubblaud-prototipo
 ```
 
-## O que cada experimento tem para colher
+## Situação de cada branch (revisão de 2026-10-23)
 
-| Branch | O que vale colher | Observação |
-|---|---|---|
-| `main` | Backend completo da Sprint 0 | É onde o que não depende de visual deve chegar primeiro. |
-| `frontend` | **Backend da Sprint 2:** `tick_execucoes` ligada (`0d91941`), Motriz (`bebd563`), `/infra/*` e observabilidade (`685625a`), roteiro da Sprint 2 · **Frontend:** painéis dos agentes, "Console", toasts, mensagens, sala de máquinas · editor de salas (modo edição) | O backend aqui **não depende** do escritório isométrico: pode ir à `main` sem o frontend. |
-| `feat/predio-pixel` | Prédio em pixel art: arte procedural (habblaud), salas como dado, vagas (adicionar/dispensar agente), simulação com A\*, obra e elevador · testes de regressão do prédio · arquivos de suporte a IA | Troca só o "mundo"; os painéis ficaram como na `frontend`. |
-| `feat/the-sims` | Modo simulação estilo The Sims 4: PlumbBob, menu radial, necessidades e autonomia dos agentes · mundo 3D WebGL (personagens articulados, móveis, vizinhança, paredes *cutaway*) · roteamento A\*, criador de personagem 3D, catálogo Build/Buy, portais | Parte da `frontend` em 12/08: **sem** Motriz/`tick_execucoes`. |
-| `claude/modest-wright-cmvki7` | Tudo da `the-sims` + pente fino (laço por quadro, padrão Console) + modelos Blender e personalização dos 4 agentes + docs do modo simulação | É a ponta mais nova do 3D. |
-| `test/hubblaud` | Estudo do habblaud (o que é extraível) e protótipo standalone do prédio | Referência; o que importa já está na `feat/predio-pixel`. |
+Saúde medida com Postgres real: backend `pytest`; frontend `tsc -b` + `vitest` + `vite build`. Todas passam.
+
+| Branch | Testes | Decisão | Por quê |
+|---|---|---|---|
+| `main` | back 105 ✓ | Base. Falta receber o backend da Sprint 2 | Sprint 0 + arquivos de suporte a IA |
+| `frontend` | back 138 ✓ · front 127 ✓ | **Linha isométrica encerrada** (tag `v0.3.0`). Manter **até** o backend da Sprint 2 chegar à `main` | O isométrico era um teste. O backend dela (`tick_execucoes`, Motriz, `/infra/*`) aplica limpo sobre a `main` e passa 138 testes. |
+| `feat/predio-pixel` | back 138 ✓ · front 24 ✓ | **Frontend principal** (tag `v0.4.0`) | Tem tudo da `frontend` menos o mundo isométrico (auditado, ver abaixo). Bundle de 488 kB, sem `pixi.js` nem `three.js`. |
+| `claude/modest-wright-cmvki7` | back 115 ✓ · front 169 ✓ | **Mantida** como linha 3D separada (tag `3d/v0.1`) | Laboratório do 3D imersivo. O que aproveitar dela no prédio: `docs/aproveitamento-the-sims.md`. Peso: `.glb` de 16,7 MB no git, bundle de 2,2 MB. |
+| `claude/agents-hub-mvp-review-oh6zb0` | — | **Apagar** (aprovado pelo chefe) | 0 commits únicos |
+| `feat/the-sims` | — | **Apagar** (aprovado pelo chefe) | 0 commits únicos |
+| `test/hubblaud` | — | **Pronta para arquivar e apagar** (os 2 passos foram feitos) | O protótipo é versão antiga do que está integrado |
+
+### Auditoria `frontend` → `feat/predio-pixel`
+
+- **Removido, de propósito** (tudo do mundo isométrico): cena, maquete, editor de salas (tecla E), catálogo de móveis, menu de salas, portas, salas em JSON, âncoras, sprites do Kenney (560), plugin do Vite e os 8 testes dessas peças.
+- **Intacto:** os quatro painéis dos agentes, mensagens, configurações, sala de máquinas, toasts, som, `dry_run`, `api/`, `hooks/` e `types/`.
+- **Contrato:** as 45 chamadas do frontend têm rota no backend (conferido por script). 3 rotas do backend o frontend não usa (`/mensagens/caixa-de-entrada`, `/norte/projetos/{id}`, `PATCH .../status`); já era assim na `frontend`.
+- **Uma perda real encontrada e corrigida:** `pensando` e `executando` tinham animação própria no escritório isométrico e no prédio viraram o mesmo "trabalhando". Corrigido com teste de regressão (`status.test.ts`).
+- **Sobra:** `frontend/public/agentes/*.png` (retratos antigos, sem uso desde que o retrato virou o busto pixel). Decisão do chefe: apagar ou reaproveitar.
+- **Não portado, por decisão (era do isométrico):** editor de salas. No prédio as salas são código (`salas.ts`).
+
+### `test/hubblaud`: recomendação
+
+O protótipo é subconjunto do que está na `feat/predio-pixel` (sem Motriz, relógio, `status.ts` nem testes) e o estudo é idêntico. Só duas coisas valem antes de arquivar:
+
+1. ✅ **Vitrine da arte portada** para o frontend (`/#catalogo`, só em desenvolvimento): agentes, salas, 20 poses, itens, 46 móveis, ícones, telas, pisos e paredes.
+2. ✅ **`docs/estudo-habblaud.md` está na `main`** (com nota de que o protótipo foi integrado).
+
+Falta só publicar a tag `arquivo/hubblaud-prototipo` e apagar a branch (ações pendentes abaixo).
 
 ## Como integrar (diretrizes, não decisões)
 
-1. **Backend primeiro.** Os commits do Motriz/`tick_execucoes` (`0d91941`, `bebd563`, `685625a`) não tocam em frontend: levá-los à `main` destrava as outras linhas. Faça em branch própria e com `pytest` verde.
-2. **O "mundo" é a peça trocável.** Isométrico, 3D e pixel só diferem na tela do escritório; painéis, hooks, `api/` e `types/` são comuns. Hoje a `feat/predio-pixel` expõe o mundo por um contrato pequeno
-   (`criarMundo(hospedeiro, opcoes)` → `adicionar`, `dispensar`, `definirStatus`, `definirHora`, `selecionar`, `agentes`, `vagas`, `destruir`, em `features/predio/mundo.ts`).
-   **Sugestão para o chefe decidir:** se o 3D e o isométrico falarem esse mesmo contrato, dá para alternar entre mundos sem reescrever `Escritorio.tsx` a cada integração.
-3. **Conflito prevê-se.** As três linhas reescrevem `Escritorio.tsx`, `index.css` e `docs/guia-tecnico-frontend.md`. Quem integra: liste o que cada lado tem, proponha, e **espere o chefe escolher**; não resolva "ficando com um lado".
-4. **Integre em passos pequenos**, cada um com a suíte verde (`pytest`, `npm test`, `npm run build`, `npm run lint`) e **os testes de regressão de cada linha preservados**. Teste que some na integração é bug esperando para voltar.
-5. **Modelos 3D e imagens** (Blender, texturas) são binários grandes: confira o `.gitignore` e a licença antes de levá-los para outra branch.
-6. **Base de uma branch nova:** só backend/docs → `main`; frontend com sala de máquinas → `frontend` ou `feat/predio-pixel`; 3D → `claude/modest-wright-cmvki7`. Em dúvida, pergunte.
+1. **Backend primeiro.** O backend da Sprint 2 (`0d91941`, `bebd563`, `685625a` e o que a `frontend` mudou em `backend/`) aplica limpo na `main` com 138 testes verdes. Branch própria, PR.
+2. **O "mundo" é a peça trocável.** Isométrico, 3D e pixel só diferem na tela do escritório; painéis, hooks, `api/` e `types/` são comuns. A `feat/predio-pixel` expõe o mundo por um contrato pequeno
+   (`criarMundo(hospedeiro, opcoes)` → `adicionar`, `dispensar`, `definirStatus`, `definirHora`, `selecionar`, `agentes`, `vagas`, `destruir`; `features/predio/mundo.ts`).
+   **Sugestão:** se o 3D falar esse mesmo contrato, dá para alternar entre mundos sem reescrever `Escritorio.tsx`.
+3. **Conflito prevê-se.** As linhas reescrevem `Escritorio.tsx`, `index.css` e `docs/guia-tecnico-frontend.md`. Quem integra lista o que cada lado tem e **espera o chefe escolher**.
+4. **Passos pequenos**, cada um com a suíte verde (`pytest`, `npm test`, `npm run build`, `npm run lint`) e **os testes de regressão de cada linha preservados**.
+5. **Binários grandes** (Blender, texturas): confira `.gitignore` e licença antes de levar a outra branch; o `.glb` de 16,7 MB pede Git LFS ou release.
+
+## Tags de versão
+
+Anotadas, em português, no estilo da `v0.1beta` (a primeira, backend testado). Convenção: `vX.Y.Z` marcos do projeto · `3d/vX.Y` experimento 3D · `arquivo/<nome>` ponta de uma linha encerrada (mantém o histórico acessível sem manter a branch).
+
+| Tag | Commit | O que marca |
+|---|---|---|
+| `v0.1beta` | `9d7ef0a` | Primeira versão do backend testada (já publicada) |
+| `v0.2.0` | `ce6b2f8` | Sprint 0 fechada: 4 agentes + motor de tick, 105 testes |
+| `v0.2.1` | `544d29b` | `main` com os arquivos de suporte a IA |
+| `v0.3.0` | `685625a` | Frontend isométrico completo + Sprint 2 parcial (Motriz, `tick_execucoes`) |
+| `v0.4.0` | `75b82af` | Prédio pixel como frontend, com testes de regressão |
+| `3d/v0.1` | `a2416c3` | Experimento 3D: modo simulação + modelos Blender |
+| `arquivo/the-sims-3d` | `4559df6` | Ponta da `feat/the-sims` |
+| `arquivo/mvp-review-frontend-inicial` | `e27340d` | Ponta da `claude/agents-hub-mvp-review` |
+| `arquivo/hubblaud-prototipo` | `147695e` | Ponta da `test/hubblaud` |
+
+**Marco novo?** Crie a tag no commit certo (`git tag -a vX.Y.Z <sha> -m "o que muda e quantos testes passam"`), acrescente a linha aqui e em `scripts/criar-tags.sh`.
+
+## Ações pendentes do chefe
+
+O ambiente onde o agente trabalha só publica **branches**: push de **tag** e **exclusão de branch** recebem `403`. Rode na sua máquina:
+
+```bash
+git fetch --all --prune
+bash scripts/criar-tags.sh                       # cria as 8 tags que faltam e publica (idempotente, não apaga nada)
+git push origin --delete claude/agents-hub-mvp-review-oh6zb0 feat/the-sims   # sem perda: 0 commits únicos, e as tags arquivo/* guardam as pontas
+git push origin --delete test/hubblaud                                          # só depois de criar as tags (guarda o protótipo em arquivo/hubblaud-prototipo)
+```
 
 ## Arquivos de suporte a agentes de IA (`AGENTS.md`, `CLAUDE.md`, `.claude/`)
 
-Estão **na `main`** (commits `dc033ff` e `8219f32`, vindos da `feat/predio-pixel`): `AGENTS.md`, `CLAUDE.md`, `backend/AGENTS.md`, `.claude/agents/{backend-agente,revisor-hub}.md`, `.claude/skills/*` e este mapa.
-Toda branch **nova** a partir da `main` já os herda. As branches antigas recebem com `git merge origin/main` (ou cherry-pick), e podem ter cópias antigas dos mesmos arquivos: ao integrar, fique com a versão da `main` e reaplique só o que for específico do frontend daquela linha.
-
-Específicos do prédio pixel, **só na `feat/predio-pixel`**: `frontend/AGENTS.md`, `frontend/src/features/predio/AGENTS.md`, `.claude/agents/predio-pixel.md`.
+Estão na `main` (`v0.2.1`) e foram sincronizados na `feat/predio-pixel` por merge. Toda branch nova a partir da `main` os herda; as antigas recebem com `git merge origin/main`.
+Específicos do prédio pixel, só na `feat/predio-pixel`: `frontend/AGENTS.md`, `frontend/src/features/predio/AGENTS.md`, `.claude/agents/predio-pixel.md`.
 Cada linha de frontend (isométrico, 3D) precisa do **próprio** `frontend/AGENTS.md`, escrito por quem conhece aquele frontend, e dos **próprios** testes de regressão.

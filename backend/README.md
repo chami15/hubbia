@@ -10,8 +10,10 @@ determinísticos, sem LLM — só refeição, plano de dieta e relatório semana
 passam por LLM, cada um numa chamada estruturada única) e **Norte**
 (projetos do GitHub: um card de sugestão por vez — feature, bug ou próximo
 passo —, nunca mais de um ativo por projeto, encadeando o próximo card
-automaticamente ao resolver o atual). Ainda **sem** motor de tick — isso é
-a próxima fatia.
+automaticamente ao resolver o atual). O **motor de tick** (manual) percorre os
+agentes ativos, e todo gasto de LLM passa por uma tabela só, `tick_execucoes`.
+O **Motriz** (sala de máquinas, o único agente sem LLM) lê essa tabela e expõe
+`/infra/*` (observabilidade, orçamento).
 
 ## ⚠️ Antes de usar de verdade
 
@@ -257,6 +259,7 @@ agents/                    # lógica dos agentes LLM, um domínio por pasta
   _shared/
     guardrails.py               # middleware de tool-calling (captura erro, teto de
                                 # chamadas) — reusado por qualquer agente com tool-loop
+    execucoes.py                # registrar_execucao/cronometrar: todo gasto em tick_execucoes
 
 resolvers/                 # regra de negócio (o router chama isso, nunca o banco)
   agentes.py
@@ -267,6 +270,8 @@ resolvers/                 # regra de negócio (o router chama isso, nunca o ban
                               # ficha de treino, plano de dieta, relatório semanal
   norte.py                     # projetos + cards — guardrail de "só 1 card ativo
                                # por vez" checado antes de qualquer chamada de LLM
+  infra.py                      # Motriz (sem LLM): observabilidade e orçamento
+                                # a partir de tick_execucoes (migrations 010–011)
 
 routers/                   # HTTP fino — só parse de request/response
   agentes.py                # GET /agentes
@@ -277,6 +282,7 @@ routers/                   # HTTP fino — só parse de request/response
                                 # hidratação, sono, atividade, refeição, ficha de
                                 # treino, plano de dieta, relatório, dashboard
   norte.py                       # projetos + cards (gerar/aceitar/rejeitar/finalizar)
+  infra.py                        # /infra/* — sala de máquinas
 
 scripts/
   migrate.py                # aplica as migrations (idempotente)
@@ -289,10 +295,8 @@ docker-compose.yml          # postgres + adminer
 
 ## Próxima fatia (a combinar)
 
-Motor de tick (`resolvers/tick.py`) que percorre os agentes ativos e aplica
-os efeitos — definindo um de cada vez antes de codar, mesmo processo que
-usamos pro Financeiro, pro Agenda, pro Saúde e pro Norte (4 agentes
-fecham a sprint atual). Itens adiados de propósito, ver
+Departamentos e esteiras da Sprint 2 (proposta ainda **não aprovada**, ver
+`docs/produto-e-sprints.md`). Itens adiados de propósito, ver
 `docs/backlog-futuro.md`: canal Telegram; agente de Saúde sugerir/montar a
 ficha de treino sozinho; acesso multi-usuário aos cards do Norte; leitura
 mais profunda do repositório no Norte (conteúdo de arquivo, não só nomes)

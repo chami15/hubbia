@@ -633,7 +633,9 @@ são o que a API já suporta e o frontend precisa cobrir.
   abrindo ou timer.
 - **RNF02 (transparência):** nenhum metadado de custo (modelo, tokens,
   custo_usd) aparece na interface — mas o estado de cada ação (pendente,
-  confirmada, rejeitada, expirada) é sempre visível e claro.
+  confirmada, rejeitada, expirada) é sempre visível e claro. **Decisão do
+  chefe (2026-10-23):** nem a sala de máquinas é exceção; ela mostra só o
+  orçamento agregado (gasto/teto), e a API `/infra/*` não devolve o detalhe.
 - **RNF03 (confiabilidade de erro):** erros da API (422, 404, 409, etc.)
   aparecem como mensagem clara e acionável, nunca como erro genérico ou
   tela quebrada.

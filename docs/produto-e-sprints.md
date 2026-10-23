@@ -499,3 +499,15 @@ acima.
 *(Próximas sprints serão adicionadas a este documento conforme
 iniciarem — este arquivo não é reescrito do zero a cada atualização, é
 incrementado.)*
+
+
+### Próxima sprint — ideias do 3D no prédio pixel (decidido, ainda sem "pode" de desenho)
+
+O chefe aprovou **começar** a aplicar as ideias de `docs/aproveitamento-the-sims.md` na próxima sprint, sempre sem poluição visual e só com dado real:
+
+1. **Fase 1 (backend, sem visual novo):** expor `relacionamentos.afinidade` e `agentes.extroversao`; passar a escrever `opiniao`. Com testes.
+2. **Fase 2:** motor puro em TypeScript (humor e relações a partir desses dados), em arquivo novo, testado.
+3. **Fase 3:** uma superfície introspectiva só, ao selecionar o agente (nada de HUD permanente).
+4. **Fase 4 (autonomia):** só com aprovação à parte, e o tick continua manual.
+
+O desenho técnico da Fase 1 ainda precisa do "pode" explícito do chefe antes de codar. A `claude/modest-wright-cmvki7` continua laboratório do 3D imersivo.

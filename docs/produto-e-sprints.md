@@ -362,6 +362,13 @@ manual real. **Alcançado.**
 
 ### Sprint 1 — Módulo de frontend (EM ANDAMENTO)
 
+> **Atualização (2026-10-23): o escritório isométrico foi substituído pelo prédio em pixel art** (arte procedural do
+> habblaud, `frontend/src/features/predio/`). Painéis dos agentes, tick, mensagens, configurações e sala de máquinas
+> seguem os mesmos; o que mudou é o "mundo" onde os agentes aparecem (agora com salas por agente, vagas e elevador).
+> O texto abaixo descreve o que foi construído **na versão isométrica** e fica como registro: as menções a PixiJS,
+> sprites do Kenney, modo de edição e anel do crachá são históricas (o código está na tag `v0.3.0`).
+> Ver `docs/guia-tecnico-frontend.md` PARTE 0.
+
 **Objetivo:** dar ao "escritório vivo" a interface visual que a Sprint 0
 deixou como próximo passo — o escritório isométrico 2D, o painel de cada
 um dos quatro agentes, e os controles do motor de tick (relógio,

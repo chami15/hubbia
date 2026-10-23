@@ -4,6 +4,7 @@ import { carregarVagas, salvarVagas } from '../predio/vagas'
 import { AGENTES, agentePorId, corCss, type AgenteId } from '../predio/agentes'
 import type { Status } from '../predio/sim'
 import { PainelPredio } from '../predio/PainelPredio'
+import { statusNoPredio } from '../predio/status'
 import { PainelDoAgente } from '../agentes/PainelDoAgente'
 import { PainelMensagens } from '../agentes/PainelMensagens'
 import { PainelConfiguracoes } from './PainelConfiguracoes'
@@ -17,7 +18,6 @@ import { useTickAtual } from '../../hooks/useTick'
 import { definirDryRunAtivo, dryRunEstaAtivo, lerPreviewSalva, salvarPreview } from './dry-run'
 import { somAtivo, tocarSom } from './som'
 import { mensagemDeErro } from '../../api/client'
-import type { EstadoAgente } from '../../types/agente'
 import type { RodadaProcessada } from '../../types/interacao'
 
 // A tela do hub: a barra do topo (marca, relógio simulado e as ações) e, embaixo, o PRÉDIO — cada agente na sua
@@ -38,16 +38,6 @@ type Painel =
 function horaDoMundo(iso: string | null | undefined): number | null {
   const m = iso?.match(/T(\d{2}):(\d{2})/)
   return m ? Number(m[1]) + Number(m[2]) / 60 : null
-}
-
-/** Status no prédio a partir do que o backend sabe: mensagem não lida pesa mais que o estado do momento. */
-function statusNoPredio(estado: EstadoAgente | undefined, temNaoLida: boolean, hora: number): Status {
-  if (temNaoLida) return 'precisa_de_voce'
-  if (estado === 'pensando' || estado === 'executando') return 'trabalhando'
-  if (estado === 'falando') return 'conversando'
-  // de madrugada, quem está à toa cochila na mesa
-  if (hora < 6 || hora >= 23) return 'dormindo'
-  return estado === 'idle' ? 'ocioso' : 'trabalhando'
 }
 
 export function Escritorio() {

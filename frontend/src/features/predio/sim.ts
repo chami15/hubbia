@@ -17,10 +17,11 @@ import { SAIDA_ELEVADOR, areaEm, mesaDe, passagem, pesNoTile, type AreaId, type 
  * Estados que o prédio sabe desenhar. Vêm do backend (estado do agente + mensagens não lidas + hora simulada; ver
  * Escritorio.tsx); "precisa de você" é o "esperando você" do habblaud.
  */
-export type Status = 'trabalhando' | 'conversando' | 'ocioso' | 'precisa_de_voce' | 'dormindo';
+export type Status = 'trabalhando' | 'pensando' | 'conversando' | 'ocioso' | 'precisa_de_voce' | 'dormindo';
 
 export const STATUS_ROTULO: Record<Status, string> = {
   trabalhando: 'Trabalhando',
+  pensando: 'Pensando',
   conversando: 'Conversando',
   ocioso: 'Ocioso',
   precisa_de_voce: 'Precisa de você',
@@ -240,7 +241,7 @@ function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   const naMesa = a.lugar?.id === mesa.id;
   const quer = (l: Lugar | undefined, correndo = false) => !!l && (a.lugar?.id === l.id || irPara(sim, a, l, correndo));
 
-  if (a.status === 'precisa_de_voce' || a.status === 'dormindo' || a.status === 'conversando') {
+  if (a.status === 'precisa_de_voce' || a.status === 'dormindo' || a.status === 'conversando' || a.status === 'pensando') {
     if (!naMesa && !a.destino) quer(mesa, a.status === 'precisa_de_voce');
     a.ate = agora + 1e9;
     if (naMesa) aplicarPoseDaMesa(a);
@@ -264,9 +265,10 @@ function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
 }
 
 function aplicarPoseDaMesa(a: AgenteVivo): void {
-  a.pose = a.status === 'precisa_de_voce' ? 'raise_hand' : a.status === 'dormindo' ? 'sleep' : a.status === 'conversando' ? 'talk' : a.status === 'ocioso' ? 'sit' : 'type';
+  a.pose = a.status === 'precisa_de_voce' ? 'raise_hand' : a.status === 'dormindo' ? 'sleep' : a.status === 'conversando' ? 'talk' : a.status === 'pensando' ? 'read' : a.status === 'ocioso' ? 'sit' : 'type';
   a.seated = true;
-  a.held = undefined;
+  // pensando = de papéis na mão, lendo; os demais estados ficam de mãos livres
+  a.held = a.status === 'pensando' ? 'papers' : undefined;
 }
 
 function chegou(sim: Simulacao, a: AgenteVivo, agora: number): void {
@@ -358,6 +360,7 @@ export function iconeDe(a: AgenteVivo, agora: number): IconName | undefined {
   if (a.status === 'precisa_de_voce') return 'alert';
   if (a.status === 'dormindo' && a.lugar?.mesa) return 'zzz';
   if (a.status === 'conversando' && a.lugar?.mesa) return 'chat';
+  if (a.status === 'pensando' && a.lugar?.mesa) return 'idea';
   if (a.lugar?.held === 'coffee' || a.lugar?.rotulo === 'Tirando um café') return 'coffee';
   if (agora < a.iconeAte) return a.def.icone;
   return undefined;
@@ -377,6 +380,7 @@ export function atividadeDe(a: AgenteVivo): string {
     if (a.status === 'precisa_de_voce') return 'Esperando você responder';
     if (a.status === 'dormindo') return 'Cochilando na mesa';
     if (a.status === 'conversando') return 'Conversando';
+    if (a.status === 'pensando') return 'Pensando';
     if (a.status === 'ocioso') return 'Sentado à toa na mesa';
     return 'Trabalhando na mesa';
   }

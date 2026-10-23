@@ -498,6 +498,10 @@ o que vale hoje é a seção seguinte.
 
 ## Escritório 2D (visão geral, ainda não desenhado)
 
+> **Atualização (2026-10-23):** este escritório existe e hoje é um **prédio em pixel art** (uma sala por agente, vagas para
+> adicionar e dispensar agentes, estados do backend como poses). O texto abaixo é o planejamento original, mantido como
+> registro. O que vale hoje: `docs/guia-tecnico-frontend.md` PARTE 0 e `frontend/src/features/predio/AGENTS.md`.
+
 Ainda não há protótipo nenhum de tela. O que já está decidido/disponível
 pra quando começar:
 - Um avatar/cartão por agente (cor + emoji já vêm do banco).
@@ -656,6 +660,10 @@ são o que a API já suporta e o frontend precisa cobrir.
 ---
 
 ## Construído — redesenho visual "Console"
+
+> **Nota (2026-10-23):** as menções abaixo ao "anel do crachá" e ao `Ticker` do Pixi descrevem o escritório isométrico.
+> No prédio pixel o estado do agente aparece como **pose e ícone**: `idle` ocioso, `pensando` lendo papéis com uma
+> lâmpada, `executando` digitando, `falando` conversando com balão de chat; mensagem não lida vira "precisa de você".
 
 Depois que as quatro telas de agente e o HUD do motor de tick já
 estavam funcionalmente prontos (seções acima), o chefe pediu uma

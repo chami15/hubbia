@@ -17,14 +17,15 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `predio.ts` | `montarPredio(vagas)` (puro): áreas, grade de caminhada, divisórias. E `desenharPredio(...)`: o quadro. |
 | `sim.ts` | Comportamento sem DOM: A\*, pausas, elevador, status. |
 | `mundo.ts` | O prédio vivo e imperativo: canvas, laço, câmera, clique. O React só cria, empurra dados e escuta cliques. |
+| `status.ts` | Estado do backend → status do prédio (puro, testado). |
 | `relogio.ts` | Relógio de mundo que para com a aba escondida (injetável, para teste). |
 | `vagas.ts` | Quem está em cada vaga (`localStorage`; é a única peça que muda quando isso for para o backend). |
 | `PainelPredio.tsx` | Gerência: quem está no prédio (abrir/dispensar) e catálogo (adicionar). |
 | `habblaud/` | Arte do habblaud **copiada**. Não edite (veja "Arte"). |
-| `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**) e `relogio.test.ts`. |
+| `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**), `relogio.test.ts` e `status.test.ts`. |
 
-O status vem do backend em `features/escritorio/Escritorio.tsx::statusNoPredio` (mensagem não lida → `precisa_de_voce`; `pensando/executando` → `trabalhando`;
-`falando` → `conversando`; `idle` → `ocioso`, `dormindo` de madrugada pela hora simulada do tick).
+O status vem do backend em `status.ts::statusNoPredio` (mensagem não lida → `precisa_de_voce`; `pensando` → `pensando` (lê papéis, lâmpada); `executando` → `trabalhando` (digita);
+`falando` → `conversando`; `idle` → `ocioso`, `dormindo` de madrugada pela hora simulada do tick). Os quatro estados do backend **têm de continuar distintos**: o teste cobra.
 
 ## Conceitos que todo mundo erra no começo
 
@@ -88,6 +89,7 @@ Status novo toca, nesta ordem: tipo `Status` e `STATUS_ROTULO` (`sim.ts`) · `de
 | Agentes atravessavam a parede entre salas vizinhas (faltava `passagem()` nas divisórias) | `predio.test.ts` › "regressão: agentes atravessavam a parede…" |
 | Sala que só funcionava em cima do corredor (móvel na coluna da porta de baixo) | `predio.test.ts` › "regressão: salas que só funcionavam em cima…" e o teste por sala nas duas posições |
 | Aba escondida acumulava tempo e os agentes "teleportavam" ao voltar | `relogio.test.ts` › "regressão: aba escondida…". Não troque `criarRelogio` por `Date.now()` |
+| `pensando` e `executando` do backend viraram o mesmo "trabalhando" na migração do isométrico | `status.test.ts` › "regressão: pensando e executando eram indistinguíveis…" |
 | `pkill -f vite` derruba o shell do agente | (ambiente) use `kill $(lsof -ti tcp:PORTA)` |
 | Chromium headless a ~2 fps | (ambiente) espere 8–12 s para ver agentes andando; obra e elevador levam ~2,6 s |
 

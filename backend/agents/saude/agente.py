@@ -19,9 +19,14 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+from agents._shared.execucoes import cronometrar, registrar_execucao
 from config import settings
 
 load_dotenv()
+
+# Chave de junção com a linha em `agentes` — `registrar_execucao`
+# resolve o id numérico por ela.
+_ESPECIALIDADE = "saude"
 
 _MARGEM_CONSISTENCIA_CALORIAS = 0.35  # 35% de diferença tolerada entre calorias informadas e as calculadas a partir dos macros
 
@@ -165,21 +170,44 @@ def _custo(tokens_in: int, tokens_out: int, barato: bool) -> float:
     return round((tokens_in / 1000) * preco_in + (tokens_out / 1000) * preco_out, 6)
 
 
-def _extrair_resultado(resultado: dict, barato: bool) -> dict:
+def _extrair_resultado(resultado: dict, barato: bool, prompt: str | None = None, duracao_ms: int | None = None) -> dict:
+    modelo = settings.llm_model_cheap if barato else settings.llm_model_strong
+
     if resultado.get("parsing_error"):
+        # registra ANTES de levantar: chamada que falhou no parsing
+        # gastou token igual, e o orçamento precisa saber disso
+        registrar_execucao(
+            especialidade=_ESPECIALIDADE,
+            modelo=modelo,
+            contexto_prompt=prompt,
+            erro=f"parsing_error: {resultado['parsing_error']}",
+            duracao_ms=duracao_ms,
+        )
         raise RuntimeError(f"Saída fora do formato esperado: {resultado['parsing_error']}")
 
     raw = resultado["raw"]
     usage = getattr(raw, "usage_metadata", None) or {}
     tokens_in = usage.get("input_tokens", 0)
     tokens_out = usage.get("output_tokens", 0)
+    custo_usd = _custo(tokens_in, tokens_out, barato)
+
+    registrar_execucao(
+        especialidade=_ESPECIALIDADE,
+        modelo=modelo,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        custo_usd=custo_usd,
+        contexto_prompt=prompt,
+        saida_bruta=str(resultado["parsed"]),
+        duracao_ms=duracao_ms,
+    )
 
     return {
         "dado": resultado["parsed"],
-        "modelo": settings.llm_model_cheap if barato else settings.llm_model_strong,
+        "modelo": modelo,
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
-        "custo_usd": _custo(tokens_in, tokens_out, barato),
+        "custo_usd": custo_usd,
     }
 
 
@@ -254,12 +282,17 @@ async def estimar_macros_texto(descricao: str, tipo_refeicao: str, perfil: dict)
         tipo_refeicao=tipo_refeicao,
         conteudo_refeicao=f'Descrição dada pelo chefe: "{descricao}"',
     )
-    try:
-        resultado = await modelo.ainvoke(prompt)
-    except Exception as exc:
-        raise RuntimeError(f"Falha ao chamar o modelo de estimativa: {exc}") from exc
+    with cronometrar() as t:
+        try:
+            resultado = await modelo.ainvoke(prompt)
+        except Exception as exc:
+            registrar_execucao(
+                especialidade=_ESPECIALIDADE, modelo=settings.llm_model_cheap, contexto_prompt=prompt,
+                erro=f"falha na chamada: {exc}", duracao_ms=t.ms,
+            )
+            raise RuntimeError(f"Falha ao chamar o modelo de estimativa: {exc}") from exc
 
-    saida = _extrair_resultado(resultado, barato=True)
+    saida = _extrair_resultado(resultado, barato=True, prompt=prompt, duracao_ms=t.ms)
     saida["dado"] = _corrigir_consistencia(_exigir_alimento_identificado(saida["dado"]))
     return saida
 
@@ -277,12 +310,19 @@ async def estimar_macros_foto(imagem_base64: str, mime_type: str, tipo_refeicao:
             {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{imagem_base64}"}},
         ]
     )
-    try:
-        resultado = await modelo.ainvoke([mensagem])
-    except Exception as exc:
-        raise RuntimeError(f"Falha ao chamar o modelo de estimativa: {exc}") from exc
+    with cronometrar() as t:
+        try:
+            resultado = await modelo.ainvoke([mensagem])
+        except Exception as exc:
+            registrar_execucao(
+                especialidade=_ESPECIALIDADE, modelo=settings.llm_model_cheap, contexto_prompt=prompt_texto,
+                erro=f"falha na chamada: {exc}", duracao_ms=t.ms,
+            )
+            raise RuntimeError(f"Falha ao chamar o modelo de estimativa: {exc}") from exc
 
-    saida = _extrair_resultado(resultado, barato=True)
+    # só o texto vai pro registro — a imagem em base64 encheria
+    # `contexto_prompt` de bytes que ninguém vai reler
+    saida = _extrair_resultado(resultado, barato=True, prompt=prompt_texto, duracao_ms=t.ms)
     saida["dado"] = _corrigir_consistencia(_exigir_alimento_identificado(saida["dado"]))
     return saida
 
@@ -290,12 +330,17 @@ async def estimar_macros_foto(imagem_base64: str, mime_type: str, tipo_refeicao:
 async def gerar_plano_dieta(perfil: dict) -> dict:
     modelo = _get_model_plano()
     prompt = _PROMPT_PLANO.format(perfil_json=json.dumps(perfil, ensure_ascii=False, default=str))
-    try:
-        resultado = await modelo.ainvoke(prompt)
-    except Exception as exc:
-        raise RuntimeError(f"Falha ao chamar o modelo de plano de dieta: {exc}") from exc
+    with cronometrar() as t:
+        try:
+            resultado = await modelo.ainvoke(prompt)
+        except Exception as exc:
+            registrar_execucao(
+                especialidade=_ESPECIALIDADE, modelo=settings.llm_model_strong, contexto_prompt=prompt,
+                erro=f"falha na chamada: {exc}", duracao_ms=t.ms,
+            )
+            raise RuntimeError(f"Falha ao chamar o modelo de plano de dieta: {exc}") from exc
 
-    saida = _extrair_resultado(resultado, barato=False)
+    saida = _extrair_resultado(resultado, barato=False, prompt=prompt, duracao_ms=t.ms)
     saida["dado"] = _corrigir_consistencia_plano(saida["dado"])
     return saida
 
@@ -305,8 +350,13 @@ async def gerar_relatorio_semanal(dados_semana: dict) -> dict:
     prompt = _PROMPT_RELATORIO.format(
         dados_json=json.dumps(dados_semana, ensure_ascii=False, indent=2, default=str)
     )
-    try:
-        resultado = await modelo.ainvoke(prompt)
-    except Exception as exc:
-        raise RuntimeError(f"Falha ao chamar o modelo de relatório: {exc}") from exc
-    return _extrair_resultado(resultado, barato=False)
+    with cronometrar() as t:
+        try:
+            resultado = await modelo.ainvoke(prompt)
+        except Exception as exc:
+            registrar_execucao(
+                especialidade=_ESPECIALIDADE, modelo=settings.llm_model_strong, contexto_prompt=prompt,
+                erro=f"falha na chamada: {exc}", duracao_ms=t.ms,
+            )
+            raise RuntimeError(f"Falha ao chamar o modelo de relatório: {exc}") from exc
+    return _extrair_resultado(resultado, barato=False, prompt=prompt, duracao_ms=t.ms)

@@ -1,9 +1,8 @@
 """Testes do motor de tick — Etapa 1 (fundação): relógio simulado, sem
 nenhum comportamento de agente ainda. Zero chamada de LLM em toda a
 suíte, condizente com o escopo real dessa etapa."""
-from datetime import date
-
 import resolvers.tick as tick
+from tests.helpers import registrar_gasto
 from utils.query_executor import executar_query
 
 
@@ -106,42 +105,40 @@ class TestOrcamentoDiario:
         from config import settings
         assert tick.orcamento_disponivel_hoje() == settings.orcamento_diario_usd
 
-    def test_soma_custo_de_tabelas_diferentes(self):
-        executar_query(
-            "relatorios_financeiros:upsert",
-            returning=True,
-            params=(date(2026, 1, 1), '{"x": 1}', "gpt-4o", 100, 50, 0.01),
-        )
-        rows = executar_query(
-            "projetos:inserir",
-            returning=True,
-            params=("P", "https://github.com/o/r", "o", "r", "main", "d", ["Python"], "a", "sha"),
-        )
-        projeto_id = rows[0]["id"]
-        executar_query(
-            "cards:inserir",
-            returning=True,
-            params=(projeto_id, "feature", "T", "D", ["a.py"], "agente", "sugerido", "gpt-4o", 10, 5, 0.02),
-        )
+    def test_soma_custo_de_agentes_diferentes(self):
+        """O orçamento é do ESCRITÓRIO, não de um agente — soma todo mundo.
 
-        gasto = tick.orcamento_gasto_hoje()
-        assert round(gasto, 2) == 0.03
+        Antes este teste inseria numa tabela de domínio (relatório, card)
+        porque o orçamento era um UNION sobre elas. Agora quem move o
+        orçamento é a execução registrada em `tick_execucoes`, venha de
+        que domínio vier — inclusive de domínio que ainda não existe."""
+        registrar_gasto(_criar_agente("A"), 0.01)
+        registrar_gasto(_criar_agente("B"), 0.02)
+
+        assert round(tick.orcamento_gasto_hoje(), 2) == 0.03
+
+    def test_dry_run_nao_conta_no_orcamento(self):
+        """Prévia não gastou nada de verdade — não pode consumir teto."""
+        agente_id = _criar_agente("A")
+        registrar_gasto(agente_id, 0.5, dry_run=True)
+
+        assert tick.orcamento_gasto_hoje() == 0.0
+
+    def test_chamada_que_falhou_ainda_conta(self):
+        """Chamada que quebrou no parsing queimou token igual — se não
+        contasse, um agente com defeito furaria o teto em silêncio."""
+        registrar_gasto(_criar_agente("A"), 0.01, erro="parsing_error: xyz")
+
+        assert round(tick.orcamento_gasto_hoje(), 2) == 0.01
 
     def test_orcamento_disponivel_nunca_fica_negativo(self):
         from config import settings
-        executar_query(
-            "relatorios_financeiros:upsert",
-            returning=True,
-            params=(date(2026, 1, 1), '{"x": 1}', "gpt-4o", 1, 1, settings.orcamento_diario_usd * 10),
-        )
+        registrar_gasto(_criar_agente("A"), settings.orcamento_diario_usd * 10)
+
         assert tick.orcamento_disponivel_hoje() == 0.0
 
     def test_tick_registra_snapshot_de_orcamento_no_estado_mundo(self):
-        executar_query(
-            "relatorios_financeiros:upsert",
-            returning=True,
-            params=(date(2026, 1, 1), '{"x": 1}', "gpt-4o", 100, 50, 0.01),
-        )
+        registrar_gasto(_criar_agente("A"), 0.01)
         tick.avancar_tick()
         atual = tick.obter_tick_atual()
         assert atual["estado_mundo"]["orcamento_gasto_hoje"] == 0.01

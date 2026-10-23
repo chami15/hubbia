@@ -1,5 +1,5 @@
 --QUERY: listar_todas
-SELECT m.id, m.tipo, m.conteudo, m.tick, m.criado_em,
+SELECT m.id, m.tipo, m.conteudo, m.tick, m.criado_em, m.lida_pelo_chefe,
        m.remetente_id, r.nome AS remetente_nome,
        m.destinatario_id, d.nome AS destinatario_nome,
        m.respondendo_a_id,
@@ -42,6 +42,17 @@ WHERE tipo = 'social'
 SELECT COUNT(*) AS total FROM mensagens
 WHERE remetente_id = %s AND tipo = 'trabalho' AND criado_em >= %s;
 
+--QUERY: ultimo_trabalho_do_agente
+-- O último aviso de trabalho que este agente mandou, de qualquer dia.
+-- Usada pelo Motriz pra só falar em MUDANÇA de estado: como o texto do
+-- aviso é derivado de forma determinística da lista de problemas, texto
+-- igual significa situação igual, e situação igual não merece um aviso
+-- novo. Aviso que se repete todo tick ensina a ignorar aviso.
+SELECT conteudo, criado_em FROM mensagens
+WHERE remetente_id = %s AND tipo = 'trabalho'
+ORDER BY criado_em DESC
+LIMIT 1;
+
 --QUERY: buscar_pendente_mais_antiga_para
 -- Mensagem social mais antiga direcionada a esse agente que ainda não
 -- recebeu resposta (nenhuma outra mensagem aponta respondendo_a_id pra
@@ -56,7 +67,7 @@ ORDER BY criado_em ASC
 LIMIT 1;
 
 --QUERY: listar_por_tipo
-SELECT m.id, m.tipo, m.conteudo, m.tick, m.criado_em,
+SELECT m.id, m.tipo, m.conteudo, m.tick, m.criado_em, m.lida_pelo_chefe,
        m.remetente_id, r.nome AS remetente_nome,
        m.destinatario_id, d.nome AS destinatario_nome,
        m.respondendo_a_id,
@@ -75,6 +86,15 @@ LIMIT %s;
 SELECT id, tipo, conteudo, tick, criado_em, remetente_id, destinatario_id, respondendo_a_id
 FROM mensagens
 WHERE id = %s;
+
+--QUERY: marcar_lida
+-- "Lida" é por CLIQUE na mensagem específica, nunca por abrir a thread
+-- inteira (decisão do chefe) — por isso é um UPDATE de uma linha só, não
+-- um "marcar tudo desta conversa". Idempotente: marcar de novo uma já
+-- lida não faz mal nenhum.
+UPDATE mensagens SET lida_pelo_chefe = TRUE
+WHERE id = %s
+RETURNING id, lida_pelo_chefe;
 
 --QUERY: caixa_de_entrada
 -- "Caixa de mensagens do chefe": tudo que foi direcionado a ele,

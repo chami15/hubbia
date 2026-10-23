@@ -159,6 +159,73 @@ class TestCicloDeVidaDoCard:
             norte.aceitar_card(9999)
 
 
+class TestListarProjetosComEstagnacao:
+    """`estagnado` em GET /norte/projetos repete a MESMA regra de
+    projetos:listar_estagnados (usada pra proatividade do tick), só que
+    pra todo projeto — é o que a tela usa pro destaque visual do card."""
+
+    async def test_projeto_recente_nao_estagnado(self):
+        import resolvers.norte as norte
+        await _criar_projeto_mockado(norte)
+        projetos = norte.listar_projetos()
+        assert projetos[0]["estagnado"] is False
+
+    async def test_projeto_parado_sem_card_e_estagnado(self):
+        import resolvers.norte as norte
+        from utils.db import Database
+
+        projeto = await _criar_projeto_mockado(norte)
+        with Database() as conn:
+            conn.execute(
+                "UPDATE projetos SET criado_em = now() - interval '30 days' WHERE id = %s",
+                (projeto["id"],),
+            )
+            conn.commit()
+
+        projetos = norte.listar_projetos()
+        achado = next(p for p in projetos if p["id"] == projeto["id"])
+        assert achado["estagnado"] is True
+
+    async def test_projeto_parado_mas_com_card_aberto_nao_e_estagnado(self):
+        import resolvers.norte as norte
+        from utils.db import Database
+
+        projeto = await _criar_projeto_mockado(norte)
+        with Database() as conn:
+            conn.execute(
+                "UPDATE projetos SET criado_em = now() - interval '30 days' WHERE id = %s",
+                (projeto["id"],),
+            )
+            conn.commit()
+
+        card = CardGerado(tipo="bug", titulo="T", descricao="D", arquivos_afetados=["a.py"])
+        with patch("resolvers.norte.github_client.obter_commit_mais_recente", return_value={"sha": "sha-1", "mensagem": "m"}), \
+             patch("resolvers.norte.github_client.obter_mudancas_desde", return_value={"commits": [], "arquivos_alterados": []}), \
+             patch("resolvers.norte.agente_norte.gerar_card", new=AsyncMock(return_value=resultado_agente(card))):
+            await norte.gerar_proximo_card(projeto["id"])
+
+        projetos = norte.listar_projetos()
+        achado = next(p for p in projetos if p["id"] == projeto["id"])
+        assert achado["estagnado"] is False
+
+    async def test_projeto_pausado_nunca_e_estagnado_mesmo_parado_ha_muito(self):
+        import resolvers.norte as norte
+        from utils.db import Database
+
+        projeto = await _criar_projeto_mockado(norte)
+        with Database() as conn:
+            conn.execute(
+                "UPDATE projetos SET criado_em = now() - interval '30 days' WHERE id = %s",
+                (projeto["id"],),
+            )
+            conn.commit()
+        norte.atualizar_status_projeto(projeto["id"], "pausado")
+
+        projetos = norte.listar_projetos()
+        achado = next(p for p in projetos if p["id"] == projeto["id"])
+        assert achado["estagnado"] is False
+
+
 class TestStackTruncada:
     async def test_stack_truncada_a_10_mesmo_se_llm_devolver_mais(self):
         from agents.norte.agente import escanear_projeto

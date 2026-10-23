@@ -15,6 +15,9 @@ automaticamente ao resolver o atual). **Motor de tick completo**
 camada social entre agentes e proatividade de trabalho nos quatro
 domínios — ver `docs/produto-e-sprints.md` (Sprint 0) pro detalhe de
 cada etapa.
+Todo gasto de LLM passa por uma tabela só, `tick_execucoes`; o **Motriz**
+(sala de máquinas, o único agente sem LLM) lê essa tabela e expõe `/infra/*`
+(orçamento agregado).
 
 ## ⚠️ Antes de usar de verdade
 
@@ -260,6 +263,7 @@ agents/                    # lógica dos agentes LLM, um domínio por pasta
   _shared/
     guardrails.py               # middleware de tool-calling (captura erro, teto de
                                 # chamadas) — reusado por qualquer agente com tool-loop
+    execucoes.py                # registrar_execucao/cronometrar: todo gasto em tick_execucoes
 
 resolvers/                 # regra de negócio (o router chama isso, nunca o banco)
   agentes.py
@@ -270,6 +274,8 @@ resolvers/                 # regra de negócio (o router chama isso, nunca o ban
                               # ficha de treino, plano de dieta, relatório semanal
   norte.py                     # projetos + cards — guardrail de "só 1 card ativo
                                # por vez" checado antes de qualquer chamada de LLM
+  infra.py                      # Motriz (sem LLM): observabilidade e orçamento
+                                # a partir de tick_execucoes (migrations 010–011)
 
 routers/                   # HTTP fino — só parse de request/response
   agentes.py                # GET /agentes
@@ -280,6 +286,7 @@ routers/                   # HTTP fino — só parse de request/response
                                 # hidratação, sono, atividade, refeição, ficha de
                                 # treino, plano de dieta, relatório, dashboard
   norte.py                       # projetos + cards (gerar/aceitar/rejeitar/finalizar)
+  infra.py                        # /infra/* — sala de máquinas
 
 scripts/
   migrate.py                # aplica as migrations (idempotente)

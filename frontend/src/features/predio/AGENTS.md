@@ -17,6 +17,7 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `predio.ts` | `montarPredio(vagas)` (puro): áreas, grade de caminhada, divisórias. E `desenharPredio(...)`: o quadro. |
 | `sim.ts` | Comportamento sem DOM: A\*, pausas, elevador, status. |
 | `mundo.ts` | O prédio vivo e imperativo: canvas, laço, câmera, clique. O React só cria, empurra dados e escuta cliques. |
+| `dev/catalogo.ts` | **Vitrine da arte**, só em desenvolvimento: abra `/#catalogo`. Agentes, salas, 20 poses, itens, 46 móveis, ícones, telas, pisos, paredes. Não entra no build de produção. |
 | `status.ts` | Estado do backend → status do prédio (puro, testado). |
 | `relogio.ts` | Relógio de mundo que para com a aba escondida (injetável, para teste). |
 | `vagas.ts` | Quem está em cada vaga (`localStorage`; é a única peça que muda quando isso for para o backend). |
@@ -64,7 +65,7 @@ export const SALAS = { /* ... */ lume: {
    - Cada sala precisa de identidade própria: piso, parede (`pattern`) e ao menos 2 móveis que contem o domínio. Não copie a sala de outro agente trocando a cor.
 3. **Backend**: se o agente existe lá, `especialidade` igual à do `seed.py`; se **não** existe, `especialidade: null` (aparece como conceito, com aviso) e a ponte fica pendente. Entrada em `INICIAIS` só se já vem no prédio de fábrica.
 4. **Painel**: agente real ganha o painel em `features/agentes/PainelDoAgente.tsx`; o Motriz abre a sala de máquinas (ver `abrirAgente` em `Escritorio.tsx`).
-5. **Verifique**: `npm test` (alcançável em cima **e** embaixo do corredor), depois no navegador com `/verificar-visual`: adicione o agente pelo painel do prédio e confira obra, chegada pelo elevador,
+5. **Verifique**: `npm test` (alcançável em cima **e** embaixo do corredor), olhe a sala na vitrine (`/#catalogo`), depois no navegador com `/verificar-visual`: adicione o agente pelo painel do prédio e confira obra, chegada pelo elevador,
    mesa, pausas, dispensar. Olhe o PNG: sala cheia mas respirável, nada sobreposto, agente legível.
 6. Documente: linha em `docs/guia-tecnico-frontend.md` PARTE 0 só se mudou arquitetura; o resto o código já diz.
 

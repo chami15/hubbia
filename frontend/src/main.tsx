@@ -8,10 +8,20 @@ import App from './App.tsx'
 // servidor (agentes, mensagens, etc). Criada uma vez, nunca recriada.
 const queryClient = new QueryClient()
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </StrictMode>,
-)
+function montarApp() {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+}
+
+// Vitrine da arte (só em desenvolvimento): abre em /#catalogo. O `import.meta.env.DEV` é constante no build de
+// produção, então esse ramo e o módulo da vitrine nem entram no bundle.
+if (import.meta.env.DEV && location.hash === '#catalogo') {
+  void import('./features/predio/dev/catalogo').then(({ montarCatalogo }) => montarCatalogo(document.getElementById('root')!))
+} else {
+  montarApp()
+}

@@ -11,9 +11,9 @@ Backend FastAPI + Postgres + LangChain/OpenAI, com um motor de *tick* manual. Fr
 ## Antes de tudo (conversa nova)
 
 1. `git fetch --all -q && git branch -a -vv` e **confira o último commit** da branch antes de comparar, basear ou dizer "feito".
-   O frontend existe em versões diferentes por branch (tabela abaixo). Em dúvida sobre a base, **pergunte**.
+   Em dúvida sobre a base, **pergunte**.
 2. Estado do projeto: rode `/retomar` (ou leia só "O que falta" da sprint atual em `docs/produto-e-sprints.md`).
-3. Trabalhando numa pasta, leia o `AGENTS.md` dela, se existir: `backend/`, `frontend/`, `frontend/src/features/predio/` (existem na `main` depois que o prédio pixel foi integrado).
+3. Trabalhando numa pasta, leia o `AGENTS.md` dela, se existir: `backend/`, `frontend/`, `frontend/src/features/predio/`.
 
 ## Princípios inegociáveis
 
@@ -59,7 +59,6 @@ Quase todas são **testes separados** que o chefe e você vão mudar e integrar 
 | Branch | Situação |
 |---|---|
 | `main` | **Linha única**: backend (Sprint 0 e 2) + frontend com o prédio pixel + docs + suporte a IA. |
-| `feat/predio-pixel` | Já integrada na `main` (PR). Apague depois do merge. |
 | `claude/modest-wright-cmvki7` | Laboratório 3D estilo The Sims, linha separada (tag `3d/v0.1`). As ideias dele entram na próxima sprint: `docs/aproveitamento-the-sims.md`. |
 
 As linhas isométrica (`v0.3.0`), do protótipo habblaud e do MVP inicial estão só nas tags `arquivo/*`/`v0.3.0`.

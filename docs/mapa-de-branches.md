@@ -26,10 +26,9 @@ main ── backend (Sprint 0 e 2) + frontend com o prédio pixel + docs + supor
 | Branch | Decisão | Por quê |
 |---|---|---|
 | `main` | Linha única | back 140 ✓ · front 24 ✓ |
-| `feat/predio-pixel` | Apagar depois do merge | Já está na `main` |
 | `claude/modest-wright-cmvki7` | **Mantida** como laboratório 3D | Peso: `.glb` de 16,7 MB no git, bundle de 2,2 MB. As ideias dela entram na próxima sprint (`docs/aproveitamento-the-sims.md`) |
 
-Apagadas (o histórico segue nas tags): `claude/agents-hub-mvp-review-oh6zb0`, `feat/the-sims`, `frontend` (`v0.3.0`), `test/hubblaud` (`arquivo/hubblaud-prototipo`), `feat/backend-sprint-2`.
+Apagadas (o histórico segue nas tags): `claude/agents-hub-mvp-review-oh6zb0`, `feat/the-sims`, `frontend` (`v0.3.0`), `test/hubblaud` (`arquivo/hubblaud-prototipo`), `feat/backend-sprint-2`, `feat/predio-pixel`.
 
 ### Auditoria `frontend` → `feat/predio-pixel` (feita)
 
@@ -43,7 +42,7 @@ Apagadas (o histórico segue nas tags): `claude/agents-hub-mvp-review-oh6zb0`, `
 ## Como integrar (diretrizes, não decisões)
 
 1. **Backend primeiro.** (Feito: PR #3.) Vale para o que vier: o que não depende do visual chega à `main` antes.
-2. **O "mundo" é a peça trocável.** Isométrico, 3D e pixel só diferem na tela do escritório; painéis, hooks, `api/` e `types/` são comuns. A `feat/predio-pixel` expõe o mundo por um contrato pequeno
+2. **O "mundo" é a peça trocável.** Isométrico, 3D e pixel só diferem na tela do escritório; painéis, hooks, `api/` e `types/` são comuns. O prédio pixel expõe o mundo por um contrato pequeno
    (`criarMundo(hospedeiro, opcoes)` → `adicionar`, `dispensar`, `definirStatus`, `definirHora`, `selecionar`, `agentes`, `vagas`, `destruir`; `features/predio/mundo.ts`).
    **Sugestão:** se o 3D falar esse mesmo contrato, dá para alternar entre mundos sem reescrever `Escritorio.tsx`.
 3. **Conflito prevê-se.** As linhas reescrevem `Escritorio.tsx`, `index.css` e `docs/guia-tecnico-frontend.md`. Quem integra lista o que cada lado tem e **espera o chefe escolher**.
@@ -65,19 +64,13 @@ Anotadas, em português, no estilo da `v0.1beta` (a primeira, backend testado). 
 | `arquivo/the-sims-3d` | `4559df6` | Ponta da `feat/the-sims` |
 | `arquivo/mvp-review-frontend-inicial` | `e27340d` | Ponta da `claude/agents-hub-mvp-review` |
 | `arquivo/hubblaud-prototipo` | `147695e` | Ponta da `test/hubblaud` |
+| `v0.5.0` | `5161b26` | Linha única: prédio pixel + backend da Sprint 2 na `main` |
 
 **Marco novo?** Crie a tag no commit certo (`git tag -a vX.Y.Z <sha> -m "o que muda e quantos testes passam"`), acrescente a linha aqui e em `scripts/criar-tags.sh`.
 
 ## Ações pendentes do chefe
 
-Depois do merge do PR da `feat/predio-pixel`, na sua máquina:
-
-```bash
-git fetch --all --prune
-git push origin --delete feat/predio-pixel
-git tag -a v0.5.0 origin/main -m "Linha única: prédio pixel + backend da Sprint 2 na main"   # opcional: o agente só publica branches
-git push origin v0.5.0
-```
+Nenhuma. (`feat/predio-pixel` apagada e `v0.5.0` publicada em 2026-10-23.)
 
 ## Arquivos de suporte a agentes de IA (`AGENTS.md`, `CLAUDE.md`, `.claude/`)
 

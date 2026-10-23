@@ -56,14 +56,16 @@ Backend FastAPI + Postgres + LangChain/OpenAI, com um motor de *tick* manual. Fr
 
 Quase todas são **testes separados** que o chefe e você vão mudar e integrar aos poucos. Não trate nenhuma como "a versão certa"; o git manda (`docs/mapa-de-branches.md` tem o detalhe e **o que vale colher** de cada uma).
 
-| Branch | Para que serve |
+| Branch | Situação |
 |---|---|
-| `main` | Base: backend completo (Sprint 0) + docs. Sem frontend. |
-| `frontend` | Escritório isométrico (PixiJS) + Sprint 2 parcial no backend (`tick_execucoes`, Motriz, sala de máquinas) |
-| `feat/predio-pixel` | Experimento: prédio em pixel art (arte do habblaud) no lugar do isométrico |
-| `feat/the-sims` → `claude/modest-wright-cmvki7` | Experimento do chefe: modo simulação 3D estilo The Sims. Sem o Motriz/`tick_execucoes` |
-| `test/hubblaud` | Estudo do habblaud + protótipo standalone |
-| `claude/agents-hub-mvp-review-oh6zb0` | Obsoleta (ancestral da `frontend`) |
+| `main` | Base: backend (Sprint 0) + docs + suporte a IA. Ainda sem o backend da Sprint 2. |
+| `feat/predio-pixel` | **Frontend principal**: prédio em pixel art (arte do habblaud). Tem também o backend da Sprint 2 (`tick_execucoes`, Motriz). |
+| `frontend` | Linha isométrica **encerrada** (tag `v0.3.0`); fica até o backend da Sprint 2 chegar à `main`. |
+| `claude/modest-wright-cmvki7` | Laboratório 3D estilo The Sims, linha separada. Ideias a aproveitar: `docs/aproveitamento-the-sims.md`. |
+| `test/hubblaud` | Protótipo antigo do prédio; a arquivar (ver mapa). |
+| `feat/the-sims`, `claude/agents-hub-mvp-review-oh6zb0` | Redundantes (0 commits únicos), exclusão pendente. |
+
+Tags de versão (`vX.Y.Z`, `3d/vX.Y`, `arquivo/*`) e o que falta publicar: ver o mapa.
 
 Trabalhe como quem vai integrar:
 - Mudanças **pequenas e coesas**; módulo novo em **arquivo novo** em vez de reescrever arquivo compartilhado (`Escritorio.tsx`, `index.css`, docs).
@@ -82,6 +84,7 @@ Trabalhe como quem vai integrar:
 | propor algo "novo" | `grep -n` em `docs/backlog-futuro.md` primeiro: pode já ter sido adiado, com o porquê |
 | planejar a Sprint 2 (departamentos, esteiras) | `docs/sprint-2-roteiro.md` (proposta **não aprovada**; só nas branches da linha `frontend`) |
 | entender a arte pixel / habblaud | `docs/estudo-habblaud.md` |
+| trazer ideias do 3D (humor, relações, autonomia) | `docs/aproveitamento-the-sims.md`: critério "sem poluição, dado real" |
 | **ignorar** (histórico) | `docs/mvp-hub-agentes.md`, `docs/avaliacao-mvp.md`, `docs/prompt-design-frontend.md` |
 
 Nem todo doc existe em toda branch: `guia-tecnico-frontend.md`, `prompt-design-frontend.md`, `sprint-2-roteiro.md` e `estudo-habblaud.md` só estão nas branches de frontend

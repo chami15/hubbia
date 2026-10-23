@@ -62,7 +62,7 @@ Quase todas são **testes separados** que o chefe e você vão mudar e integrar 
 | `feat/predio-pixel` | **Frontend principal**: prédio em pixel art (arte do habblaud). Tem também o backend da Sprint 2 (`tick_execucoes`, Motriz). |
 | `frontend` | Linha isométrica **encerrada** (tag `v0.3.0`); fica até o backend da Sprint 2 chegar à `main`. |
 | `claude/modest-wright-cmvki7` | Laboratório 3D estilo The Sims, linha separada. Ideias a aproveitar: `docs/aproveitamento-the-sims.md`. |
-| `test/hubblaud` | Protótipo antigo do prédio; a arquivar (ver mapa). |
+| `test/hubblaud` | Protótipo antigo do prédio, já integrado; pronta para apagar (ver mapa). |
 | `feat/the-sims`, `claude/agents-hub-mvp-review-oh6zb0` | Redundantes (0 commits únicos), exclusão pendente. |
 
 Tags de versão (`vX.Y.Z`, `3d/vX.Y`, `arquivo/*`) e o que falta publicar: ver o mapa.
@@ -87,7 +87,7 @@ Trabalhe como quem vai integrar:
 | trazer ideias do 3D (humor, relações, autonomia) | `docs/aproveitamento-the-sims.md`: critério "sem poluição, dado real" |
 | **ignorar** (histórico) | `docs/mvp-hub-agentes.md`, `docs/avaliacao-mvp.md`, `docs/prompt-design-frontend.md` |
 
-Nem todo doc existe em toda branch: `guia-tecnico-frontend.md`, `prompt-design-frontend.md`, `sprint-2-roteiro.md` e `estudo-habblaud.md` só estão nas branches de frontend
+Nem todo doc existe em toda branch: `guia-tecnico-frontend.md`, `prompt-design-frontend.md` e `sprint-2-roteiro.md` só estão nas branches de frontend
 (a `main` tem os demais). Link que não abre? Confira a branch no mapa em vez de assumir que o doc sumiu.
 
 ## Comandos

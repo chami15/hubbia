@@ -43,7 +43,7 @@ Saúde medida com Postgres real: backend `pytest`; frontend `tsc -b` + `vitest` 
 | `claude/modest-wright-cmvki7` | back 115 ✓ · front 169 ✓ | **Mantida** como linha 3D separada (tag `3d/v0.1`) | Laboratório do 3D imersivo. O que aproveitar dela no prédio: `docs/aproveitamento-the-sims.md`. Peso: `.glb` de 16,7 MB no git, bundle de 2,2 MB. |
 | `claude/agents-hub-mvp-review-oh6zb0` | — | **Apagar** (aprovado pelo chefe) | 0 commits únicos |
 | `feat/the-sims` | — | **Apagar** (aprovado pelo chefe) | 0 commits únicos |
-| `test/hubblaud` | — | **Arquivar e apagar**, depois de 2 passos (abaixo) | O protótipo é versão antiga do que está integrado |
+| `test/hubblaud` | — | **Pronta para arquivar e apagar** (os 2 passos foram feitos) | O protótipo é versão antiga do que está integrado |
 
 ### Auditoria `frontend` → `feat/predio-pixel`
 
@@ -58,10 +58,10 @@ Saúde medida com Postgres real: backend `pytest`; frontend `tsc -b` + `vitest` 
 
 O protótipo é subconjunto do que está na `feat/predio-pixel` (sem Motriz, relógio, `status.ts` nem testes) e o estudo é idêntico. Só duas coisas valem antes de arquivar:
 
-1. **Portar a vitrine da arte** (`prototipos/predio-pixel/src/catalogo.ts`): página de desenvolvimento com agentes, 20 poses, itens, 46 móveis, ícones, telas, pisos, paredes e as salas. É a única peça do protótipo que não existe no frontend, e serve de checagem visual ao criar sala ou agente.
-2. **Levar `docs/estudo-habblaud.md` à `main`** (documentação; a `main` ainda não tem).
+1. ✅ **Vitrine da arte portada** para o frontend (`/#catalogo`, só em desenvolvimento): agentes, salas, 20 poses, itens, 46 móveis, ícones, telas, pisos e paredes.
+2. ✅ **`docs/estudo-habblaud.md` está na `main`** (com nota de que o protótipo foi integrado).
 
-Depois: tag `arquivo/hubblaud-prototipo` (já planejada) e apagar a branch.
+Falta só publicar a tag `arquivo/hubblaud-prototipo` e apagar a branch (ações pendentes abaixo).
 
 ## Como integrar (diretrizes, não decisões)
 
@@ -99,6 +99,7 @@ O ambiente onde o agente trabalha só publica **branches**: push de **tag** e **
 git fetch --all --prune
 bash scripts/criar-tags.sh                       # cria as 8 tags que faltam e publica (idempotente, não apaga nada)
 git push origin --delete claude/agents-hub-mvp-review-oh6zb0 feat/the-sims   # sem perda: 0 commits únicos, e as tags arquivo/* guardam as pontas
+git push origin --delete test/hubblaud                                          # só depois de criar as tags (guarda o protótipo em arquivo/hubblaud-prototipo)
 ```
 
 ## Arquivos de suporte a agentes de IA (`AGENTS.md`, `CLAUDE.md`, `.claude/`)

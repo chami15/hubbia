@@ -1,5 +1,10 @@
 # Estudo: habblaud → hubbia
 
+> **Atualização (2026-10-23):** este estudo nasceu junto de um protótipo standalone (`prototipos/predio-pixel/`, branch `test/hubblaud`).
+> O protótipo foi **integrado ao frontend** (`frontend/src/features/predio/`, branch `feat/predio-pixel`, tag `v0.4.0`) e arquivado na tag
+> `arquivo/hubblaud-prototipo`. Onde o texto abaixo diz "o protótipo", leia "o prédio pixel do frontend". A vitrine de arte do protótipo virou
+> a página de desenvolvimento `/#catalogo`. O restante (arquitetura do habblaud, inventário da arte, dinâmica, licença) segue válido.
+
 Investigação do repositório [marmottajr/habblaud](https://github.com/marmottajr/habblaud) (v1.0.3, licença MIT,
 © 2026 Márcio Junior) para descobrir o que dá para trazer para o hubbia: arte, dinâmica dos agentes, integrações,
 cosméticos e perfumaria. O resultado prático está em `prototipos/predio-pixel/` (a arte extraída rodando com os

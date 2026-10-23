@@ -84,6 +84,9 @@ Trabalhe como quem vai integrar:
 | entender a arte pixel / habblaud | `docs/estudo-habblaud.md` |
 | **ignorar** (histórico) | `docs/mvp-hub-agentes.md`, `docs/avaliacao-mvp.md`, `docs/prompt-design-frontend.md` |
 
+Nem todo doc existe em toda branch: `guia-tecnico-frontend.md`, `prompt-design-frontend.md`, `sprint-2-roteiro.md` e `estudo-habblaud.md` só estão nas branches de frontend
+(a `main` tem os demais). Link que não abre? Confira a branch no mapa em vez de assumir que o doc sumiu.
+
 ## Comandos
 
 ```bash

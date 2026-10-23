@@ -55,10 +55,8 @@ main ── test/hubblaud ── estudo do habblaud + protótipo standalone em `
 
 ## Arquivos de suporte a agentes de IA (`AGENTS.md`, `CLAUDE.md`, `.claude/`)
 
-Vivem na `feat/predio-pixel`, em commits separados para poderem ir a outras branches:
+Estão **na `main`** (commits `dc033ff` e `8219f32`, vindos da `feat/predio-pixel`): `AGENTS.md`, `CLAUDE.md`, `backend/AGENTS.md`, `.claude/agents/{backend-agente,revisor-hub}.md`, `.claude/skills/*` e este mapa.
+Toda branch **nova** a partir da `main` já os herda. As branches antigas recebem com `git merge origin/main` (ou cherry-pick), e podem ter cópias antigas dos mesmos arquivos: ao integrar, fique com a versão da `main` e reaplique só o que for específico do frontend daquela linha.
 
-1. *commit "comum"*: `AGENTS.md`, `CLAUDE.md`, `backend/AGENTS.md`, `.claude/agents/{backend-agente,revisor-hub}.md`, `.claude/skills/*`, este mapa. Vale para **qualquer branch**.
-2. *commits "prédio pixel"*: `frontend/AGENTS.md`, `frontend/src/features/predio/AGENTS.md`, `.claude/agents/predio-pixel.md` (descrevem o frontend desta branch).
-
-Levar o primeiro à `main`: `git switch -c suporte-ia origin/main && git cherry-pick <sha>`.
+Específicos do prédio pixel, **só na `feat/predio-pixel`**: `frontend/AGENTS.md`, `frontend/src/features/predio/AGENTS.md`, `.claude/agents/predio-pixel.md`.
 Cada linha de frontend (isométrico, 3D) precisa do **próprio** `frontend/AGENTS.md`, escrito por quem conhece aquele frontend, e dos **próprios** testes de regressão.

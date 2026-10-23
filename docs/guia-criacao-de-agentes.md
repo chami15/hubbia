@@ -301,8 +301,11 @@ Nenhum agente é considerado pronto sem passar por isto:
    escondido.
 7. Só commitar depois de tudo isso passar. "Compilou" não é "testado".
 
-Isso hoje é feito com scripts avulsos (criados, exercitados, descartados)
-— a Sprint 0 já identificou isso como dívida técnica: falta uma suíte
-permanente (`tests/`) que rode essas mesmas verificações automaticamente
-a cada mudança, sem precisar recriar o script toda vez. Ver
-`docs/produto-e-sprints.md`.
+A suíte permanente (`tests/`, `pytest` + `pytest-asyncio`) que roda essas
+mesmas verificações automaticamente já existe — era dívida técnica
+identificada na Sprint 0, resolvida antes do módulo de interação (ver
+`docs/produto-e-sprints.md`). Reaproveita o Postgres do
+`docker-compose.yml` já existente, banco de teste separado por sufixo
+`_test`. Agente novo entra na suíte já existente, não precisa criar
+infraestrutura de teste do zero — só os testes específicos do domínio
+novo.

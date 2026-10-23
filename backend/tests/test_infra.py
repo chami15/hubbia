@@ -81,7 +81,7 @@ class TestMetricas:
         assert m["chamadas"] == 0
         assert m["taxa_sucesso"] == 1.0
 
-    def test_agrupa_custo_por_agente(self):
+    def test_agrupa_chamadas_por_agente_e_soma_o_gasto_total(self):
         a = _criar_agente("A", "teste")
         b = _criar_agente("B", "teste2")
         registrar_gasto(a, 0.01)
@@ -91,9 +91,10 @@ class TestMetricas:
         m = infra.obter_metricas()
         por_nome = {r["agente_nome"]: r for r in m["por_agente"]}
 
-        assert round(por_nome["A"]["custo_usd"], 2) == 0.03
         assert por_nome["A"]["chamadas"] == 2
-        assert round(por_nome["B"]["custo_usd"], 2) == 0.05
+        assert por_nome["B"]["chamadas"] == 1
+        # o agregado do orçamento é o único número de dinheiro permitido
+        assert round(m["custo_usd"], 2) == 0.08
 
     def test_erro_entra_na_taxa_de_sucesso(self):
         a = _criar_agente("A", "teste")
@@ -283,3 +284,51 @@ class TestObservabilidade:
         assert len(obs["execucoes"]) == 1
         assert obs["execucoes"][0]["erro"] == "algo quebrou"
         assert obs["execucoes"][0]["duracao_ms"] == 111
+
+
+# Os campos que o princípio 4 (RNF02) proíbe na interface: continuam gravados
+# em `tick_execucoes`, mas a API da sala de máquinas não os devolve.
+_PROIBIDOS = {"modelo", "tokens_in", "tokens_out", "custo_usd", "custo_medio_por_chamada"}
+
+
+def _chaves(obj) -> set[str]:
+    """Todas as chaves de um JSON aninhado."""
+    if isinstance(obj, dict):
+        return set(obj) | {k for v in obj.values() for k in _chaves(v)}
+    if isinstance(obj, list):
+        return {k for v in obj for k in _chaves(v)}
+    return set()
+
+
+class TestRegressaoCustoForaDaInterface:
+    def test_regressao_observabilidade_nao_vaza_modelo_tokens_nem_custo_por_execucao(self):
+        """Antes: `/infra/observabilidade` devolvia modelo, tokens e custo_usd
+        de cada execução (e custo por hora na série), e o painel os mostrava,
+        contrariando o RNF02. Só o orçamento agregado (`saturacao`) pode ter
+        dinheiro."""
+        a = _criar_agente("A", "teste")
+        registrar_gasto(a, 0.01, duracao_ms=100)
+        registrar_gasto(a, 0.02, erro="x", duracao_ms=50)
+
+        obs = infra.obter_observabilidade(horas=24)
+
+        assert obs["execucoes"], "o log de execuções continua existindo"
+        vazadas = _chaves({k: v for k, v in obs.items() if k != "saturacao"}) & _PROIBIDOS
+        assert vazadas == set()
+        assert obs["saturacao"]["gasto_usd"] == pytest.approx(0.03)
+        assert obs["saturacao"]["teto_usd"] > 0
+
+    def test_regressao_metricas_nao_vaza_custo_por_agente_nem_modelo(self):
+        """Antes: `/infra/metricas` devolvia custo e tokens por agente e o
+        `modelo` de cada erro. Fica só o total contra o orçamento."""
+        a = _criar_agente("A", "teste")
+        registrar_gasto(a, 0.01)
+        registrar_gasto(a, 0.01, erro="parsing_error: x")
+
+        m = infra.obter_metricas()
+
+        assert m["ultimos_erros"], "os erros continuam listados"
+        vazadas = _chaves({k: v for k, v in m.items() if k != "custo_usd"}) & _PROIBIDOS
+        assert vazadas == set()
+        assert m["custo_usd"] == pytest.approx(0.02)
+        assert m["orcamento_diario_usd"] > 0

@@ -10,10 +10,14 @@ determinísticos, sem LLM — só refeição, plano de dieta e relatório semana
 passam por LLM, cada um numa chamada estruturada única) e **Norte**
 (projetos do GitHub: um card de sugestão por vez — feature, bug ou próximo
 passo —, nunca mais de um ativo por projeto, encadeando o próximo card
-automaticamente ao resolver o atual). O **motor de tick** (manual) percorre os
-agentes ativos, e todo gasto de LLM passa por uma tabela só, `tick_execucoes`.
-O **Motriz** (sala de máquinas, o único agente sem LLM) lê essa tabela e expõe
-`/infra/*` (observabilidade, orçamento).
+automaticamente ao resolver o atual). **Motor de tick completo**
+(`resolvers/tick.py` + `resolvers/interacao.py`): relógio simulado,
+camada social entre agentes e proatividade de trabalho nos quatro
+domínios — ver `docs/produto-e-sprints.md` (Sprint 0) pro detalhe de
+cada etapa.
+Todo gasto de LLM passa por uma tabela só, `tick_execucoes`; o **Motriz**
+(sala de máquinas, o único agente sem LLM) lê essa tabela e expõe `/infra/*`
+(orçamento agregado).
 
 ## ⚠️ Antes de usar de verdade
 
@@ -295,9 +299,14 @@ docker-compose.yml          # postgres + adminer
 
 ## Próxima fatia (a combinar)
 
-Departamentos e esteiras da Sprint 2 (proposta ainda **não aprovada**, ver
-`docs/produto-e-sprints.md`). Itens adiados de propósito, ver
-`docs/backlog-futuro.md`: canal Telegram; agente de Saúde sugerir/montar a
-ficha de treino sozinho; acesso multi-usuário aos cards do Norte; leitura
-mais profunda do repositório no Norte (conteúdo de arquivo, não só nomes)
-se o contexto raso da v1 não gerar sugestões boas o suficiente.
+Backend do "escritório vivo" (quatro agentes + motor de tick completo)
+está fechado — ver Sprint 0 em `docs/produto-e-sprints.md`. A sprint
+atual é o módulo de **frontend** (`../frontend/README.md`), que já
+consome essa API por inteiro; mudança de backend agora é sob demanda do
+que o frontend precisar, não uma fatia planejada à parte. Itens de
+backend adiados de propósito, ver `docs/backlog-futuro.md`: canal
+Telegram; agente de Saúde sugerir/montar a ficha de treino sozinho;
+acesso multi-usuário aos cards do Norte; leitura mais profunda do
+repositório no Norte (conteúdo de arquivo, não só nomes — confirmado
+como prioridade); calendário fictício completo do motor de tick;
+proatividade Sabor B (avisos comportamentais).

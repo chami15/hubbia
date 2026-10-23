@@ -94,7 +94,7 @@ repetível pra qualquer agente novo.
 
 ## 2. Sprints
 
-### Sprint 0 — Idealização até o primeiro MVP (EM ANDAMENTO)
+### Sprint 0 — Idealização até o primeiro MVP (ENCERRADA)
 
 **Objetivo:** sair da ideia (documento MVP original, `docs/mvp-hub-agentes.md`
 e `docs/avaliacao-mvp.md`) até ter uma base funcional, testada com dado
@@ -360,6 +360,154 @@ manual real. **Alcançado.**
 
 ---
 
+### Sprint 1 — Módulo de frontend (EM ANDAMENTO)
+
+> **Atualização (2026-10-23): o escritório isométrico foi substituído pelo prédio em pixel art** (arte procedural do
+> habblaud, `frontend/src/features/predio/`). Painéis dos agentes, tick, mensagens, configurações e sala de máquinas
+> seguem os mesmos; o que mudou é o "mundo" onde os agentes aparecem (agora com salas por agente, vagas e elevador).
+> O texto abaixo descreve o que foi construído **na versão isométrica** e fica como registro: as menções a PixiJS,
+> sprites do Kenney, modo de edição e anel do crachá são históricas (o código está na tag `v0.3.0`).
+> Ver `docs/guia-tecnico-frontend.md` PARTE 0.
+
+**Objetivo:** dar ao "escritório vivo" a interface visual que a Sprint 0
+deixou como próximo passo — o escritório isométrico 2D, o painel de cada
+um dos quatro agentes, e os controles do motor de tick (relógio,
+mensagens, configurações) — tudo consumindo a API já pronta e testada,
+sem tocar em regra de negócio do backend.
+
+#### O que já foi feito
+
+**Escritório isométrico (a fundação visual):**
+- Depois de **cinco tentativas rejeitadas** (SVG à mão, arte de IA como
+  imagem estática, dois formatos de losango em `<pattern>` SVG, Canvas2D
+  puro — ver `docs/guia-tecnico-frontend.md`, Parte 1, pro diagnóstico de
+  cada uma), a solução que funcionou combina **sprites de artista**
+  (Kenney Furniture Kit, CC0 — móveis) com **piso/laje/paredes
+  desenhados** (`Graphics` do Pixi, pra controle total de paleta).
+- Geometria isométrica **medida, não teórica** (o pack não é 2:1 como o
+  "clássico"), coordenada de tabuleiro tipo xadrez (`B2`, `B2-NE`) pra
+  eliminar ambiguidade de "mais pra lá", âncoras por peça × direção
+  (560 sprites) medidas por script.
+- **Múltiplas salas**: cada ambiente é dado (`salas/*.json`), nunca
+  código — porta clicável navega entre salas, com espelhamento
+  automático e conferência de consistência entre o conjunto inteiro
+  (nome duplicado, agente já usado noutra sala, porta pra sala
+  inexistente).
+- **Modo de edição** (tecla `E`): arrastar/girar/empilhar móveis visual,
+  três camadas de persistência (fonte no git / rascunho no
+  `localStorage` / sessão em memória), rascunho automático com defesa
+  contra perda de trabalho ao trocar de sala, desfazer agrupado por
+  rajada de gesto, copiar/colar.
+- **Defesa em 4 camadas** contra defeito silencioso de sala (id
+  duplicado, `sobre` circular ou apontando pro nada, agente em duas
+  peças): o editor não consegue criar a maioria, o plugin de gravação
+  recusa salvar sala inconsistente, `npm test` prova coerência de toda
+  sala versionada, e um painel vermelho lista qualquer defeito ao
+  carregar.
+
+**Painéis dos quatro agentes (clique no crachá abre o painel do
+domínio):**
+- **Cifra**: dashboard com seletor de mês, gráficos calculados ao vivo,
+  upload de extrato, relatório mensal sob demanda.
+- **Agenda**: chat com histórico de sessão, proposta pendente
+  visualmente destacada (confirmar/rejeitar por botão OU por texto),
+  consulta de pendência determinística ao abrir (custa zero de LLM).
+- **Vita**: entrevista inicial bloqueando o resto até existir perfil,
+  menu de forms determinísticos, atalho de peso/hidratação sem abrir o
+  menu inteiro, ficha de treino com múltiplos exercícios por dia.
+- **Norte**: card único por projeto (nunca lista), histórico tipo
+  changelog, cadastro com branch real buscada no GitHub (nunca digitada
+  à mão), visão geral em **kanban por status do projeto** com destaque
+  de "estagnado" e botão "retomar".
+- Ponte entre o crachá (id string local, `AGENTES` em
+  `escritorio/agentes.ts`) e o agente de verdade do backend (id
+  numérico) é sempre via `especialidade`, nunca comparação direta de id.
+
+**Motor de tick no HUD:**
+- Relógio simulado + orçamento diário sempre visíveis, avançar tick
+  (com `dry_run` persistente) e processar a rodada social/trabalho
+  virados **um clique só**.
+- Mensagens: caixa de entrada (thread por agente, com resposta em
+  texto) + mural geral (RF22) unificados no mesmo painel, com
+  `lida_pelo_chefe` finalmente em uso (bolinha de não lida no HUD).
+- Eventos do mundo: cadastro simples (só descrição) do pool que
+  alimenta o gancho de conversa social.
+
+**Redesenho visual "Console" (a "outra cara" do hub, ver
+`docs/frontend-design.md` e `docs/guia-tecnico-frontend.md` Parte 11
+pros detalhes completos):**
+- **Fundação**: tokens de design centralizados (`index.css`) — paleta
+  `--deck`/`--deck-2` opaca pros painéis (nunca mais translúcida com
+  cantos muito arredondados), cor de identidade por agente, tipografia
+  própria (placeholder de Chubbo/Supreme via Google Fonts, por bloqueio
+  de rede ao Fontshare — trocável depois), biblioteca de barras
+  reutilizável (cápsula, segmentada, radial, indeterminada, contador com
+  animação de dígito).
+- **Avatares vivos**: o `estado` do agente (`idle`/`pensando`/
+  `falando`/`executando`, que já existia no schema desde a fundação mas
+  nunca tinha chegado ao desenho) agora anima o anel do crachá na cena
+  — pontilhado pulsante em "pensando", halo em "falando", cometa
+  girando em "executando" —, via `Ticker.shared` do Pixi.
+- **As quatro telas dos agentes ganharam identidade própria**: ticker de
+  KPI com números animados no Cifra e na Vita, barra segmentada de dias
+  de treino, colunas do kanban do Norte tingidas por status, bolha de
+  proposta da Agenda pulsando na cor "oficial".
+- **Sistema de notificação (toast)**: o resultado de um avanço de tick
+  (aviso, trabalho proativo de um agente, mensagem social endereçada ao
+  chefe) agora aparece como notificação passageira, tingida pela cor do
+  agente — antes só existia dentro do painel de configurações, invisível
+  se ele estivesse fechado.
+- **Code-splitting por painel + esqueleto de carregamento**: cada painel
+  de agente virou um chunk próprio (`React.lazy`), com um esqueleto no
+  estilo "deck" no lugar do "carregando…" em texto puro.
+- **Som opcional**: tom curto sintetizado (Web Audio, sem asset), toggle
+  em configurações, tocando só em trabalho proativo — desligado por
+  padrão.
+
+#### O que falta para concluir esta sprint
+
+Nada bloqueante, mas várias pontas soltas conscientes — ver
+`docs/backlog-futuro.md` pra lista completa e o porquê de cada adiamento:
+
+1. Escala global das salas (móvel do mesmo tamanho em qualquer
+   ambiente) — solução já desenhada e aprovada, só falta decidir o teto
+   e implementar.
+2. Atalho de peso/hidratação da Vita direto na bolha do avatar (RF19) —
+   hoje só no topo do painel.
+3. `border`/`borderColor` misturados no mesmo objeto de estilo em três
+   arquivos (`PainelAgenda.tsx`, `CardAtivo.tsx`, `FormRefeicao.tsx`) —
+   já corrigido no resto do hub, falta só esses.
+4. Testar upload de extrato e foto de refeição com arquivo/imagem reais
+   (só testado com dado sintético até aqui).
+5. Persistir a conversa do Agenda entre reloads (hoje é só de sessão,
+   decisão original) e expor `GET` de histórico de refeição/sono/
+   atividade (gravado, mas sem endpoint de leitura de volta).
+
+#### Resultado esperado desta sprint
+
+Um escritório isométrico navegável, com os quatro agentes acessíveis
+por um painel próprio cada, o motor de tick operável de ponta a ponta
+pela interface (nunca só por `curl`), e uma identidade visual coesa
+("Console") que substitui o estilo "console de debug" inicial — sem
+regredir nenhuma garantia do backend (RNF01–RNF09 continuam valendo,
+nada de LLM automático, nenhum metadado de custo exposto). **Em
+andamento** — núcleo funcional completo, pontas soltas documentadas
+acima.
+
+---
+
 *(Próximas sprints serão adicionadas a este documento conforme
 iniciarem — este arquivo não é reescrito do zero a cada atualização, é
 incrementado.)*
+
+
+### Próxima sprint — ideias do 3D no prédio pixel (decidido, ainda sem "pode" de desenho)
+
+O chefe aprovou **começar** a aplicar as ideias de `docs/aproveitamento-the-sims.md` na próxima sprint, sempre sem poluição visual e só com dado real:
+
+1. **Fase 1 (backend, sem visual novo):** expor `relacionamentos.afinidade` e `agentes.extroversao`; passar a escrever `opiniao`. Com testes.
+2. **Fase 2:** motor puro em TypeScript (humor e relações a partir desses dados), em arquivo novo, testado.
+3. **Fase 3:** uma superfície introspectiva só, ao selecionar o agente (nada de HUD permanente).
+4. **Fase 4 (autonomia):** só com aprovação à parte, e o tick continua manual.
+
+O desenho técnico da Fase 1 ainda precisa do "pode" explícito do chefe antes de codar. A `claude/modest-wright-cmvki7` continua laboratório do 3D imersivo.

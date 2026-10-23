@@ -1,0 +1,173 @@
+@import 'tailwindcss';
+
+/* Tipografia do redesenho "Console" (docs/frontend-design.md). Chubbo e
+   Supreme (Fontshare) são a escolha real do chefe, mas a rede deste
+   ambiente bloqueia fontshare.com — Fraunces (900, variável) e Manrope
+   ficam como placeholder até os arquivos reais chegarem. Trocar depois
+   é só apontar estes dois @font-face pros arquivos novos, nada mais no
+   app referencia o nome do arquivo — todo mundo consome var(--fonte-*). */
+@font-face {
+  font-family: 'ConsoleDisplay';
+  src: url('/fonts/fraunces-chubbo-placeholder.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'ConsoleCorpo';
+  src: url('/fonts/manrope-supreme-placeholder.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* base — "void" é o mundo isométrico atrás de tudo, "deck" é a chapa
+     opaca de qualquer painel que é superfície de trabalho (catálogo,
+     configurações, edição, painéis de agente). Vidro (translúcido +
+     blur) fica só pro HUD — ver Escritorio.tsx. */
+  --void: #08090c;
+  --deck: #14161b;
+  --deck-2: #1b1e25;
+  --deck-line: rgba(255, 255, 255, 0.09);
+
+  --ink: #e6e1d6;
+  --ink-dim: #8d8779;
+  --ink-faint: #5b584e;
+
+  /* acento do HUD (não é de nenhum agente — é do "mundo" em si) */
+  --accent: #5eead4;
+  --accent-rgb: 94, 234, 212;
+
+  /* semânticas já em uso espalhado pelo app antes deste redesenho —
+     só ficaram nomeadas aqui, os valores não mudaram */
+  --good: #4ade80;
+  --good-rgb: 74, 222, 128;
+  --official: #dbb15f;
+  --official-rgb: 219, 177, 95;
+  --info: #7fb8de;
+  --info-rgb: 127, 184, 222;
+  --danger: #ef4444;
+  --danger-rgb: 239, 68, 68;
+
+  /* cores de identidade dos 4 agentes — mesmo valor de agentes.ts
+     (avatar_config.cor), só espelhado aqui pra uso em CSS puro */
+  --cifra: #16a34a;
+  --cifra-rgb: 22, 163, 74;
+  --agenda: #2563eb;
+  --agenda-rgb: 37, 99, 235;
+  --vita: #f97316;
+  --vita-rgb: 249, 115, 22;
+  --norte: #0891b2;
+  --norte-rgb: 8, 145, 178;
+
+  --fonte-display: 'ConsoleDisplay', ui-monospace, 'SF Mono', Menlo, monospace;
+  --fonte-corpo: 'ConsoleCorpo', ui-sans-serif, system-ui, sans-serif;
+
+  --radius-deck: 7px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* Animações do redesenho "Console" — um lugar só, reusadas por
+   Barras.tsx, o HUD (Escritorio.tsx) e o crachá do agente na cena
+   isométrica (cena.ts). Nomeadas com prefixo `console` pra nunca
+   colidir com uma keyframe de outra parte do app. */
+
+@keyframes consoleSheen {
+  0% { background-position: 160% 0; }
+  100% { background-position: -60% 0; }
+}
+
+@keyframes consoleSegPop {
+  0% { transform: scaleY(0.3); opacity: 0; }
+  100% { transform: scaleY(1); opacity: 1; }
+}
+
+@keyframes consoleIndet {
+  0% { left: -35%; }
+  100% { left: 100%; }
+}
+
+@keyframes consoleDigRoll {
+  0% { transform: translateY(0); opacity: 1; }
+  45% { transform: translateY(-40%); opacity: 0; }
+  55% { transform: translateY(40%); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes consolePing {
+  0% { transform: scale(1); opacity: 1; }
+  70%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes consoleGoGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--good-rgb), 0.35); }
+  50% { box-shadow: 0 0 14px 3px rgba(var(--good-rgb), 0.25); }
+}
+
+@keyframes consoleListaEntra {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes consoleToastEntra {
+  0% { opacity: 0; transform: translateY(6px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes consoleToastSai {
+  0% { opacity: 1; transform: translateX(0); max-height: 80px; }
+  100% { opacity: 0; transform: translateX(12px); max-height: 0; }
+}
+
+@keyframes consoleStagPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--official-rgb), 0.25); }
+  50% { box-shadow: 0 0 0 3px rgba(var(--official-rgb), 0.12); }
+}
+
+/* Catálogo de móveis — card com elevação estável no hover (nunca scale,
+   que empurraria os vizinhos). */
+.catalogo-celula {
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.catalogo-celula:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Aba com sublinhado com glow em vez de fundo sólido trocando — mais
+   rápido de escanear numa lista horizontal. Reusada pelo catálogo e
+   pelo painel de mensagens (as duas abas de "minhas conversas/mural"). */
+.console-aba {
+  position: relative;
+  transition: color 0.15s ease;
+}
+.console-aba::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.console-aba[data-ativo='true']::after {
+  background: var(--good);
+  box-shadow: 0 0 8px rgba(var(--good-rgb), 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

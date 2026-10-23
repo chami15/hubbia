@@ -73,9 +73,31 @@ palavra-chave — não é um LLM em chat livre de verdade).
   (`POST /agenda/acoes/{id}/confirmar|rejeitar`) — não precisa
   necessariamente depender do usuário digitar "sim"/"não" de novo.
 - Existe uma consulta determinística de "qual pendência está em aberto"
-  (frase-gatilho no texto) — o frontend poderia (ver decisão em aberto)
-  chamar isso proativamente pra mostrar um indicador, em vez de depender
-  do chefe lembrar de perguntar.
+  (frase-gatilho no texto).
+
+**Construído (painel do Agenda) — decisões que estavam em aberto e foram
+resolvidas na prática:**
+
+- **Confirmar/rejeitar tem OS DOIS caminhos: botão e texto.** O backend
+  já aceita ambos (regex de "sim/confirma/pode" e "não/cancela" + endpoint
+  por id), então restringir a UI a um só seria jogar fora capacidade que
+  já existe. Os botões evitam a ambiguidade de digitação; o texto continua
+  valendo porque é ele que permite **ajustar** a proposta ("pode ser, mas
+  às 10h") em vez de só aceitar ou recusar em bloco. O painel deixa isso
+  explícito com uma linha abaixo dos botões.
+- **A pendência É consultada proativamente ao abrir o painel.** O que
+  destravou a dúvida foi notar que essa frase-gatilho é interceptada por
+  regex ANTES de qualquer chamada de modelo (`_PADRAO_CONSULTAR_PENDENCIA`
+  em `resolvers/agenda.py`) — ou seja, custa zero de LLM e não viola o
+  RNF01. Se não há nada pendente, o painel fica em silêncio: anunciar
+  "você não tem pendências" toda vez que abre é ruído.
+- **O histórico do chat é de SESSÃO, não de banco.** A tabela `mensagens`
+  é da camada social entre agentes, não deste chat — fechar e reabrir o
+  painel começa a conversa limpa. O que é recuperado do servidor ao abrir
+  é só a *pendência*, que é o que de fato não pode se perder.
+- **Uma proposta já resolvida perde o destaque** e vira mensagem comum no
+  histórico. Manter o alerta aceso em algo já decidido ensina a ignorar o
+  destaque — que é o mesmo que não ter destaque.
 
 ### Saúde (Vita)
 
@@ -104,6 +126,40 @@ palavra-chave — não é um LLM em chat livre de verdade).
   (isso já confundiu no teste manual da API).
 - Plano de dieta e relatório semanal são ações deliberadas (botão
   "Gerar"), igual o relatório do Financeiro — nunca automáticas.
+
+**Construído (painel da Vita):**
+
+- Painel **largo** com backdrop, conforme a regra de largura por tipo de
+  conteúdo — a ficha de treino é formulário tabular e não caberia na
+  faixa estreita.
+- **A entrevista inicial bloqueia o painel inteiro** enquanto não houver
+  perfil: sem ele o backend recusa refeição/dieta/relatório com um erro
+  que não explicaria nada pro chefe. Entrevista e "editar perfil" são o
+  MESMO formulário (o endpoint é upsert) — o que muda é o enquadramento.
+- **KPIs no topo do menu** (`GET /saude/dashboard`): peso, kcal de hoje,
+  água de hoje, atividades na semana. Consulta agregada sem LLM, então
+  pode carregar ao abrir sem ferir o RNF01.
+- **Ficha de treino:** o botão "+ exercício" fica DENTRO do cartão do
+  dia e diz o nome do dia ("+ exercício em segunda"), e a contagem
+  aparece no cabeçalho ("3 exercícios"). É a resposta direta à confusão
+  registrada no teste manual da API — o botão genérico fora do cartão
+  não deixava claro em qual dia o exercício entraria.
+- **Refeição:** os dois caminhos ficam como abas lado a lado, ambas
+  sempre visíveis. Esconder um atrás do outro faria o chefe achar que só
+  existe o que está na frente. O resultado mostra a **confiança da
+  estimativa** — uma foto ruim gera número fraco, e exibir como se fosse
+  medido seria mentira.
+- **404 não é erro** em três endpoints (perfil, plano, relatório): é
+  "ainda não existe". A camada de api traduz pra `null`, senão um estado
+  esperado viraria alerta vermelho — e alerta que aparece à toa ensina a
+  ignorar alerta.
+- **Peso nunca vem pré-preenchido** (decisão original mantida) e o campo
+  limpa depois de registrar.
+
+**Pendente do que foi especificado (RF19):** os atalhos de peso e
+hidratação estão no topo do painel, não na bolha do avatar. A versão da
+bolha — popup ancorado no crachá, sem abrir o painel — ainda não foi
+construída.
 
 ### Norte (Projetos)
 
@@ -146,6 +202,49 @@ repositório real; frontend ainda por desenhar.
   não um status fixo) — é aqui que mora o "ficar de olho" que motivou o
   agente.
 
+**Construído (painel do Norte):**
+
+- Painel **largo**, e não estreito como a regra de largura previa. O que
+  mudou a conta foram os `arquivos_afetados`: caminho de projeto real
+  passa de 50 caracteres e quebraria em três linhas na faixa estreita,
+  justamente no dado que torna o card acionável.
+- Duas vistas: lista de projetos e projeto aberto (identidade do scan +
+  card ativo + histórico). Sem chat, sem lista de tarefas.
+- **Cadastro:** o link é colado, o `blur` do campo dispara a busca das
+  branches reais, e a branch vira um `select` — nunca um campo de texto.
+  Buscar a cada tecla digitada seria uma chamada ao GitHub por caractere.
+- **Botões mudam com o status:** `sugerido` mostra aceitar/rejeitar (é
+  uma decisão), `aceito` mostra "marcar como feito" (já é trabalho em
+  andamento).
+- **Rejeitar/finalizar não pedem card novo** — o próximo já vem na
+  resposta e entra direto no cache. Verificado no teste: resolver um card
+  não dispara nenhuma chamada extra a `/cards/gerar`.
+- **O `aviso` do encadeamento é exibido.** Quando o próximo card falha ao
+  ser gerado, o card resolvido continua resolvido e o backend manda um
+  aviso — escondê-lo deixaria a tela sem card e sem explicação.
+- **Histórico:** rejeitado aparece apagado e riscado, finalizado com ✓.
+  Registro do que NÃO aconteceu não pode competir visualmente com o que
+  foi feito.
+- **Visão geral em kanban, agrupado por STATUS DO PROJETO** (ativo/
+  pausado/concluído/abandonado) — decidido pelo chefe entre isso e uma
+  lista simples. A coluna é o status do PROJETO (decisão deliberada,
+  muda raro), não o status do CARD (sugerido/aceito/..., muda toda
+  hora e já tem tela própria em `CardAtivo`) — confundir os dois
+  status dentro do mesmo quadro contaria duas histórias diferentes na
+  mesma grade.
+- **`estagnado` fechado**: `GET /norte/projetos` agora devolve o campo
+  (mesma regra de `projetos:listar_estagnados`, calculada pra TODO
+  projeto — antes só existia pra achar o mais parado, um só, pra
+  proatividade do tick). Card estagnado fica apagado (opacidade
+  reduzida) com rótulo "estagnado" e um botão **retomar**, que chama o
+  mesmo `POST /cards/gerar` de sempre — é seguro chamar direto porque
+  `estagnado` já garante que não existe card aberto.
+
+**Pendente:** nada de Norte fica pendente nesta leva. As duas próximas
+perguntas (ver "Decisões em aberto") — sinalizar afinidade entre agentes
+na UI, e como visualizar o mural geral — não são deste agente
+especificamente.
+
 ---
 
 ## Módulo de interação (motor de tick — Etapas 1, 2 e 3 prontas)
@@ -172,6 +271,72 @@ frontend, pra não ficar refazendo depois:
   fica pra depois, com visão de um botão + contador regressivo na UI
   em vez do disparo manual atual.
 
+**Construído — 1ª versão (cartão flutuante do relógio):** o relógio
+viveu um tempo como um cartão sozinho no canto inferior esquerdo, com
+"conferir"/"avançar" como botões separados e uma seção "rodada do tick"
+atrás de um toggle. Essa versão foi **substituída** pelo redesenho
+abaixo, depois de uma varredura visual (chefe pediu pra consolidar tudo
+num menu só). O histórico da primeira versão fica só como contexto —
+o que vale hoje é a seção seguinte.
+
+**Construído — redesenho do HUD (menu único + dry_run persistente):**
+
+- **Dois grupos de ícone, cada um no seu canto**, em vez de cartões
+  espalhados pelos quatro cantos (relógio no inferior-esquerdo, eventos
+  no inferior-direito, toggle de mensagens no superior-esquerdo).
+  **Inferior esquerdo:** mensagens (com badge de não lida) e
+  configurações (engrenagem), empilhados. **Inferior direito:** avançar
+  1 tick sozinho, em destaque verde — é a ação mais frequente, fica
+  isolada do resto. Sempre visíveis, em qualquer modo, com `zIndex`
+  ACIMA não só do backdrop dos painéis "largo" mas dos PRÓPRIOS painéis
+  (mensagens/configurações/agente), porque cada canto fica
+  geometricamente por baixo de ALGUM painel que se estende até aquele
+  lado (mensagens e configurações abrem pela esquerda; um painel de
+  agente "largo" abre pela direita) — bater só o backdrop não bastava.
+- **Ícones são SVG desenhado à mão** (`escritorio/icones.tsx`), não os
+  PNGs originais — não há como extrair bytes de imagem de uma que só
+  foi colada na conversa, só "ver" ela. Mesma linguagem visual (traço
+  grosso, arredondado, monocromático via `currentColor`); trocar pelo
+  arquivo de verdade depois é só substituir por uma `<img>`.
+- **Avançar tick e processar rodada viraram UM clique só**
+  (`hooks/useMundo.ts::useAvancarMundo`), sempre nessa ordem — decisão
+  do chefe. Antes eram dois botões (relógio, depois "rodada do tick").
+  Se o passo de processar a rodada falhar (só pode acontecer com
+  `dry_run` no PRIMEIRO clique de todos — nesse caso não existe tick
+  REAL ainda pra servir de base), o avanço do relógio não é desfeito;
+  só a rodada mostra um aviso explicando isso.
+- **`dry_run` virou um MODO persistente (liga/desliga), não mais um
+  botão "conferir" separado.** Ligado, o ícone de avançar só confere
+  (nunca gasta/grava); desligado, avança de verdade. Persistido em
+  localStorage (`escritorio/dry-run.ts`), mesmo espírito do rascunho de
+  sala: "salva só localmente, pra voltar de onde parou". Como o
+  backend NUNCA grava nada em dry_run, desligar o modo é só apagar a
+  prévia local — o estado real nunca foi tocado, não há o que
+  "reverter" de fato.
+  - Importante limite técnico documentado: dry_run **não encadeia**.
+    Cada chamada calcula a partir do ÚLTIMO TICK REAL, nunca de um tick
+    simulado anterior — clicar 3× com o modo ligado sempre mostra a
+    MESMA prévia ("seria o tick N+1"), não uma progressão. Simular uma
+    sequência de verdade exigiria inventar dado no cliente (orçamento e
+    mensagens fictícios sem base real) — decisão explícita do chefe foi
+    NÃO fazer isso.
+- **Painel de configurações e painel de mensagens abrem os DOIS pela
+  ESQUERDA** (mensagens era pela direita antes — mudou a pedido do
+  chefe, junto com os ícones indo pro canto inferior esquerdo). Reúne o
+  que eram dois cartões (relógio+orçamento e eventos do mundo) num só
+  painel de configurações, mais o toggle de dry_run e o resultado do
+  último avanço (real ou simulado).
+- **Mensagens não lidas: `lida_pelo_chefe` finalmente em uso.** A
+  coluna existia desde o início do schema mas nenhum endpoint a
+  expunha. Agora `GET /mensagens` devolve o campo e
+  `POST /mensagens/{id}/marcar-lida` marca uma mensagem específica.
+  **"Lida" é por CLIQUE na mensagem, nunca por abrir a thread/aba** —
+  decisão explícita do chefe: só conta como visto o que ele realmente
+  clicou, não o que passou na frente dele. O ícone de mensagens ganha
+  uma bolinha vermelha quando há pelo menos uma não lida
+  (`useContagemNaoLidas`, que reaproveita o mesmo cache de `['mensagens']`
+  sem fetch extra).
+
 **Mensagens entre agentes (mural/social e trabalho)**
 - Toda mensagem trocada fica em `mensagens`, sempre associada a um
   tick, gerada por `POST /interacao/tick/processar` (renomeado de
@@ -195,6 +360,11 @@ frontend, pra não ficar refazendo depois:
   escritório 2D — `'falando'` numa mensagem social, `'executando'` numa
   proatividade de trabalho; volta a `'idle'` no próximo
   `POST /tick/avancar`.
+  - **Construído**: o anel do crachá anima por estado (pontilhado
+    pulsante em `pensando`, halo em `falando`, cometa girando em
+    `executando`), via `Ticker.shared` do Pixi — ver "Construído —
+    redesenho visual 'Console'" abaixo e `docs/guia-tecnico-frontend.md`
+    Parte 11 pro detalhe técnico da animação.
 - `POST /interacao/tick/processar?dry_run=true` mostra, sem gastar nem
   executar nada, quem trabalharia/falaria e com quem/sobre o quê nesse
   tick — útil como preview antes de confirmar de verdade.
@@ -241,9 +411,56 @@ frontend, pra não ficar refazendo depois:
 - Pensar a UI como uma lista de conversas por agente (uma "thread" por
   colega, não um feed único misturado) — mais perto de DM/e-mail do
   que de mural: clica no agente, vê o histórico com ele, responde ali.
-- Ainda não decidido: se essa tela também deveria notificar (badge de
-  "não lida") — hoje o campo `lida_pelo_chefe` já existe em
-  `mensagens` mas não é usado por nenhum endpoint ainda.
+- ~~Ainda não decidido: badge de "não lida"~~ — **resolvido:**
+  `lida_pelo_chefe` está em uso (`POST /mensagens/{id}/marcar-lida`),
+  "lida" é por clique na mensagem específica. Ver "Construído —
+  redesenho do HUD" acima.
+
+**Construído (mensagens — caixa de entrada + mural) — decisões tomadas na prática:**
+
+- **NÃO usa `GET /mensagens/caixa-de-entrada`.** Esse endpoint filtra
+  por `destinatario_id = chefe`, então devolve só o que CHEGA — a
+  resposta que o próprio chefe manda (`destinatario_id` vira o AGENTE)
+  fica de fora, e sem ela a "conversa" mostraria só metade, como se o
+  agente estivesse falando sozinho. A tela usa `GET /mensagens` (o
+  mural, sem filtro de participante — tem as duas pontas) e filtra no
+  CLIENTE pra só o que envolve o chefe. Mais fetch do que seria
+  necessário, mas o único jeito de montar um balão de duas vias sem
+  inventar endpoint novo. Backlog: se o mural crescer muito, isso pede
+  paginação ou um endpoint de thread dedicado.
+- **Toggle é um ícone no menu único do canto inferior direito** (era um
+  botão de texto no canto superior esquerdo — mudou no redesenho do
+  HUD, ver acima). Fecha sozinho quando o painel abre — ele já tem X,
+  Esc e clique no backdrop pra fechar; manter os dois seria redundância.
+- **Mutuamente exclusivo com o painel de agente**, mesma regra que já
+  valia só entre agentes ("um painel de cada vez"): abrir mensagens
+  fecha um agente aberto, e clicar num crachá fecha as mensagens.
+- **O mural (RF22) vive no MESMO painel, numa segunda aba — não em
+  outro toggle.** As duas telas partem exatamente do mesmo fetch
+  (`GET /mensagens`); a diferença é só o agrupamento (thread-com-o-chefe
+  vs. tudo, cronológico). Um quinto botão flutuando no escritório só
+  pra trocar de agrupamento do MESMO dado seria chrome sem propósito.
+- **O mural usa o mesmo visual de balão de fala**, sem alternar lado
+  esquerdo/direito — alternar lado representa uma relação de duas
+  pontas (o "eu" de uma conversa), e o mural mistura pares diferentes
+  na mesma lista (inclusive agente↔agente, que nunca toca o chefe). A
+  cor por identidade do remetente já resolve "quem falou" numa lista
+  vertical só, sem precisar fingir um "eu" que não existe ali.
+- **Uma thread por colega, accordion — não duas colunas.** Só 4
+  interlocutores possíveis (os 4 agentes), então uma lista vertical que
+  expande/recolhe cobre o "clica no agente, vê o histórico" do jeito
+  mais simples, sem precisar de um layout mestre-detalhe.
+- **"Responder" fica em cada bolha do AGENTE, não numa caixa de texto
+  fixa no rodapé.** `POST /mensagens/{id}/responder` exige o id de UMA
+  mensagem específica (é o que vira `respondendo_a_id`) — não existe
+  "mandar uma mensagem nova pra essa thread" do lado do chefe, só
+  "responder a esta aqui". A UI segue exatamente essa forma em vez de
+  fingir um composer genérico que o backend não sustenta. Some quando a
+  mensagem é `tipo='trabalho'` (mesma regra do backend) ou já é do
+  próprio chefe.
+- **Cor por identidade do agente na bolha recebida** (a mesma do
+  crachá), bolha do chefe sempre neutra — assim dá pra saber quem
+  falou o quê olhando de relance, mesmo com várias threads abertas.
 
 **`eventos_mundo` (gancho de conversa social)**
 - Pool curado manualmente (clima, futebol, fim de semana, etc.), já
@@ -254,6 +471,20 @@ frontend, pra não ficar refazendo depois:
   precisa de mais campos).
 - Não precisa de tela de gestão elaborada (editar/remover) na primeira
   versão — só adicionar/listar é suficiente pra começar.
+
+**Construído (eventos do mundo) — decisões tomadas na prática:**
+
+- **Vive dentro do painel de configurações** (canto inferior direito →
+  ícone de engrenagem → painel pela esquerda), não mais um cartão
+  flutuante próprio — dobrado ali no redesenho do HUD junto com
+  relógio/orçamento/dry_run, ver "Construído — redesenho do HUD" acima.
+- **Nunca usado (`ultimo_uso_tick === null`) ganha um marcador visual**
+  na lista — é exatamente o critério que `sortear_menos_usado` usa pra
+  priorizar (`ORDER BY ultimo_uso_tick ASC NULLS FIRST`), então mostrar
+  isso ajuda o chefe a entender por que um evento novo tende a aparecer
+  primeiro na próxima rodada.
+- **Sem editar/remover, como o próprio doc já fechava** — só uma lista
+  rolável e um campo de texto curto.
 
 **Afinidade e relacionamento entre agentes**
 - `relacionamentos.afinidade` (-100 a 100) entre cada par — cresce por
@@ -267,6 +498,10 @@ frontend, pra não ficar refazendo depois:
 
 ## Escritório 2D (visão geral, ainda não desenhado)
 
+> **Atualização (2026-10-23):** este escritório existe e hoje é um **prédio em pixel art** (uma sala por agente, vagas para
+> adicionar e dispensar agentes, estados do backend como poses). O texto abaixo é o planejamento original, mantido como
+> registro. O que vale hoje: `docs/guia-tecnico-frontend.md` PARTE 0 e `frontend/src/features/predio/AGENTS.md`.
+
 Ainda não há protótipo nenhum de tela. O que já está decidido/disponível
 pra quando começar:
 - Um avatar/cartão por agente (cor + emoji já vêm do banco).
@@ -277,6 +512,48 @@ pra quando começar:
 - Atalhos que vivem na própria bolha do avatar, sem abrir o painel
   inteiro (hoje só peso/hidratação do Saúde, mas o padrão pode se repetir
   pra outros agentes futuros com ações de campo único e alta frequência).
+
+---
+
+## Painel do agente — layout (decidido)
+
+Resolve a "decisão em aberto" que existia aqui antes sobre lateral vs.
+modal vs. dentro do avatar. **É lateral — mas não um tamanho único pros
+quatro agentes.**
+
+- **Painel estreito** (mesma faixa do catálogo de mobília do
+  escritório): usado por conteúdo que é conversa, menu de botões ou um
+  card único — Agenda, o menu principal do Vita, o card do Norte. O
+  escritório continua visível ao lado; faz sentido acompanhar a sala
+  enquanto conversa com um agente.
+- **Painel largo** (bem mais que a faixa do catálogo — próximo de
+  metade da tela ou mais): usado por conteúdo denso — o dashboard do
+  Cifra (KPIs + gráfico) e formulários tabulares do Vita (ficha de
+  treino com vários exercícios por dia da semana). Espremer gráfico ou
+  tabela numa faixa estreita não é opção. O escritório escurece atrás
+  dele (sinaliza foco), diferente do painel estreito.
+- Largura exata e o visual de cada um são detalhe de implementação —
+  a decisão registrada aqui é só a existência das DUAS faixas, não o
+  pixel exato.
+- **Só um painel de agente aberto por vez.** Abrir outro troca o
+  conteúdo do painel existente, nunca empilha um sobre o outro — mesma
+  filosofia de "uma coisa focada por vez" que já vale entre modo de
+  edição / catálogo / menu de salas.
+- **Painel de agente aberto esconde o menu lateral de salas** (o que
+  lista/cria/exclui salas) — trocar de sala não faz sentido no meio de
+  uma conversa com um agente, mesma regra que já impede trocar de sala
+  durante o modo de edição.
+- **Atalho de campo único (peso/hidratação) não abre o painel
+  inteiro** — é um popup pequeno ancorado no próprio crachá do agente,
+  com um campo e confirmar. Reaproveita o mesmo mecanismo visual do
+  popup que aparece ao passar o mouse numa porta (hover/clique
+  ancorados na posição do sprite na tela).
+- **Estado de qual painel está aberto não persiste entre reloads** —
+  sempre fecha ao recarregar a página. É estado de UI transitório, não
+  dado — não faz sentido salvar isso em rascunho nem em lugar nenhum
+  do backend.
+- **Fora de escopo por ora:** responsividade pra tela pequena/mobile.
+  O escritório e os painéis assumem desktop.
 
 ---
 
@@ -356,7 +633,9 @@ são o que a API já suporta e o frontend precisa cobrir.
   abrindo ou timer.
 - **RNF02 (transparência):** nenhum metadado de custo (modelo, tokens,
   custo_usd) aparece na interface — mas o estado de cada ação (pendente,
-  confirmada, rejeitada, expirada) é sempre visível e claro.
+  confirmada, rejeitada, expirada) é sempre visível e claro. **Decisão do
+  chefe (2026-10-23):** nem a sala de máquinas é exceção; ela mostra só o
+  orçamento agregado (gasto/teto), e a API `/infra/*` não devolve o detalhe.
 - **RNF03 (confiabilidade de erro):** erros da API (422, 404, 409, etc.)
   aparecem como mensagem clara e acionável, nunca como erro genérico ou
   tela quebrada.
@@ -382,31 +661,81 @@ são o que a API já suporta e o frontend precisa cobrir.
 
 ---
 
+## Construído — redesenho visual "Console"
+
+> **Nota (2026-10-23):** as menções abaixo ao "anel do crachá" e ao `Ticker` do Pixi descrevem o escritório isométrico.
+> No prédio pixel o estado do agente aparece como **pose e ícone**: `idle` ocioso, `pensando` lendo papéis com uma
+> lâmpada, `executando` digitando, `falando` conversando com balão de chat; mensagem não lida vira "precisa de você".
+
+Depois que as quatro telas de agente e o HUD do motor de tick já
+estavam funcionalmente prontos (seções acima), o chefe pediu uma
+segunda passada — **"outra cara"** pro hub, saindo do estilo "console de
+debug" (monoespaçado, translúcido, cantos muito arredondados) sem mexer
+em nenhuma decisão de interação já tomada. Detalhe técnico completo em
+`docs/guia-tecnico-frontend.md`, Parte 11 — aqui só as decisões de
+design.
+
+- **Superfície opaca ("deck") em vez de vidro translúcido** — vale pra
+  catálogo, configurações, edição, mensagens e os quatro painéis de
+  agente. **Vidro (blur) fica reservado só pro HUD** (os clusters de
+  ícone nos cantos) — é a única camada que fica sempre por cima de tudo
+  o mais, então faz sentido ela parecer "flutuante"; conteúdo é
+  superfície de trabalho, não instrumento.
+- **Cantos retos** (`--radius-deck: 7px`, botões 6px) em vez de pill —
+  pedido explícito do chefe, "algo mais sólido".
+- **Tipografia própria**: par de fontes de exibição + corpo (placeholder
+  de Chubbo/Supreme via Google Fonts — Fontshare está bloqueado neste
+  ambiente; trocável depois sem tocar em nenhum componente, só o
+  `@font-face`).
+- **Biblioteca de barras reutilizável** (`features/agentes/Barras.tsx`):
+  cápsula (progresso contínuo — orçamento), segmentada (etapas discretas
+  — dias de treino, kanban), radial, indeterminada, e um `Contador` que
+  anima o dígito quando o número muda — usado em todo KPI do Cifra e da
+  Vita.
+- **Cada agente ganhou um tratamento específico**, não um verniz
+  genérico repetido quatro vezes: gráficos do Cifra em cartões próprios,
+  ficha de treino da Vita com barra de progresso da semana, colunas do
+  kanban do Norte tingidas pela cor do status, bolha de proposta da
+  Agenda pulsando na cor "oficial" enquanto espera confirmação.
+- **Sistema de notificação (toast)**: o resultado de um avanço de tick
+  real (aviso da rodada, aviso pontual de um agente, trabalho proativo,
+  mensagem social endereçada ao chefe) vira uma notificação passageira
+  empilhada perto do ícone de avançar tick, tingida pela cor do agente
+  que a gerou. Resolve uma lacuna real: antes disso, `rodada.interacoes`
+  só aparecia pra quem tivesse o painel de configurações aberto na hora
+  certa — um card gerado pelo Norte ou uma falha de rede no próprio
+  avanço passavam batido.
+- **Code-splitting por painel + esqueleto de carregamento**: cada painel
+  de agente virou chunk próprio, carregado só quando aquele agente é
+  aberto; o "carregando…" em texto puro virou um esqueleto no mesmo tom
+  "deck", reaproveitado tanto pro carregamento do chunk quanto pro
+  carregamento do dado.
+- **Som opcional** (toggle em configurações, desligado por padrão): tom
+  curto sintetizado via Web Audio, sem asset de áudio, tocando só
+  quando um agente faz trabalho proativo — não em toda notificação, pra
+  não virar ruído.
+
+---
+
 ## Decisões em aberto (resolver quando o frontend começar de verdade)
 
-- **Confirmar/rejeitar do Agenda via botão ou só texto?** O backend aceita
-  os dois (regex cobre "sim/confirma/pode" e "não/cancela", e existe
-  endpoint dedicado por id). Botões evitam ambiguidade de digitação, mas
-  não foi decidido se a UI vai ter os dois caminhos ou só um.
-- **Indicador de pendência em aberto:** vale a UI perguntar
-  proativamente "qual pendência em aberto" ao carregar a tela do Agenda
-  (pra mostrar um badge), em vez de esperar o chefe lembrar de perguntar?
-- **Layout do menu do Saúde:** lateral fixo, modal, ou dentro do próprio
-  painel do avatar? Ainda não desenhado.
-- **Onde os atalhos de campo único aparecem:** só na bolha do avatar no
-  escritório, ou também dentro do painel do agente quando já aberto?
-- **Visão geral de projetos do Norte:** lista simples de cartões, ou algo
-  mais visual tipo um quadro/kanban por projeto? Ainda não desenhado.
-- **Como sinalizar "estagnado" visualmente:** cor diferente no card do
-  projeto, badge, ordenação por tempo parado no topo da lista? A regra
-  (tempo desde o último card resolvido) já existe, falta o tratamento
-  visual.
+- ~~Visão geral de projetos do Norte~~ — **resolvido: kanban**, agrupado
+  por status do projeto. Ver "Construído (painel do Norte)".
+- ~~Como sinalizar "estagnado" visualmente~~ — **resolvido:** card
+  apagado (opacidade reduzida) + rótulo "estagnado" + botão "retomar".
+  Ver "Construído (painel do Norte)".
+- ~~Como visualizar o mural de mensagens~~ — **resolvido:** aba dentro
+  do mesmo painel de mensagens, feed cronológico com balão de fala por
+  remetente (sem lado fixo esquerdo/direito). Ver "Construído
+  (mensagens — caixa de entrada + mural)". A ideia de balão saindo do
+  AVATAR no escritório 2D (mais espacial) segue não implementada — o
+  que foi construído é o painel/log, não algo sobre a cena isométrica.
 - **Afinidade entre agentes aparece na UI ou fica só interna?** Ainda
   não decidido se o "escritório vivo" mostra de alguma forma visual
   (proximidade dos avatares, indicador de relação) o quanto dois
   agentes se dão bem, ou se isso só molda comportamento (quem fala com
-  quem) sem nunca virar informação exposta ao chefe.
-- **Como visualizar o mural de mensagens:** feed único tipo timeline,
-  separado por tick, ou algo mais espacial (balão de fala saindo do
-  avatar no escritório 2D)? Ainda não desenhado — depende de como o
-  motor de tick (Etapa 2) for implementado de verdade.
+  quem) sem nunca virar informação exposta ao chefe. Proposta em
+  avaliação: painel compacto (mesmo estilo do de eventos do mundo) com
+  uma barra −100..100 por par de agentes (6 pares), colorida
+  vermelho/cinza/verde, sem número exposto — ambiente, não dashboard
+  preciso. Aguardando confirmação antes de construir.

@@ -271,7 +271,6 @@ def obter_observabilidade(horas: int = 24) -> dict:
                 "hora": p["hora"].isoformat(),
                 "chamadas": int(p["chamadas"]),
                 "erros": int(p["erros"]),
-                "custo_usd": round(float(p["custo_usd"]), 6),
                 "duracao_media_ms": int(p["duracao_media_ms"]) if p["duracao_media_ms"] is not None else None,
             }
             for p in serie
@@ -303,10 +302,6 @@ def obter_observabilidade(horas: int = 24) -> dict:
                 "tick": r["tick"],
                 "agente_nome": r["agente_nome"],
                 "especialidade": r["especialidade"],
-                "modelo": r["modelo"],
-                "tokens_in": int(r["tokens_in"] or 0),
-                "tokens_out": int(r["tokens_out"] or 0),
-                "custo_usd": round(float(r["custo_usd"] or 0), 6),
                 "duracao_ms": r["duracao_ms"],
                 "erro": r["erro"],
                 "criado_em": r["criado_em"].isoformat() if r["criado_em"] else None,
@@ -322,7 +317,11 @@ def obter_observabilidade(horas: int = 24) -> dict:
 
 
 def obter_metricas(dias: int = 1) -> dict:
-    """Custo e uso a partir de `tick_execucoes`. `dias=1` é hoje."""
+    """Uso a partir de `tick_execucoes`. `dias=1` é hoje.
+
+    Dinheiro só como total contra o orçamento (RNF02): modelo, tokens e
+    custo por agente/execução ficam gravados no banco, mas nunca saem na
+    API, para não chegarem à interface."""
     inicio = _inicio_do_dia_real() - timedelta(days=max(0, dias - 1))
 
     resumo_rows = executar_query("tick_execucoes:resumo_desde", params=(inicio,))
@@ -344,7 +343,6 @@ def obter_metricas(dias: int = 1) -> dict:
         # taxa de sucesso é o indicador de CONFIABILIDADE da Parte 5 do
         # roteiro da Sprint 2 — sem chamada nenhuma, 100% (não há falha)
         "taxa_sucesso": round((chamadas - n_erros) / chamadas, 4) if chamadas else 1.0,
-        "custo_medio_por_chamada": round(custo / chamadas, 6) if chamadas else 0.0,
         "orcamento_diario_usd": settings.orcamento_diario_usd,
         "por_agente": [
             {
@@ -352,9 +350,6 @@ def obter_metricas(dias: int = 1) -> dict:
                 "agente_nome": r["agente_nome"],
                 "especialidade": r["especialidade"],
                 "chamadas": int(r["chamadas"]),
-                "custo_usd": round(float(r["custo_usd"]), 6),
-                "tokens_in": int(r["tokens_in"]),
-                "tokens_out": int(r["tokens_out"]),
                 "erros": int(r["erros"]),
             }
             for r in por_agente
@@ -364,7 +359,6 @@ def obter_metricas(dias: int = 1) -> dict:
                 "id": r["id"],
                 "tick": r["tick"],
                 "agente_nome": r["agente_nome"],
-                "modelo": r["modelo"],
                 "erro": r["erro"],
                 "criado_em": r["criado_em"].isoformat() if r["criado_em"] else None,
             }

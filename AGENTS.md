@@ -13,7 +13,7 @@ Backend FastAPI + Postgres + LangChain/OpenAI, com um motor de *tick* manual. Fr
 1. `git fetch --all -q && git branch -a -vv` e **confira o último commit** da branch antes de comparar, basear ou dizer "feito".
    O frontend existe em versões diferentes por branch (tabela abaixo). Em dúvida sobre a base, **pergunte**.
 2. Estado do projeto: rode `/retomar` (ou leia só "O que falta" da sprint atual em `docs/produto-e-sprints.md`).
-3. Trabalhando numa pasta, leia o `AGENTS.md` dela, se existir: `backend/`, `frontend/`, `frontend/src/features/predio/` (estes dois últimos só existem nas branches com o prédio pixel).
+3. Trabalhando numa pasta, leia o `AGENTS.md` dela, se existir: `backend/`, `frontend/`, `frontend/src/features/predio/` (existem na `main` depois que o prédio pixel foi integrado).
 
 ## Princípios inegociáveis
 
@@ -58,12 +58,11 @@ Quase todas são **testes separados** que o chefe e você vão mudar e integrar 
 
 | Branch | Situação |
 |---|---|
-| `main` | Base: backend (Sprint 0) + docs + suporte a IA. Ainda sem o backend da Sprint 2. |
-| `feat/predio-pixel` | **Frontend principal**: prédio em pixel art (arte do habblaud). Tem também o backend da Sprint 2 (`tick_execucoes`, Motriz). |
-| `frontend` | Linha isométrica **encerrada** (tag `v0.3.0`); fica até o backend da Sprint 2 chegar à `main`. |
-| `claude/modest-wright-cmvki7` | Laboratório 3D estilo The Sims, linha separada. Ideias a aproveitar: `docs/aproveitamento-the-sims.md`. |
-| `test/hubblaud` | Protótipo antigo do prédio, já integrado; pronta para apagar (ver mapa). |
-| `feat/the-sims`, `claude/agents-hub-mvp-review-oh6zb0` | Redundantes (0 commits únicos), exclusão pendente. |
+| `main` | **Linha única**: backend (Sprint 0 e 2) + frontend com o prédio pixel + docs + suporte a IA. |
+| `feat/predio-pixel` | Já integrada na `main` (PR). Apague depois do merge. |
+| `claude/modest-wright-cmvki7` | Laboratório 3D estilo The Sims, linha separada (tag `3d/v0.1`). As ideias dele entram na próxima sprint: `docs/aproveitamento-the-sims.md`. |
+
+As linhas isométrica (`v0.3.0`), do protótipo habblaud e do MVP inicial estão só nas tags `arquivo/*`/`v0.3.0`.
 
 Tags de versão (`vX.Y.Z`, `3d/vX.Y`, `arquivo/*`) e o que falta publicar: ver o mapa.
 
@@ -82,13 +81,12 @@ Trabalhe como quem vai integrar:
 | decidir UX de um agente / requisitos | `docs/frontend-design.md` — "Princípios transversais", a seção do agente e "Requisitos não funcionais" (RNF01–09) |
 | mexer no frontend | `frontend/AGENTS.md`; `docs/guia-tecnico-frontend.md` PARTE 0, 9–11 (3–7 são histórico do isométrico) |
 | propor algo "novo" | `grep -n` em `docs/backlog-futuro.md` primeiro: pode já ter sido adiado, com o porquê |
-| planejar a Sprint 2 (departamentos, esteiras) | `docs/sprint-2-roteiro.md` (proposta **não aprovada**; só nas branches da linha `frontend`) |
+| planejar a Sprint 2 (departamentos, esteiras) | `docs/sprint-2-roteiro.md` (proposta **não aprovada**) |
 | entender a arte pixel / habblaud | `docs/estudo-habblaud.md` |
 | trazer ideias do 3D (humor, relações, autonomia) | `docs/aproveitamento-the-sims.md`: critério "sem poluição, dado real" |
 | **ignorar** (histórico) | `docs/mvp-hub-agentes.md`, `docs/avaliacao-mvp.md`, `docs/prompt-design-frontend.md` |
 
-Nem todo doc existe em toda branch: `guia-tecnico-frontend.md`, `prompt-design-frontend.md` e `sprint-2-roteiro.md` só estão nas branches de frontend
-(a `main` tem os demais). Link que não abre? Confira a branch no mapa em vez de assumir que o doc sumiu.
+Link que não abre? Confira a branch no mapa (`docs/mapa-de-branches.md`) em vez de assumir que o doc sumiu.
 
 ## Comandos
 
@@ -105,7 +103,7 @@ npm test && npm run build && npm run lint
 
 ## Delegação (Claude Code)
 
-Subagentes em `.claude/agents/`: `predio-pixel` (prédio e arte pixel; só nas branches com o prédio), `backend-agente` (domínio novo no backend),
+Subagentes em `.claude/agents/`: `predio-pixel` (prédio e arte pixel), `backend-agente` (domínio novo no backend),
 `revisor-hub` (revisa um diff contra estes princípios; só lê). Skills em `.claude/skills/`: `/retomar`, `/novo-agente`,
 `/corrigir-bug`, `/verificar-visual`. Delegue o que exige ler muito (docs longos, varrer código) e peça **resumo**, para não encher seu contexto.
 

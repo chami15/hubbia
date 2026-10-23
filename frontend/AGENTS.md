@@ -51,3 +51,12 @@ types/   espelha os schemas do backend (um contrato só, importado por quem prec
 - `npm test` (Vitest) cobre **dado e lógica**, não pixel. Arquivos em `__testes__/` (o `tsconfig.test.json` só enxerga essa pasta).
 - Mudança visual: **abra no navegador e olhe o resultado** (skill `/verificar-visual`), console limpo. "Compilou" não é "testado".
 - Pronto = `npm run build` + `npm test` + `npm run lint` sem erro novo + conferido no navegador.
+
+### Bug → teste de regressão (obrigatório)
+
+1. Reproduza com um teste Vitest que **falha** pelo motivo certo, em `__testes__/`, como `describe('regressão: <o que quebrava>')`, com comentário do que acontecia e por quê.
+2. Corrija o mínimo; teste verde e `npm test` inteiro.
+3. **Prove que o teste pega o bug:** reintroduza o defeito por um instante e veja falhar (foi assim com as regressões de `features/predio/__testes__/`).
+4. **Bug "só visual" ou de DOM?** Extraia a lógica para função pura com dependências injetáveis e teste-a: o relógio com aba escondida virou `relogio.ts` (relógio falso nos testes);
+   o agente atravessando parede virou `passagem()` + `aEstrela` testados. Só se for impossível extrair, documente como armadilha **e** adicione o passo à checagem do `/verificar-visual`.
+5. Bug que um agente de IA cometeria de novo? Além do teste, vira uma linha em "Armadilhas já pagas".

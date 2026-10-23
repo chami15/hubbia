@@ -9,6 +9,7 @@ import { pixelText, pixelTextWidth } from './habblaud/art/pixelfont'
 import { agentePorId, corCss, type AgenteId } from './agentes'
 import { DESMONTE_MS, H, MAX_VAGAS, OBRA_MS, areaEm, desenharPredio, lugaresInalcancaveis, montarPredio, type EstadoCena, type Obra } from './predio'
 import { SALAS } from './salas'
+import { criarRelogio } from './relogio'
 import {
   adicionarAgente, areasOcupadas, criarSimulacao, dispensarAgente, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
   atividadeDe, type AgenteVivo, type Status,
@@ -66,14 +67,12 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
   let sobre: AgenteId | undefined
   let vagaSob: number | undefined
 
-  // relógio que não conta o tempo com a aba escondida (os agentes não "teleportam" ao voltar)
-  const inicio = performance.now()
-  let pausadoEm = 0
-  let tempoParado = 0
-  const relogio = () => performance.now() - inicio - tempoParado
+  // relógio que não conta o tempo com a aba escondida (os agentes não "teleportam" ao voltar; ver relogio.ts)
+  const tempo = criarRelogio()
+  const relogio = tempo.agora
   function aoMudarVisibilidade() {
-    if (document.hidden) pausadoEm = performance.now()
-    else if (pausadoEm) tempoParado += performance.now() - pausadoEm
+    if (document.hidden) tempo.pausar()
+    else tempo.retomar()
   }
   document.addEventListener('visibilitychange', aoMudarVisibilidade)
 

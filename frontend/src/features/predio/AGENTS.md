@@ -17,10 +17,11 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `predio.ts` | `montarPredio(vagas)` (puro): áreas, grade de caminhada, divisórias. E `desenharPredio(...)`: o quadro. |
 | `sim.ts` | Comportamento sem DOM: A\*, pausas, elevador, status. |
 | `mundo.ts` | O prédio vivo e imperativo: canvas, laço, câmera, clique. O React só cria, empurra dados e escuta cliques. |
+| `relogio.ts` | Relógio de mundo que para com a aba escondida (injetável, para teste). |
 | `vagas.ts` | Quem está em cada vaga (`localStorage`; é a única peça que muda quando isso for para o backend). |
 | `PainelPredio.tsx` | Gerência: quem está no prédio (abrir/dispensar) e catálogo (adicionar). |
 | `habblaud/` | Arte do habblaud **copiada**. Não edite (veja "Arte"). |
-| `__testes__/predio.test.ts` | Toda sala alcançável, montagem das vagas, simulação. |
+| `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**) e `relogio.test.ts`. |
 
 O status vem do backend em `features/escritorio/Escritorio.tsx::statusNoPredio` (mensagem não lida → `precisa_de_voce`; `pensando/executando` → `trabalhando`;
 `falando` → `conversando`; `idle` → `ocioso`, `dormindo` de madrugada pela hora simulada do tick).
@@ -80,10 +81,14 @@ Status novo toca, nesta ordem: tipo `Status` e `STATUS_ROTULO` (`sim.ts`) · `de
 - **Nunca mude um `Appearance` depois de usá-lo**: a chave de cache é guardada num `WeakMap` pelo objeto e fica velha. Crie outro.
 - `avatarCanvas` gera o busto do painel (`RetratoAgente`): é o mesmo personagem que anda, então os dois nunca divergem.
 
-## Armadilhas já pagas
+## Armadilhas já pagas (e o teste que guarda cada uma)
 
-- Agentes atravessando parede: faltava `passagem()` nas divisórias.
-- Salas que só funcionavam em cima do corredor (móvel na coluna da porta de baixo): o teste agora monta a sala nas duas posições.
-- Aba escondida acumulava tempo e os agentes "teleportavam" ao voltar: `mundo.ts` congela o relógio com `visibilitychange`. Não troque por `Date.now()`.
-- `pkill -f vite` derruba o shell do agente; use `kill $(lsof -ti tcp:PORTA)`.
-- Chromium headless roda a ~2 fps: espere 8–12 s para ver agentes andando; obra e elevador levam ~2,6 s.
+| Bug | Guarda |
+|---|---|
+| Agentes atravessavam a parede entre salas vizinhas (faltava `passagem()` nas divisórias) | `predio.test.ts` › "regressão: agentes atravessavam a parede…" |
+| Sala que só funcionava em cima do corredor (móvel na coluna da porta de baixo) | `predio.test.ts` › "regressão: salas que só funcionavam em cima…" e o teste por sala nas duas posições |
+| Aba escondida acumulava tempo e os agentes "teleportavam" ao voltar | `relogio.test.ts` › "regressão: aba escondida…". Não troque `criarRelogio` por `Date.now()` |
+| `pkill -f vite` derruba o shell do agente | (ambiente) use `kill $(lsof -ti tcp:PORTA)` |
+| Chromium headless a ~2 fps | (ambiente) espere 8–12 s para ver agentes andando; obra e elevador levam ~2,6 s |
+
+**Bug novo no prédio?** Teste de regressão **antes** da correção, no mesmo arquivo, e uma linha nesta tabela. Não confie em "olhei no navegador e parece certo".

@@ -144,7 +144,8 @@ export function mudarStatus(sim: Simulacao, id: AgenteId, status: Status, agora:
 
 const tileDe = (x: number, y: number): [number, number] => [Math.floor(x / TILE), Math.floor(y / TILE)];
 
-function aEstrela(p: Predio, de: [number, number], para: [number, number]): [number, number][] | null {
+/** A\* em 4 direções sobre a grade do prédio (exportada para os testes de regressão de caminho). */
+export function aEstrela(p: Predio, de: [number, number], para: [number, number]): [number, number][] | null {
   const g0 = p.andavel;
   const cols = p.cols;
   const k = (c: number, r: number) => r * cols + c;

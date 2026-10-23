@@ -25,9 +25,6 @@ export interface CustoPorAgente {
   agente_nome: string
   especialidade: string
   chamadas: number
-  custo_usd: number
-  tokens_in: number
-  tokens_out: number
   erros: number
 }
 
@@ -39,7 +36,6 @@ export interface ErroExecucao {
   // mandei gastar" (ver migration 010).
   tick: number | null
   agente_nome: string
-  modelo: string | null
   erro: string | null
   criado_em: string | null
 }
@@ -52,7 +48,6 @@ export interface MetricasInfra {
   custo_usd: number
   erros: number
   taxa_sucesso: number
-  custo_medio_por_chamada: number
   orcamento_diario_usd: number
   por_agente: CustoPorAgente[]
   ultimos_erros: ErroExecucao[]
@@ -64,7 +59,6 @@ export interface PontoSerie {
   hora: string
   chamadas: number
   erros: number
-  custo_usd: number
   // null quando a hora não teve nenhuma chamada com duração medida
   duracao_media_ms: number | null
 }
@@ -91,10 +85,6 @@ export interface Execucao {
   tick: number | null
   agente_nome: string
   especialidade: string
-  modelo: string | null
-  tokens_in: number
-  tokens_out: number
-  custo_usd: number
   duracao_ms: number | null
   erro: string | null
   criado_em: string | null

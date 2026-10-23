@@ -303,7 +303,7 @@ export function PainelSalaDeMaquinas({ aoFechar }: Props) {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '68px 1fr 92px 74px 76px',
+                        gridTemplateColumns: '68px 1fr 92px',
                         gap: 10,
                         ...ROTULO,
                         paddingBottom: 6,
@@ -311,10 +311,8 @@ export function PainelSalaDeMaquinas({ aoFechar }: Props) {
                       }}
                     >
                       <span>hora</span>
-                      <span>agente · modelo</span>
+                      <span>agente</span>
                       <span style={{ textAlign: 'right' }}>duração</span>
-                      <span style={{ textAlign: 'right' }}>tokens</span>
-                      <span style={{ textAlign: 'right' }}>custo</span>
                     </div>
                     {obs.execucoes.map((e) => (
                       <LinhaExecucao key={e.id} exec={e} />
@@ -403,7 +401,7 @@ function LinhaExecucao({ exec }: { exec: Execucao }) {
         onClick={() => setAberto((v) => !v)}
         style={{
           display: 'grid',
-          gridTemplateColumns: '68px 1fr 92px 74px 76px',
+          gridTemplateColumns: '68px 1fr 92px',
           gap: 10,
           width: '100%',
           background: 'none',
@@ -423,7 +421,6 @@ function LinhaExecucao({ exec }: { exec: Execucao }) {
           {exec.agente_nome}
           <span style={{ color: 'var(--ink-faint)' }}>
             {' · '}
-            {exec.modelo}
             {/* tick nulo = ação que o chefe disparou, fora do relógio do
                 escritório (ver migration 010) */}
             {exec.tick === null ? ' · fora de tick' : ` · tick ${exec.tick}`}
@@ -431,12 +428,6 @@ function LinhaExecucao({ exec }: { exec: Execucao }) {
         </span>
         <span style={{ textAlign: 'right', color: 'var(--ink-dim)', fontVariantNumeric: 'tabular-nums' }}>
           {formatarMs(exec.duracao_ms)}
-        </span>
-        <span style={{ textAlign: 'right', color: 'var(--ink-dim)', fontVariantNumeric: 'tabular-nums' }}>
-          {exec.tokens_in + exec.tokens_out}
-        </span>
-        <span style={{ textAlign: 'right', color: 'var(--ink-dim)', fontVariantNumeric: 'tabular-nums' }}>
-          {exec.custo_usd.toFixed(4)}
         </span>
       </button>
 

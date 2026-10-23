@@ -1,0 +1,17 @@
+{
+  "GET /agentes": [
+    { "id": 1, "nome": "Chefe", "tipo": "chefe", "especialidade": "chefe", "estado": "idle", "mesa": null, "avatar_config": { "cor": "#ffffff", "rosto": "" }, "ativo": true },
+    { "id": 2, "nome": "Cifra", "tipo": "colaborador", "especialidade": "financeiro", "estado": "idle", "mesa": 1, "avatar_config": { "cor": "#16a34a", "rosto": "" }, "ativo": true },
+    { "id": 3, "nome": "Agenda", "tipo": "colaborador", "especialidade": "agenda", "estado": "idle", "mesa": 2, "avatar_config": { "cor": "#2563eb", "rosto": "" }, "ativo": true },
+    { "id": 4, "nome": "Vita", "tipo": "colaborador", "especialidade": "saude", "estado": "pensando", "mesa": 3, "avatar_config": { "cor": "#f97316", "rosto": "" }, "ativo": true },
+    { "id": 5, "nome": "Norte", "tipo": "colaborador", "especialidade": "norte", "estado": "falando", "mesa": 4, "avatar_config": { "cor": "#0891b2", "rosto": "" }, "ativo": true },
+    { "id": 6, "nome": "Motriz", "tipo": "colaborador", "especialidade": "infra", "estado": "executando", "mesa": null, "avatar_config": { "cor": "#a855f7", "rosto": "" }, "ativo": true }
+  ],
+  "GET /mensagens": [
+    { "id": 1, "tipo": "trabalho", "conteudo": "Tenho uma proposta de reunião para amanhã às 10h. Confirmo?", "tick": 41, "criado_em": "2026-10-22T15:00:00",
+      "remetente_id": 3, "remetente_nome": "Agenda", "destinatario_id": 1, "destinatario_nome": "Chefe",
+      "respondendo_a_id": null, "respondendo_a_conteudo": null, "respondendo_a_remetente_nome": null, "lida_pelo_chefe": false }
+  ],
+  "GET /tick/atual": { "numero": 42, "hora_simulada": "2026-10-22T15:30:00" },
+  "GET /tick/orcamento": { "gasto_hoje": 0.12, "disponivel_hoje": 0.88 }
+}

@@ -20,6 +20,7 @@ Migration, SQL, agente de LLM, resolver, router, seed, `main.py`, `_HANDLERS_TRA
 - Personagem e sala: delegue ao subagente `predio-pixel` (`agentes.ts` + `salas.ts`; a `especialidade` tem de bater com o seed).
 
 ## 4. Prova
+Bug achado no caminho: use `/corrigir-bug` (teste de regressão antes da correção).
 `pytest` · `npm test && npm run build && npm run lint` · navegador com `/verificar-visual` · depois `revisor-hub` sobre o diff. Só então diga "pronto", listando o que **não** foi testado.
 
 ## 5. Documente

@@ -15,6 +15,8 @@ Regras que você não negocia:
 - Migration nova numerada; nunca edite uma aplicada. Atualize `tests/conftest.py::_TABELAS`, `scripts/seed.py`, `main.py` e, se houver proatividade, `_HANDLERS_TRABALHO`.
 - Segredo só via `config.py` + `.env.example` + `.gitignore`.
 
+Bug que você achar no caminho: teste de regressão **antes** da correção (`test_regressao_...`; protocolo em `backend/AGENTS.md`). Nunca pule nem afrouxe teste.
+
 Prove: `python -m scripts.migrate && python -m scripts.seed` do zero e `pytest` (Postgres real; mock só LLM). Teste guardrail com `call_count`, caminho de erro e a camada HTTP.
 
 Devolva: arquivos tocados, saída resumida do `pytest`, o que ficou **sem** teste e o que o frontend precisa saber (rotas, formatos, `especialidade`).

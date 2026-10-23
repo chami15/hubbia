@@ -63,3 +63,13 @@ A `especialidade` é a chave que o frontend usa para ligar o agente do banco ao 
 - Cubra o caminho de erro (nada pela metade no banco) e a camada HTTP com `TestClient` (status certo: 404 vs 409 vs 422).
 - Motriz é o único que não pode chamar LLM; `test_motriz_nao_gasta_llm` protege isso. Não quebre.
 - Antes de dar por pronto: `python -m scripts.migrate && python -m scripts.seed` do zero + `pytest`.
+
+### Bug → teste de regressão (obrigatório)
+
+1. Reproduza com um teste que **falha** pelo motivo certo. Nome `test_regressao_<o_que_quebrava>`, dentro da classe do domínio (ex.: `TestRegressoes` em `tests/test_<dominio>.py`),
+   com um comentário de duas linhas: o que acontecia e por quê.
+2. Corrija o mínimo. Rode o teste (verde) e a suíte inteira.
+3. **Prove que o teste pega o bug:** reintroduza o defeito por um instante e veja o teste falhar; depois volte.
+4. Onde testar: bug de SQL/dado → resolver com dado real no Postgres; bug de guardrail (gastou quando não devia) → `call_count == 0` no mock do LLM; bug de rota → `TestClient` e o status certo;
+   bug de custo/orçamento → `registrar_gasto` + `orcamento_disponivel_hoje` (em `resolvers/tick.py`). Nunca "corrigi e olhei na mão".
+5. Bug que um agente de IA cometeria de novo (esquecer a tabela no `conftest`, retry automático)? Além do teste, vira **uma linha** neste arquivo.

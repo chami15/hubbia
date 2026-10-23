@@ -28,9 +28,20 @@ Backend FastAPI + Postgres + LangChain/OpenAI, com um motor de *tick* manual. Fr
 6. **Saída de agente sempre estruturada** (Pydantic/JSON), nunca texto solto.
 7. **Segredo nunca no git:** `config.py` + `.env.example` comentado + `.gitignore`.
 8. **Migration já aplicada nunca se edita**; crie a próxima, numerada.
-9. **"Compilou" não é "testado".** Backend: Postgres real, mock só do LLM. Frontend: navegador de verdade com console limpo.
+9. **"Compilou" não é "testado".** Veja "Testes" abaixo.
 10. **Mesma entrega rejeitada 2–3 vezes: pare e investigue a causa-raiz** em vez de ajustar sintoma (o frontend já foi refeito 5 vezes assim).
 11. **Honestidade:** diga o que testou e o que não testou. Se algo falhou, mostre a saída.
+12. **Bug achado = teste de regressão, escrito antes da correção** (backend e frontend). Vale para o bug que o chefe reporta e para o que você descobre no caminho. Skill `/corrigir-bug`.
+
+## Testes (automatizados; não é opcional)
+
+- **Lógica nova** (função, regra, endpoint, guardrail) entra **com teste na mesma mudança**. Agente novo: testes do domínio, e no prédio a sala alcançável.
+- **Bug → teste:** reproduza com um teste que **falha**, corrija, veja **passar**, e prove que o teste pega o bug reintroduzindo-o por um instante.
+  Nome: `test_regressao_<o_que_quebrava>` (pytest) ou `describe('regressão: <o que quebrava>')` (Vitest), com um comentário do que acontecia e por quê.
+- **Nunca** pule, desabilite, `xfail` ou afrouxe um teste para ficar verde. Teste vermelho é achado, não incômodo. Instável? Conserte a causa (relógio injetável, banco isolado), não rode de novo até passar.
+- Bug "só visual"? **Extraia a lógica para função pura e teste-a** (foi assim com `passagem()` e `relogio.ts`). O navegador (`/verificar-visual`) complementa, não substitui.
+- Backend: Postgres real, mock só do LLM. Frontend: Vitest para lógica, navegador de verdade com console limpo para tela.
+- Antes de dizer "pronto": `pytest` (backend) e `npm test && npm run build && npm run lint` (frontend). Diga o que **não** rodou.
 
 ## Como trabalhar com o chefe
 
@@ -41,18 +52,24 @@ Backend FastAPI + Postgres + LangChain/OpenAI, com um motor de *tick* manual. Fr
 - Não mexa nos mesmos arquivos que ele sem combinar (já gerou conflito resolvido pela metade).
 - Terminou algo relevante? Atualize o doc que o descreve (e este arquivo, se um erro novo virou regra).
 
-## Branches (verifique com git; pode estar desatualizado — detalhe em `docs/mapa-de-branches.md`)
+## Branches: experimentos que vamos integrar (nenhuma é definitiva)
 
-| Branch | O que é |
+Quase todas são **testes separados** que o chefe e você vão mudar e integrar aos poucos. Não trate nenhuma como "a versão certa"; o git manda (`docs/mapa-de-branches.md` tem o detalhe e **o que vale colher** de cada uma).
+
+| Branch | Para que serve |
 |---|---|
-| `main` | Backend completo (Sprint 0) + docs. **Sem frontend.** |
-| `frontend` | `main` + escritório isométrico (PixiJS) + Sprint 2 parcial (`tick_execucoes` ligada, Motriz, sala de máquinas) |
-| `feat/predio-pixel` | `frontend` com o escritório trocado pelo **prédio em pixel art** (arte do habblaud). Frontend atual |
-| `feat/the-sims` → `claude/modest-wright-cmvki7` | Experimento 3D estilo The Sims do chefe. Sai da `frontend` em 12/08, **não tem** o Motriz/`tick_execucoes` |
-| `test/hubblaud` | Estudo do habblaud + protótipo standalone em `prototipos/` |
+| `main` | Base: backend completo (Sprint 0) + docs. Sem frontend. |
+| `frontend` | Escritório isométrico (PixiJS) + Sprint 2 parcial no backend (`tick_execucoes`, Motriz, sala de máquinas) |
+| `feat/predio-pixel` | Experimento: prédio em pixel art (arte do habblaud) no lugar do isométrico |
+| `feat/the-sims` → `claude/modest-wright-cmvki7` | Experimento do chefe: modo simulação 3D estilo The Sims. Sem o Motriz/`tick_execucoes` |
+| `test/hubblaud` | Estudo do habblaud + protótipo standalone |
 | `claude/agents-hub-mvp-review-oh6zb0` | Obsoleta (ancestral da `frontend`) |
 
-Linhas de frontend (isométrico, 3D, pixel) **conflitam entre si** em `Escritorio.tsx`. Qual segue é decisão do chefe: não misture sem perguntar.
+Trabalhe como quem vai integrar:
+- Mudanças **pequenas e coesas**; módulo novo em **arquivo novo** em vez de reescrever arquivo compartilhado (`Escritorio.tsx`, `index.css`, docs).
+- O que não depende do visual (backend, docs, hooks, types) é o que mais precisa chegar à `main` primeiro: mantenha-o separado do frontend em commits próprios.
+- Branch nova ou mexida: registre no mapa o propósito, a base e o que vale colher. Base ambígua: pergunte.
+- Conflito entre linhas de frontend: **não escolha um lado sozinho**. Liste o que cada lado tem e proponha a integração ao chefe.
 
 ## Mapa de leitura (leia só o que a tarefa pede)
 
@@ -84,7 +101,7 @@ npm test && npm run build && npm run lint
 
 Subagentes em `.claude/agents/`: `predio-pixel` (prédio e arte pixel; só nas branches com o prédio), `backend-agente` (domínio novo no backend),
 `revisor-hub` (revisa um diff contra estes princípios; só lê). Skills em `.claude/skills/`: `/retomar`, `/novo-agente`,
-`/verificar-visual`. Delegue o que exige ler muito (docs longos, varrer código) e peça **resumo**, para não encher seu contexto.
+`/corrigir-bug`, `/verificar-visual`. Delegue o que exige ler muito (docs longos, varrer código) e peça **resumo**, para não encher seu contexto.
 
 ## Manter estes arquivos
 

@@ -67,6 +67,8 @@ export interface AgenteVivo {
   saindo: boolean;
   /** Entrou no elevador: some quando a porta fecha. */
   embarcouEm?: number;
+  /** Congelado no lugar (o chefe está com o atalho aberto nele): não anda nem decide nada até soltar. */
+  parado: boolean;
 }
 
 export interface Simulacao {
@@ -100,7 +102,7 @@ export function adicionarAgente(sim: Simulacao, id: AgenteId, agora: number, o: 
     def,
     appearance: art.appearanceFromSeed(def.seed, { look: def.look, parts: def.parts }),
     status: o.status ?? 'trabalhando',
-    x, y, dir: 'down', pose: 'stand', seated: false, sortY: y,
+    x, y, dir: 'down', pose: 'stand', seated: false, sortY: y, parado: false,
     caminho: [], correndo: false,
     ate: o.chegaEm ?? agora,
     iconeAte: 0,
@@ -139,6 +141,16 @@ export function mudarStatus(sim: Simulacao, id: AgenteId, status: Status, agora:
   if (!a || a.status === status || a.saindo) return;
   a.status = status;
   a.ate = agora;
+}
+
+/**
+ * Congela (ou solta) um agente. Parado, ele mantém o que estava fazendo: sentado continua sentado, andando
+ * para onde estiver. Existe porque o atalho em bolha fica ancorado no personagem, e um alvo que se mexe
+ * escapa do clique. Ao soltar, o trajeto e as pausas seguem de onde pararam.
+ */
+export function definirParado(sim: Simulacao, id: AgenteId, parado: boolean): void {
+  const a = sim.agentes.find((x) => x.def.id === id);
+  if (a) a.parado = parado;
 }
 
 // ------------------------------------------------------------------ caminho (A* 4 direções)
@@ -331,6 +343,11 @@ export function passo(sim: Simulacao, agora: number, dt: number): void {
         sim.agentes.splice(sim.agentes.indexOf(a), 1);
         sim.aoSair(a.def.id);
       }
+      continue;
+    }
+    // `saindo` ignora o congelamento: dispensar fecha o atalho, mas se escapar ninguém fica preso no prédio
+    if (a.parado && !a.saindo) {
+      if (a.caminho.length) a.pose = 'stand'; // congelado no meio do passo não fica "andando no lugar"
       continue;
     }
     if (a.caminho.length) {

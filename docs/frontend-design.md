@@ -161,7 +161,9 @@ bolha de registro rápido ancorada nela no prédio: **clique direito** no
 personagem (a dica aparece no hover, nada fixo na tela). Peso em campo
 único (nunca pré-preenchido), água em 3 botões (+200/+300/+500 ml) ou
 valor livre, e o "hoje" do dashboard na própria bolha. Esc ou clique fora
-fecha; clique esquerdo continua abrindo o painel completo. Geometria
+fecha; clique esquerdo continua abrindo o painel completo. Enquanto a
+bolha está aberta a Vita **fica parada** (alvo que anda escapa do
+clique); ao fechar, ela segue de onde parou. Geometria
 testada em `features/predio/atalho.ts`; o componente é
 `features/saude/BolhaVita.tsx`. Outro agente com atalho entra em
 `AGENTES_COM_ATALHO`.

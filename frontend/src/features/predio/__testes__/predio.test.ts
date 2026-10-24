@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { AGENTES } from '../agentes'
 import { MAX_VAGAS, lugaresInalcancaveis, mesaDe, montarPredio, passagem, pesNoTile } from '../predio'
 import { SALAS } from '../salas'
-import { aEstrela, adicionarAgente, criarSimulacao, passo } from '../sim'
+import { aEstrela, adicionarAgente, criarSimulacao, definirParado, passo } from '../sim'
 
 // Dado e lógica do prédio — não pixel (o desenho se confere no navegador). O que quebra fácil ao mexer num
 // modelo de sala é um móvel fechando o caminho até um lugar, ou a porta: é isso que estes testes pegam.
@@ -60,6 +60,58 @@ describe('simulação', () => {
     adicionarAgente(sim, 'agenda', 0, { chegaEm: 0, status: 'precisa_de_voce' })
     for (let t = 50; t <= 20000; t += 50) passo(sim, t, 50)
     expect(sim.agentes[0].pose).toBe('raise_hand')
+  })
+})
+
+describe('agente parado (atalho aberto nele)', () => {
+  const montar = () => {
+    const sim = criarSimulacao(montarPredio(['cifra', 'vita', 'agenda', 'norte']), () => undefined)
+    adicionarAgente(sim, 'vita', 0, { chegaEm: 0, status: 'trabalhando' })
+    return sim
+  }
+  const rodar = (sim: ReturnType<typeof montar>, de: number, ate: number) => {
+    for (let t = de + 50; t <= ate; t += 50) passo(sim, t, 50)
+  }
+
+  it('parado no meio do caminho, não anda; ao soltar, termina o trajeto e senta', () => {
+    const sim = montar()
+    rodar(sim, 0, 3000) // chega pelo elevador e começa a andar até a mesa
+    const a = sim.agentes[0]
+    expect(a.caminho.length).toBeGreaterThan(0)
+
+    definirParado(sim, 'vita', true)
+    const antes = { x: a.x, y: a.y }
+    rodar(sim, 3000, 9000)
+    expect({ x: a.x, y: a.y }).toEqual(antes)
+    expect(a.pose).toBe('stand') // não fica "andando no lugar"
+
+    definirParado(sim, 'vita', false)
+    let sentou = false // depois de sentar ela volta a ter pausas (café), então não dá para olhar um instante só
+    for (let t = 9050; t <= 40000 && !sentou; t += 50) {
+      passo(sim, t, 50)
+      sentou = a.lugar?.mesa === 'vita'
+    }
+    expect(sentou).toBe(true)
+  })
+
+  it('sentado na mesa, não levanta para a pausa nem com tempo de sobra; solto, volta a decidir', () => {
+    const sim = montar()
+    rodar(sim, 0, 30000)
+    const a = sim.agentes[0]
+    expect(a.lugar?.mesa).toBe('vita')
+
+    definirParado(sim, 'vita', true)
+    let levantou = false // confere a cada passo: ela poderia sair e já ter voltado quando o tempo acabasse
+    for (let t = 30050; t <= 130000; t += 50) {
+      passo(sim, t, 50)
+      if (a.caminho.length > 0 || a.lugar?.mesa !== 'vita') levantou = true
+    }
+    expect(levantou).toBe(false)
+  })
+
+  it('id que não está no prédio é ignorado', () => {
+    const sim = montar()
+    expect(() => definirParado(sim, 'inexistente', true)).not.toThrow()
   })
 })
 

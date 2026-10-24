@@ -12,7 +12,7 @@ import { SALAS } from './salas'
 import { criarRelogio } from './relogio'
 import { pontoNaTela, temAtalho } from './atalho'
 import {
-  adicionarAgente, areasOcupadas, criarSimulacao, dispensarAgente, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
+  adicionarAgente, areasOcupadas, criarSimulacao, definirParado, dispensarAgente, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
   atividadeDe, type AgenteVivo, type Status,
 } from './sim'
 
@@ -42,6 +42,8 @@ export interface Mundo {
   definirStatus: (status: ReadonlyMap<AgenteId, Status>) => void
   definirHora: (hora: number) => void
   selecionar: (id: AgenteId | null) => void
+  /** Congela só este agente (o atalho está aberto nele); `null` solta quem estava congelado. */
+  congelar: (id: AgenteId | null) => void
   /** Cabeça do agente em coordenada de tela (viewport), ou null se ele não está visível. Para ancorar HTML por cima do canvas. */
   ancora: (id: AgenteId) => { x: number; y: number; pe: number } | null
   /** Quem está no prédio agora (inclui quem está chegando ou saindo). */
@@ -294,6 +296,9 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
     },
     selecionar: (id) => {
       selecionado = id
+    },
+    congelar: (id) => {
+      for (const a of sim.agentes) definirParado(sim, a.def.id, a.def.id === id)
     },
     ancora: (id) => {
       const a = sim.agentes.find((g) => g.def.id === id)

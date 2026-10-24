@@ -108,6 +108,11 @@ export function Escritorio() {
 
   useEffect(() => mundo?.definirStatus(status), [mundo, status])
   useEffect(() => mundo?.definirHora(hora), [mundo, hora])
+  // com o atalho aberto, o personagem fica parado: a bolha está ancorada nele
+  useEffect(() => {
+    mundo?.congelar(atalho)
+    return () => mundo?.congelar(null)
+  }, [mundo, atalho])
   useEffect(() => mundo?.selecionar(painel?.tipo === 'agente' ? painel.id : painel?.tipo === 'maquinas' ? 'motriz' : null), [mundo, painel])
 
   function aoAlternarDryRun(ativo: boolean) {

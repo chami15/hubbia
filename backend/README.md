@@ -269,7 +269,8 @@ resolvers/                 # regra de negócio (o router chama isso, nunca o ban
   agentes.py
   mensagens.py
   financeiro.py             # importar extrato, calcular dashboard, gerar relatório
-  agenda.py                  # roteador de intenção + negociação + gate de confirmação
+  agenda.py                  # roteador de intenção + negociação + gate de confirmação;
+                             # grava o chat em conversa_agenda (migration 012)
   saude.py                    # perfil, peso, hidratação, sono, atividade, refeição,
                               # ficha de treino, plano de dieta, relatório semanal
   norte.py                     # projetos + cards — guardrail de "só 1 card ativo
@@ -281,7 +282,8 @@ routers/                   # HTTP fino — só parse de request/response
   agentes.py                # GET /agentes
   mensagens.py               # GET /mensagens
   financeiro.py               # POST /financeiro/extrato, GET /dashboard, /relatorio
-  agenda.py                    # POST /agenda/mensagem, /agenda/acoes/{id}/confirmar|rejeitar
+  agenda.py                    # GET /agenda/conversa (histórico + pendência), POST /agenda/mensagem,
+                               # /agenda/acoes/{id}/confirmar|rejeitar
   saude.py                      # um endpoint por ação (forms) — perfil, peso,
                                 # hidratação, sono, atividade, refeição, ficha de
                                 # treino, plano de dieta, relatório, dashboard

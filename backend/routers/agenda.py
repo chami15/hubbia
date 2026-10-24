@@ -14,6 +14,11 @@ class MensagemInput(BaseModel):
     texto: str
 
 
+@router.get("/conversa")
+def obter_conversa():
+    return resolver.obter_conversa()
+
+
 @router.post("/mensagem")
 async def processar_mensagem(corpo: MensagemInput):
     return await resolver.processar_mensagem(corpo.texto)

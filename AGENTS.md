@@ -100,6 +100,8 @@ npm install && cp .env.example .env && npm run dev    # :5173
 npm test && npm run build && npm run lint
 ```
 
+CI (`.github/workflows/ci.yml`): todo `push` roda `pytest` (Postgres efêmero) e `npm test` + `npm run build`. Vermelho no CI é achado, não incômodo (lint não roda lá: rode local).
+
 ## Delegação (Claude Code)
 
 Subagentes em `.claude/agents/`: `predio-pixel` (prédio e arte pixel), `backend-agente` (domínio novo no backend),

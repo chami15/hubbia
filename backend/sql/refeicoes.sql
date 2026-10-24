@@ -42,3 +42,13 @@ WHERE s.semana < date_trunc('week', %s::date)::date
   AND NOT EXISTS (
       SELECT 1 FROM relatorios_saude r WHERE r.semana_inicio = s.semana
   );
+
+--QUERY: recentes
+-- Leitura para a tela de histórico: mais recente primeiro, com teto. Sem modelo/tokens/custo de propósito (RNF02),
+-- e sem o caminho da imagem (detalhe interno).
+SELECT id, tipo_refeicao, origem, descricao, calorias, carboidratos_g,
+       proteinas_g, gorduras_g, confianca_estimativa, registrado_em
+FROM refeicoes
+WHERE registrado_em >= %s
+ORDER BY registrado_em DESC, id DESC
+LIMIT %s;

@@ -8,7 +8,7 @@ o LLM; todo o resto é escrita direta, sem custo de token.
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from resolvers import saude as resolver
@@ -178,3 +178,8 @@ def obter_relatorio_semana_atual():
 @router.get("/dashboard")
 def obter_dashboard():
     return resolver.obter_dashboard()
+
+
+@router.get("/historico")
+def obter_historico(dias: int = Query(14, ge=1, le=90)):
+    return resolver.obter_historico(dias=dias)

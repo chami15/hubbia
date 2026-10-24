@@ -286,7 +286,8 @@ routers/                   # HTTP fino — só parse de request/response
                                # /agenda/acoes/{id}/confirmar|rejeitar
   saude.py                      # um endpoint por ação (forms) — perfil, peso,
                                 # hidratação, sono, atividade, refeição, ficha de
-                                # treino, plano de dieta, relatório, dashboard
+                                # treino, plano de dieta, relatório, dashboard,
+                                # GET /saude/historico (leitura do que foi registrado)
   norte.py                       # projetos + cards (gerar/aceitar/rejeitar/finalizar)
   infra.py                        # /infra/* — sala de máquinas
 

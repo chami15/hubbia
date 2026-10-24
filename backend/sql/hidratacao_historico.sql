@@ -13,3 +13,10 @@ SELECT id, quantidade_ml, registrado_em
 FROM hidratacao_historico
 WHERE registrado_em >= %s
 ORDER BY registrado_em ASC;
+
+--QUERY: recentes
+SELECT id, quantidade_ml, registrado_em
+FROM hidratacao_historico
+WHERE registrado_em >= %s
+ORDER BY registrado_em DESC, id DESC
+LIMIT %s;

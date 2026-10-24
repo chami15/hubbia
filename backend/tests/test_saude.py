@@ -216,3 +216,85 @@ class TestDashboard:
         assert dash["refeicoes_hoje"]["calorias"] == 600.0
         assert dash["hidratacao_hoje_ml"] == 500
         assert dash["atividades_na_semana"] == 1
+
+
+class TestHistorico:
+    """Leitura do que foi registrado (antes só o resumo do dia era visível). Determinístico, sem LLM."""
+
+    def setup_method(self):
+        saude.salvar_perfil(_perfil_padrao())
+
+    @staticmethod
+    def _envelhecer(tabela: str, dias: int, coluna: str = "registrado_em"):
+        from utils.db import Database
+        with Database() as conn:
+            conn.execute(f"UPDATE {tabela} SET {coluna} = {coluna} - interval '{dias} days'")
+
+    async def _refeicao(self, descricao="arroz e frango", calorias=650):
+        estimativa = EstimativaRefeicao(calorias=calorias, carboidratos_g=80, proteinas_g=25, gorduras_g=15, confianca="alta")
+        with patch("resolvers.saude.agente_saude.estimar_macros_texto", new=AsyncMock(return_value=resultado_agente(estimativa))):
+            return await saude.registrar_refeicao_texto("almoco", descricao)
+
+    def test_sem_nada_registrado_devolve_listas_vazias(self):
+        h = saude.obter_historico(dias=14)
+        assert h == {"dias": 14, "refeicoes": [], "sono": [], "atividades": [], "peso": [], "hidratacao": []}
+
+    async def test_traz_cada_tipo_com_o_mais_recente_primeiro(self):
+        await self._refeicao("primeira")
+        await self._refeicao("segunda")
+        saude.registrar_peso(80.0)
+        saude.registrar_peso(79.5)
+        saude.registrar_hidratacao(300)
+        saude.registrar_hidratacao(500)
+        saude.registrar_sono(7.5, "boa", date.today())
+        saude.registrar_atividade("corrida", 30, "leve")
+
+        h = saude.obter_historico(dias=14)
+
+        assert [r["descricao"] for r in h["refeicoes"]] == ["segunda", "primeira"]
+        assert [p["peso_kg"] for p in h["peso"]] == [79.5, 80.0]
+        assert [a["quantidade_ml"] for a in h["hidratacao"]] == [500, 300]
+        assert h["sono"][0]["horas"] == 7.5 and h["sono"][0]["qualidade"] == "boa"
+        assert h["atividades"][0]["tipo"] == "corrida" and h["atividades"][0]["duracao_min"] == 30
+
+    async def test_so_entra_o_que_cabe_na_janela_de_dias(self):
+        await self._refeicao("antiga")
+        saude.registrar_peso(81.0)
+        saude.registrar_hidratacao(250)
+        saude.registrar_sono(6, None, date.today())
+        saude.registrar_atividade("caminhada", 20, None)
+        for tabela in ("refeicoes", "peso_historico", "hidratacao_historico", "atividades_fisicas"):
+            self._envelhecer(tabela, 40)
+        self._envelhecer("sono_historico", 40, "data_referencia")
+        await self._refeicao("recente")
+
+        h = saude.obter_historico(dias=14)
+
+        assert [r["descricao"] for r in h["refeicoes"]] == ["recente"]
+        assert h["peso"] == [] and h["hidratacao"] == [] and h["sono"] == [] and h["atividades"] == []
+        assert len(saude.obter_historico(dias=60)["peso"]) == 1  # a janela maior alcança
+
+    def test_cada_lista_tem_teto_de_itens(self):
+        for _ in range(5):
+            saude.registrar_hidratacao(200)
+
+        assert len(saude.obter_historico(dias=14, limite=3)["hidratacao"]) == 3
+
+    async def test_regressao_historico_nao_vaza_modelo_tokens_nem_custo(self):
+        """RNF02: a refeição é gravada com modelo/tokens/custo_usd (tick_execucoes e a própria linha),
+        mas a leitura do histórico nunca devolve esses campos."""
+        await self._refeicao()
+
+        chaves = set(saude.obter_historico(dias=14)["refeicoes"][0])
+
+        assert chaves.isdisjoint({"modelo", "tokens_in", "tokens_out", "custo_usd", "imagem_path"})
+
+    def test_endpoint_devolve_o_historico_e_valida_a_janela(self, client):
+        saude.registrar_hidratacao(400)
+
+        ok = client.get("/saude/historico?dias=7")
+        assert ok.status_code == 200
+        assert ok.json()["dias"] == 7 and ok.json()["hidratacao"][0]["quantidade_ml"] == 400
+
+        assert client.get("/saude/historico?dias=0").status_code == 422
+        assert client.get("/saude/historico?dias=91").status_code == 422

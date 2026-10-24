@@ -367,3 +367,65 @@ def obter_dashboard() -> dict:
         "hidratacao_hoje_ml": hidratacao_hoje,
         "atividades_na_semana": len(atividades_semana),
     }
+
+
+# --------------------------------------------------------------------------
+# Histórico (leitura do que foi registrado)
+# --------------------------------------------------------------------------
+def obter_historico(dias: int = 14, limite: int = 200) -> dict:
+    """Tudo o que foi registrado nos últimos `dias` (hoje conta como o 1º), mais recente primeiro.
+
+    Só leitura e sem LLM. Cada lista tem teto (`limite`): água pode ter dezenas de registros por dia e
+    uma tela não precisa de todos. Modelo/tokens/custo ficam de fora (RNF02): as queries `recentes` nem
+    selecionam essas colunas."""
+    inicio = _hoje() - timedelta(days=dias - 1)
+    desde = _inicio_do_dia(inicio)
+
+    def iso(v: datetime | None) -> str | None:
+        return v.isoformat() if v else None
+
+    return {
+        "dias": dias,
+        "refeicoes": [
+            {
+                "id": r["id"],
+                "tipo_refeicao": r["tipo_refeicao"],
+                "origem": r["origem"],
+                "descricao": r["descricao"],
+                "calorias": float(r["calorias"]),
+                "carboidratos_g": float(r["carboidratos_g"]),
+                "proteinas_g": float(r["proteinas_g"]),
+                "gorduras_g": float(r["gorduras_g"]),
+                "confianca_estimativa": r["confianca_estimativa"],
+                "registrado_em": iso(r["registrado_em"]),
+            }
+            for r in executar_query("refeicoes:recentes", params=(desde, limite))
+        ],
+        "sono": [
+            {
+                "id": r["id"],
+                "horas": float(r["horas"]),
+                "qualidade": r["qualidade"],
+                "data_referencia": r["data_referencia"].isoformat(),
+            }
+            for r in executar_query("sono_historico:recentes", params=(inicio, limite))
+        ],
+        "atividades": [
+            {
+                "id": r["id"],
+                "tipo": r["tipo"],
+                "duracao_min": r["duracao_min"],
+                "observacao": r["observacao"],
+                "registrado_em": iso(r["registrado_em"]),
+            }
+            for r in executar_query("atividades_fisicas:recentes", params=(desde, limite))
+        ],
+        "peso": [
+            {"id": r["id"], "peso_kg": float(r["peso_kg"]), "registrado_em": iso(r["registrado_em"])}
+            for r in executar_query("peso_historico:recentes", params=(desde, limite))
+        ],
+        "hidratacao": [
+            {"id": r["id"], "quantidade_ml": r["quantidade_ml"], "registrado_em": iso(r["registrado_em"])}
+            for r in executar_query("hidratacao_historico:recentes", params=(desde, limite))
+        ],
+    }

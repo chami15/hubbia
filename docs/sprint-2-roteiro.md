@@ -249,7 +249,7 @@ de código dobra — teste manual não escala junto.*
 | # | Item | Onde | Nota |
 |---|---|---|---|
 | A1 | `border` + `borderColor` misturados | `PainelAgenda.tsx` (2×), `CardAtivo.tsx`, `FormRefeicao.tsx` | já no backlog; warning de React no console |
-| A2 | CI no GitHub Actions | `.github/workflows/` | já no backlog, com as duas opções de Postgres efêmero desenhadas |
+| A2 | CI no GitHub Actions | `.github/workflows/` | **feito** (`ci.yml`: pytest com Postgres do runner + testes e build do frontend) |
 | A3 | Testar upload com arquivo REAL | Cifra (extrato Itaú/Nubank), Vita (foto de refeição) | só foi testado com dado sintético; o risco está no parser, não no upload |
 | A4 | Escala global das salas | `Escritorio.tsx:centralizar`, `PainelSalas.tsx` | **bloqueado**: precisa o chefe escolher o teto (16/20/24) — ver backlog |
 

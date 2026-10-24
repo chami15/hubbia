@@ -185,38 +185,13 @@ pra próxima sprint. V1 do Norte usa só o contexto raso descrito acima.
 
 ---
 
-## Pipeline de CI no GitHub (rodar a suíte de testes automaticamente)
+## Pipeline de CI no GitHub (RESOLVIDO)
 
-**Ideia:** GitHub Actions rodando `pytest` a cada push/PR na branch
-`agentes` (e depois `main`), pegando regressão antes de chegar no chefe
-testar manualmente.
-
-**Por que foi adiada:** a suíte de testes local (ver
-`docs/produto-e-sprints.md`, Sprint 0) reaproveita o Postgres do
-`docker-compose.yml` que o chefe já sobe manualmente na máquina dele —
-não existe isso num runner do GitHub Actions, então o pipeline de CI
-precisa de uma estratégia diferente de banco, não a mesma da suíte
-local.
-
-**O que vai precisar quando for retomada:**
-- Um `.github/workflows/testes.yml` que sobe um Postgres efêmero **no
-  próprio runner** — duas opções: (a) o serviço `postgres` nativo do
-  GitHub Actions (`jobs.<job>.services`, mais simples, não precisa de
-  biblioteca nova) ou (b) `testcontainers` (mesma lib cogitada e
-  descartada pra uso local, mas que faz mais sentido aqui, já que o
-  runner do GitHub Actions tem Docker disponível por padrão e não há
-  `docker compose up -d` manual pra reaproveitar).
-- Rodar `scripts.migrate` + a suíte `pytest` contra esse banco efêmero.
-- Nunca rodar teste end-to-end de verdade (API real do GitHub/OpenAI) no
-  CI — custaria token a cada push. Só os níveis 1-3 (unitário, integração
-  com LLM mockado, contrato HTTP) descritos na conversa de design da
-  suíte de testes.
-- Decidir o gatilho: todo push, só em PR, ou só antes de merge — e se
-  quebrar o pipeline deveria bloquear o merge (branch protection) ou só
-  avisar.
-
-**Status:** não iniciado. Suíte de testes local é pré-requisito (feita
-primeiro, ver Sprint 0).
+Resolvido em `.github/workflows/ci.yml`: a cada `push` (qualquer branch) rodam dois jobs em paralelo — **backend**
+(`pytest` contra um Postgres 16 efêmero do próprio runner, opção (a): `services.postgres`) e **frontend**
+(`npm test` + `npm run build`). Lint fora de propósito (pedido do chefe). Sem teste end-to-end com API real
+(custaria token). **Ainda em aberto:** branch protection exigindo CI verde para o merge (configuração no GitHub,
+não no repositório).
 
 ---
 

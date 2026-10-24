@@ -3,9 +3,9 @@
 Reaproveita o MESMO Postgres do `docker-compose.yml` (o que você já sobe
 com `docker compose up -d` pro dia a dia) — não sobe nenhum container
 novo, só cria um banco separado (`<banco_normal>_test`) dentro dele, pra
-nunca encostar no banco de desenvolvimento de verdade. Se um dia isso
-virar CI (GitHub Actions), aí sim faz sentido trocar essa estratégia por
-um Postgres efêmero no próprio runner (ver docs/backlog-futuro.md).
+nunca encostar no banco de desenvolvimento de verdade. No CI
+(.github/workflows/ci.yml) o "banco de sempre" é o serviço `postgres` do
+próprio runner, apontado por DATABASE_URL: a mesma estratégia serve.
 """
 import pathlib
 

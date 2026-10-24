@@ -70,7 +70,7 @@ export function CardAtivo({ projetoId }: { projetoId: number }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ ...CARTAO, borderColor: sugerido ? 'rgba(255,255,255,0.14)' : 'rgba(74,222,128,0.35)' }}>
+      <div style={{ ...CARTAO, border: `1px solid ${sugerido ? 'rgba(255,255,255,0.14)' : 'rgba(74,222,128,0.35)'}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <span style={{ ...ROTULO, marginBottom: 0, color: COR_TIPO[card.tipo] }}>
             {ROTULO_TIPO[card.tipo]}

@@ -101,7 +101,7 @@ export function PainelAgenda({ agente }: Props) {
                 ...BOTAO,
                 flex: 1,
                 background: 'rgba(74,222,128,0.2)',
-                borderColor: 'rgba(74,222,128,0.5)',
+                border: '1px solid rgba(74,222,128,0.5)',
                 opacity: ocupado ? 0.5 : 1,
               }}
             >
@@ -156,7 +156,7 @@ export function PainelAgenda({ agente }: Props) {
           style={{
             ...BOTAO,
             background: corCss(agente.cor),
-            borderColor: corCss(agente.cor),
+            border: `1px solid ${corCss(agente.cor)}`,
             color: '#ffffff',
             opacity: ocupado || !texto.trim() ? 0.45 : 1,
           }}

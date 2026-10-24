@@ -595,29 +595,11 @@ pra quem mais o consome hoje — nenhum outro lugar por enquanto).
 
 ---
 
-## `border` + `borderColor` misturados no mesmo objeto de estilo — Frontend
+## `border` + `borderColor` misturados no mesmo objeto de estilo — Frontend (RESOLVIDO)
 
-Achado varrendo o escritório com o navegador aberto: o console do React
-avisa "Removing a style property during rerender... don't mix shorthand
-and non-shorthand properties" toda vez que um componente usa `{...BASE,
-borderColor: X}` sobre uma `BASE` que já define `border: 'Npx solid Y'`
-— as duas describem a MESMA propriedade CSS por caminhos diferentes, e
-o React não sabe garantir qual vale depois de um re-render.
-
-Já corrigido nos componentes do escritório/HUD e no `botaoPrincipal`
-compartilhado (`features/agentes/estilos.ts`), que alimenta os quatro
-painéis de agente. **Ainda pendente** nos arquivos que têm essa mesma
-mistura só LOCALMENTE (não usam `botaoPrincipal`, então a correção
-daquele arquivo não alcançou):
-
-- `features/agenda/PainelAgenda.tsx` (dois lugares: os botões de
-  confirmar/rejeitar e a bolha do chefe no chat)
-- `features/norte/CardAtivo.tsx` (a borda do card muda de cor conforme
-  `sugerido`)
-- `features/saude/FormRefeicao.tsx` (as abas "texto"/"foto")
-
-Consertar é sempre a mesma receita: trocar `borderColor: X` por
-`border: 'Npx solid X'` completo (mesma largura/estilo da base).
+Resolvido: todos os usos de `borderColor` em `features/` viraram `border: '1px solid X'` completo, e o teste
+`features/__testes__/estilos.test.ts` quebra se alguém reintroduzir `borderColor`. Motivo: `border` e `borderColor`
+descrevem a mesma propriedade CSS e o React avisa "Removing a style property during rerender" no re-render.
 
 ---
 

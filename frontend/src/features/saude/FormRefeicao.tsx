@@ -78,7 +78,7 @@ export function FormRefeicao() {
               ...BOTAO,
               flex: 1,
               background: via === v ? 'rgba(249,115,22,0.18)' : 'rgba(255,255,255,0.06)',
-              borderColor: via === v ? 'rgba(249,115,22,0.5)' : 'rgba(255,255,255,0.12)',
+              border: `1px solid ${via === v ? 'rgba(249,115,22,0.5)' : 'rgba(255,255,255,0.12)'}`,
             }}
           >
             {v === 'texto' ? 'descrever por texto' : 'mandar foto'}

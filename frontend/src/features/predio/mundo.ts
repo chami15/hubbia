@@ -10,6 +10,7 @@ import { agentePorId, corCss, type AgenteId } from './agentes'
 import { DESMONTE_MS, H, MAX_VAGAS, OBRA_MS, areaEm, desenharPredio, lugaresInalcancaveis, montarPredio, type EstadoCena, type Obra } from './predio'
 import { SALAS } from './salas'
 import { criarRelogio } from './relogio'
+import { pontoNaTela, temAtalho } from './atalho'
 import {
   adicionarAgente, areasOcupadas, criarSimulacao, dispensarAgente, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
   atividadeDe, type AgenteVivo, type Status,
@@ -21,6 +22,8 @@ export interface OpcoesMundo {
   vagas: Vagas
   aoClicarAgente: (id: AgenteId) => void
   aoClicarVaga: (vaga: number) => void
+  /** Clique direito num agente que tem atalho rápido (ver `atalho.ts`). */
+  aoAtalhoAgente?: (id: AgenteId) => void
   /** Avisado sempre que as vagas mudam (para salvar). */
   aoMudarVagas: (vagas: Vagas) => void
 }
@@ -39,6 +42,8 @@ export interface Mundo {
   definirStatus: (status: ReadonlyMap<AgenteId, Status>) => void
   definirHora: (hora: number) => void
   selecionar: (id: AgenteId | null) => void
+  /** Cabeça do agente em coordenada de tela (viewport), ou null se ele não está visível. Para ancorar HTML por cima do canvas. */
+  ancora: (id: AgenteId) => { x: number; y: number; pe: number } | null
   /** Quem está no prédio agora (inclui quem está chegando ou saindo). */
   agentes: () => ResumoAgente[]
   vagas: () => Vagas
@@ -176,7 +181,15 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
     const dono = ar?.dono && sim.agentes.find((g) => g.def.id === ar.dono && !g.chegando && !g.saindo)
     if (dono) opcoes.aoClicarAgente(dono.def.id)
   }
+  function aoClicarDireito(ev: MouseEvent) {
+    const [x, y] = pontoNoMundo(ev)
+    const a = agenteEm(x, y)
+    if (!a || a.saindo || !temAtalho(a.def.id) || !opcoes.aoAtalhoAgente) return
+    ev.preventDefault() // só nos agentes com atalho: no resto o menu do navegador continua normal
+    opcoes.aoAtalhoAgente(a.def.id)
+  }
   canvas.addEventListener('pointermove', aoMover)
+  canvas.addEventListener('contextmenu', aoClicarDireito)
   canvas.addEventListener('pointerleave', aoSairDoCanvas)
   canvas.addEventListener('click', aoClicar)
 
@@ -203,7 +216,8 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
           c.drawImage(sp.canvas, Math.round(a.x - sp.ax), Math.round(topo - 4 - pisca - sp.ay))
         }
         if (marcado || a.def.id === sobre) {
-          const nome = a.def.nome.toLowerCase()
+          // quem tem atalho avisa como chegar nele, só no hover (nada fixo na tela)
+          const nome = a.def.nome.toLowerCase() + (a.def.id === sobre && temAtalho(a.def.id) && opcoes.aoAtalhoAgente ? ' (clique direito)' : '')
           const tw = pixelTextWidth(nome)
           const x0 = Math.round(a.x - tw / 2) - 3
           const y0 = Math.round(a.y + 3)
@@ -280,6 +294,15 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
     },
     selecionar: (id) => {
       selecionado = id
+    },
+    ancora: (id) => {
+      const a = sim.agentes.find((g) => g.def.id === id)
+      if (!a || !visivel(a, relogio())) return null
+      const caixa = canvas.getBoundingClientRect()
+      const topo = a.y - (a.seated ? 27 : 30)
+      const p = pontoNaTela(caixa, { W: predio.W, H }, { x: a.x, y: topo })
+      // `pe`: da cabeça até logo abaixo dos pés, já na escala da tela (a bolha desce até aí quando não cabe em cima)
+      return { ...p, pe: ((a.y + 4 - topo) / H) * caixa.height }
     },
     agentes: () =>
       sim.agentes.map((a) => ({ id: a.def.id, status: a.status, atividade: atividadeDe(a), chegando: a.chegando, saindo: a.saindo })),

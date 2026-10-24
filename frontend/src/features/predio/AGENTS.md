@@ -20,6 +20,7 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `dev/catalogo.ts` | **Vitrine da arte**, só em desenvolvimento: abra `/#catalogo`. Agentes, salas, 20 poses, itens, 46 móveis, ícones, telas, pisos, paredes. Não entra no build de produção. |
 | `status.ts` | Estado do backend → status do prédio (puro, testado). |
 | `relogio.ts` | Relógio de mundo que para com a aba escondida (injetável, para teste). |
+| `atalho.ts` | Bolha de atalho ancorada no personagem (clique direito): quem tem atalho e a geometria pura (mundo → tela, encaixe sem sair da área). O HTML da bolha da Vita é `features/saude/BolhaVita.tsx`. |
 | `vagas.ts` | Quem está em cada vaga (`localStorage`; é a única peça que muda quando isso for para o backend). |
 | `PainelPredio.tsx` | Gerência: quem está no prédio (abrir/dispensar) e catálogo (adicionar). |
 | `habblaud/` | Arte do habblaud **copiada**. Não edite (veja "Arte"). |

@@ -18,6 +18,7 @@ import { useTickAtual } from '../../hooks/useTick'
 import { definirDryRunAtivo, dryRunEstaAtivo, lerPreviewSalva, salvarPreview } from './dry-run'
 import { somAtivo, tocarSom } from './som'
 import { mensagemDeErro } from '../../api/client'
+import { BolhaVita } from '../saude/BolhaVita'
 import type { RodadaProcessada } from '../../types/interacao'
 
 // A tela do hub: a barra do topo (marca, relógio simulado e as ações) e, embaixo, o PRÉDIO — cada agente na sua
@@ -44,6 +45,9 @@ export function Escritorio() {
   const hospedeiroRef = useRef<HTMLDivElement>(null)
   const [mundo, setMundo] = useState<Mundo | null>(null)
   const [painel, setPainel] = useState<Painel | null>(null)
+  // atalho ancorado num personagem (clique direito); nunca junto com um painel
+  const [atalho, setAtalho] = useState<AgenteId | null>(null)
+  const areaRef = useRef<HTMLElement>(null)
   const [dryRunAtivo, setDryRunAtivoState] = useState(dryRunEstaAtivo)
   const [ultimoResultado, setUltimoResultado] = useState<ResultadoAvancoMundo | null>(() =>
     dryRunEstaAtivo() ? lerPreviewSalva() : null,
@@ -59,6 +63,7 @@ export function Escritorio() {
 
   const abrirAgente = useCallback((id: AgenteId) => {
     // o Motriz não tem painel de agente: a sala de máquinas É o trabalho dele
+    setAtalho(null)
     setPainel(id === 'motriz' ? { tipo: 'maquinas' } : { tipo: 'agente', id })
   }, [])
 
@@ -69,7 +74,14 @@ export function Escritorio() {
     const m = criarMundo(hospedeiro, {
       vagas: carregarVagas(),
       aoClicarAgente: abrirAgente,
-      aoClicarVaga: (vaga) => setPainel({ tipo: 'predio', vaga }),
+      aoClicarVaga: (vaga) => {
+        setAtalho(null)
+        setPainel({ tipo: 'predio', vaga })
+      },
+      aoAtalhoAgente: (id) => {
+        setPainel(null)
+        setAtalho(id)
+      },
       aoMudarVagas: salvarVagas,
     })
     setMundo(m)
@@ -150,13 +162,22 @@ export function Escritorio() {
   useEffect(() => {
     function aoTeclar(e: KeyboardEvent) {
       // Esc fecha o painel aberto — vale até dentro de campo de texto, que é onde a mão está quando se quer fechar
-      if (e.key === 'Escape' && painel) setPainel(null)
+      if (e.key === 'Escape' && (painel || atalho)) {
+        setPainel(null)
+        setAtalho(null)
+      }
     }
     window.addEventListener('keydown', aoTeclar)
     return () => window.removeEventListener('keydown', aoTeclar)
-  }, [painel])
+  }, [painel, atalho])
 
-  const alternar = (p: Painel) => setPainel((atual) => (atual?.tipo === p.tipo ? null : p))
+  const fecharAtalho = useCallback(() => setAtalho(null), [])
+  const ancoraDoAtalho = useCallback(() => (atalho ? (mundo?.ancora(atalho) ?? null) : null), [mundo, atalho])
+
+  const alternar = (p: Painel) => {
+    setAtalho(null)
+    setPainel((atual) => (atual?.tipo === p.tipo ? null : p))
+  }
   const relogio = hora === null ? '--:--' : `${String(Math.floor(hora)).padStart(2, '0')}:${String(Math.floor((hora % 1) * 60)).padStart(2, '0')}`
 
   return (
@@ -225,8 +246,10 @@ export function Escritorio() {
         </nav>
       </header>
 
-      <main style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+      <main ref={areaRef} style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         <div ref={hospedeiroRef} style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', overflow: 'auto', padding: 16 }} />
+
+        {atalho === 'vita' && <BolhaVita ancora={ancoraDoAtalho} area={areaRef} aoFechar={fecharAtalho} />}
 
         {painel?.tipo === 'agente' && agentePorId(painel.id) && <PainelDoAgente agenteId={painel.id} aoFechar={() => setPainel(null)} />}
         {painel?.tipo === 'mensagens' && <PainelMensagens aoFechar={() => setPainel(null)} />}

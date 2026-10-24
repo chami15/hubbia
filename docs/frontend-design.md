@@ -156,10 +156,15 @@ resolvidas na prática:**
 - **Peso nunca vem pré-preenchido** (decisão original mantida) e o campo
   limpa depois de registrar.
 
-**Pendente do que foi especificado (RF19):** os atalhos de peso e
-hidratação estão no topo do painel, não na bolha do avatar. A versão da
-bolha — popup ancorado no crachá, sem abrir o painel — ainda não foi
-construída.
+**RF19 (feito):** além dos atalhos no topo do painel, a Vita tem uma
+bolha de registro rápido ancorada nela no prédio: **clique direito** no
+personagem (a dica aparece no hover, nada fixo na tela). Peso em campo
+único (nunca pré-preenchido), água em 3 botões (+200/+300/+500 ml) ou
+valor livre, e o "hoje" do dashboard na própria bolha. Esc ou clique fora
+fecha; clique esquerdo continua abrindo o painel completo. Geometria
+testada em `features/predio/atalho.ts`; o componente é
+`features/saude/BolhaVita.tsx`. Outro agente com atalho entra em
+`AGENTES_COM_ATALHO`.
 
 ### Norte (Projetos)
 

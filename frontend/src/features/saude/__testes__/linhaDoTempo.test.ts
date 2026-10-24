@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { HistoricoSaude } from '../../../types/saude'
-import { diaLocal, montarLinhaDoTempo, rotuloDoDia } from '../historico'
+import { diaLocal, montarLinhaDoTempo, rotuloDoDia } from '../linhaDoTempo'
 
 // Datas montadas no fuso local de propósito: o agrupamento é por dia LOCAL, e o teste não pode depender do TZ da máquina.
 const em = (dia: number, h: number, m = 0) => new Date(2026, 9, dia, h, m).toISOString()

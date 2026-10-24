@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { mensagemDeErro } from '../../api/client'
 import { useHistorico } from '../../hooks/useSaude'
 import { AVISO_ERRO, BOTAO, CORPO, ROTULO } from './estilos'
-import { montarLinhaDoTempo, type EntradaDoDia } from './historico'
+import { montarLinhaDoTempo, type EntradaDoDia } from './linhaDoTempo'
 
 // O que foi registrado, dia a dia: só leitura (nada aqui grava nem gasta LLM, então carrega ao abrir sem ferir o RNF01).
 // Serve para conferir um registro errado e para ver a semana sem esperar o relatório.

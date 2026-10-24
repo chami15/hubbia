@@ -44,6 +44,7 @@ types/   espelha os schemas do backend (um contrato só, importado por quem prec
 - Esc fecha painel e vale **até dentro de campo de texto**; outros atalhos ficam mudos com painel aberto e dentro de `input/textarea/select`.
 - `localStorage` sempre em `try/catch` (aba anônima lança). É estado de tela, nunca dado que precise sobreviver.
 - Teste com Playwright: ancore `page.route` no host do backend (`http://localhost:8000/**`). `**/agenda/**` intercepta os módulos que o Vite serve e derruba o app.
+- **Nunca dois arquivos que só diferem na caixa** (`Historico.tsx` + `historico.ts`): no Linux/CI funciona, no macOS/Windows o import pega o errado e o app fica em tela branca. O teste `src/__testes__/nomes-de-arquivo.test.ts` cobra. Componente `Nome.tsx`, lógica com outro nome (`linhaDoTempo.ts`).
 - Dependência nova ou removida: avise o chefe do `npm install`.
 
 ## Testes e verificação

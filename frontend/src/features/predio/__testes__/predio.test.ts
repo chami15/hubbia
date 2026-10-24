@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AGENTES } from '../agentes'
-import { MAX_VAGAS, lugaresInalcancaveis, mesaDe, montarPredio, passagem, pesNoTile } from '../predio'
+import { MAX_VAGAS, divisorias, lugaresInalcancaveis, mesaDe, montarPredio, passagem, pesNoTile } from '../predio'
 import { SALAS } from '../salas'
 import { aEstrela, adicionarAgente, criarSimulacao, definirParado, passo } from '../sim'
 
@@ -152,5 +152,41 @@ describe('regressão: salas que só funcionavam em cima do corredor', () => {
   it('com todos os agentes do catálogo, nenhum lugar fica inalcançável', () => {
     const p = montarPredio(AGENTES.map((a) => a.id).slice(0, MAX_VAGAS))
     expect(lugaresInalcancaveis(p).map((l) => l.id)).toEqual([])
+  })
+})
+
+describe('regressão: a divisória das salas de cima cobria a cabeça de quem andava no corredor', () => {
+  // O que acontecia: a divisória entre salas vizinhas (um pilar de 4 px que desce até a linha da parede sul) era
+  // desenhada POR ÚLTIMO, por cima de tudo. Quem andava no corredor logo abaixo dessa quina tinha a cabeça (o
+  // sprite sobe ~28 px) coberta pelo pilar. A parte do pilar na linha da parede sul precisa entrar na ordenação por
+  // profundidade, como a própria parede sul: quem está à frente (y maior) é desenhado depois.
+  const p = montarPredio(['cifra', 'vita', 'agenda', 'norte'])
+
+  it('toda sala de cima com vizinha à esquerda tem o pedaço do pilar na parede sul em profundidade', () => {
+    const cima = divisorias(p).filter((d) => d.sul)
+    expect(cima.length).toBeGreaterThan(0)
+  })
+
+  it('quem está no corredor, logo abaixo da parede sul, é desenhado depois (por cima) do pilar', () => {
+    for (const d of divisorias(p).filter((x) => x.sul)) {
+      const sul = d.sul as NonNullable<typeof d.sul>
+      const peDoQueAndaNoCorredor = sul.y + sul.h + 8 // meio da primeira linha do corredor
+      expect(peDoQueAndaNoCorredor).toBeGreaterThan(sul.sortY)
+    }
+  })
+
+  it('quem está dentro da sala, atrás do pilar, continua por baixo dele', () => {
+    for (const d of divisorias(p).filter((x) => x.sul)) {
+      const sul = d.sul as NonNullable<typeof d.sul>
+      const peDentroDaSala = sul.y - 8 // meio da última linha de piso
+      expect(peDentroDaSala).toBeLessThan(sul.sortY)
+    }
+  })
+
+  it('o pilar inteiro continua coberto: parte alta + parte da parede sul = altura original', () => {
+    for (const d of divisorias(p)) {
+      const alto = d.sul ? d.sul.y - d.y : d.h
+      expect(alto + (d.sul ? d.sul.h : 0)).toBe(d.h)
+    }
   })
 })

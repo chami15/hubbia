@@ -20,3 +20,20 @@ export interface RespostaAgenda {
   // existe, não interpretar.
   resultado?: unknown
 }
+
+// GET /agenda/conversa: o histórico do chat e a pendência aberta agora.
+export interface FalaDoServidor {
+  id: number
+  de: 'chefe' | 'agente'
+  texto: string
+  // só nas PROPOSTAS (as que têm botão); pergunta não guarda
+  acao_pendente_id: number | null
+  criado_em: string
+}
+
+export interface ConversaAgenda {
+  falas: FalaDoServidor[]
+  acao_pendente_id: number | null
+  // mesma regra de RespostaAgenda: true = proposta (botões); false com id = pergunta
+  aguardando_confirmacao: boolean
+}

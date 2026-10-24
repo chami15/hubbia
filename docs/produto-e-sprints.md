@@ -466,22 +466,14 @@ pros detalhes completos):**
 
 #### O que falta para concluir esta sprint
 
-Nada bloqueante, mas várias pontas soltas conscientes — ver
-`docs/backlog-futuro.md` pra lista completa e o porquê de cada adiamento:
+Fechamento (2026-10-24), com um commit por item na branch `feat/fechar-sprint-1`:
 
-1. Escala global das salas (móvel do mesmo tamanho em qualquer
-   ambiente) — solução já desenhada e aprovada, só falta decidir o teto
-   e implementar.
-2. Atalho de peso/hidratação da Vita direto na bolha do avatar (RF19) —
-   hoje só no topo do painel.
-3. `border`/`borderColor` misturados no mesmo objeto de estilo em três
-   arquivos (`PainelAgenda.tsx`, `CardAtivo.tsx`, `FormRefeicao.tsx`) —
-   já corrigido no resto do hub, falta só esses.
-4. Testar upload de extrato e foto de refeição com arquivo/imagem reais
-   (só testado com dado sintético até aqui).
-5. Persistir a conversa do Agenda entre reloads (hoje é só de sessão,
-   decisão original) e expor `GET` de histórico de refeição/sono/
-   atividade (gravado, mas sem endpoint de leitura de volta).
+1. ~~Escala global das salas~~ — era do escritório isométrico; no prédio pixel as salas têm tamanho fixo (14×8 tiles), não se aplica.
+2. ✅ Atalho de peso/hidratação da Vita (RF19): bolha em pixel art ancorada nela, clique direito (`features/saude/BolhaVita.tsx`).
+3. ✅ `border`/`borderColor` misturados: corrigido em todo `features/`, com teste que impede a volta.
+4. ✅ Upload de extrato e foto de refeição com arquivo real: testado pelo chefe contra dado real, funcionando.
+5. ✅ Conversa da Agenda persistida (tabela `conversa_agenda`, `GET /agenda/conversa`).
+6. ⏳ **Pendente:** `GET` de histórico de refeição/sono/atividade (gravado, mas sem endpoint de leitura de volta). Não foi pedido ainda; só entra se o chefe quiser uma tela de histórico.
 
 #### Resultado esperado desta sprint
 

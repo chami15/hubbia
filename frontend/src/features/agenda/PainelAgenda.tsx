@@ -31,7 +31,7 @@ interface Props {
 }
 
 export function PainelAgenda({ agente }: Props) {
-  const { falas, pendenteId, erro, ocupado, enviar, confirmar, rejeitar } = useConversaAgenda()
+  const { carregando, falas, pendenteId, erro, ocupado, enviar, confirmar, rejeitar } = useConversaAgenda()
   const [texto, setTexto] = useState('')
   const fimDaLista = useRef<HTMLDivElement>(null)
 
@@ -50,7 +50,7 @@ export function PainelAgenda({ agente }: Props) {
   return (
     <>
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {falas.length === 0 && (
+        {falas.length === 0 && !carregando && (
           <div style={{ color: '#8d8779', fontSize: 12, lineHeight: 1.7, marginTop: 8 }}>
             Fale com a Agenda como você falaria com uma pessoa.
             <br />

@@ -301,6 +301,46 @@ function desenharObra(ctx: CanvasRenderingContext2D, a: Area, p: number, t: numb
   }
 }
 
+/** Divisória (pilar de 4 px) entre duas salas vizinhas. */
+export interface Divisoria {
+  x: number;
+  y: number;
+  h: number;
+  parede: ModeloSala['parede'];
+  /**
+   * Só nas salas de cima: o pedaço do pilar que fica na linha da parede sul. Ele entra na ordenação por profundidade
+   * (junto com a parede sul) em vez de ir por cima de tudo, senão cobria a cabeça de quem andava no corredor logo
+   * abaixo da quina. O resto do pilar continua desenhado por cima, como sempre foi.
+   */
+  sul?: { y: number; h: number; sortY: number };
+}
+
+export function divisorias(p: Predio): Divisoria[] {
+  const sulY = (ANDAR_CIMA.piso + ANDAR_CIMA.linhas) * TILE;
+  return p.areas
+    .filter((a) => a.x0 > 0)
+    .map((a) => {
+      const an = andarDe(a);
+      const y = an.face * TILE;
+      const h = (a.andar === 'cima' ? an.piso + an.linhas + 1 : an.piso + an.linhas) * TILE - y;
+      return { x: a.x0 * TILE - 2, y, h, parede: a.modelo.parede, sul: a.andar === 'cima' ? { y: sulY, h: TILE, sortY: sulY + TILE } : undefined };
+    });
+}
+
+/**
+ * Desenha a divisória inteira, mas só dentro de uma faixa vertical. Duas faixas somam o pilar idêntico ao desenhado
+ * de uma vez: `drawWallTop` põe realce em cima e sombra embaixo, e cortar a altura em duas chamadas deixaria uma
+ * emenda no meio. Por isso é o recorte (clip) que divide, não a altura.
+ */
+function desenharDivisoria(ctx: CanvasRenderingContext2D, d: Divisoria, faixa: { y: number; h: number }): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(d.x, faixa.y, 4, faixa.h);
+  ctx.clip();
+  art.drawWallTop(ctx, d.x, d.y, 4, d.h, d.parede);
+  ctx.restore();
+}
+
 /**
  * Desenha o prédio em `ctx` (1x; o CSS amplia). Ordem: pisos, faces das paredes com os itens de parede, tudo que tem
  * profundidade ordenado pelo y (móveis, encostos, pessoas, parede sul), luz das salas, obras, divisórias, céu, extra.
@@ -371,6 +411,14 @@ export function desenharPredio(ctx: CanvasRenderingContext2D, p: Predio, e: Esta
     const parede = modeloVisivel(a).parede;
     itens.push({ y: sulY + TILE, draw: () => art.drawSouthWall(ctx, a.x0 * TILE, sulY, a.w * TILE, parede, { doorways }) });
   }
+  const pilares = divisorias(p);
+  for (const d of pilares) {
+    if (d.sul) {
+      const { sul } = d;
+      // empurrado depois da parede sul (mesmo y, ordenação estável): o pilar fica por cima dela, mas por baixo de quem está à frente
+      itens.push({ y: sul.sortY, draw: () => desenharDivisoria(ctx, d, sul) });
+    }
+  }
   itens.sort((a, b) => a.y - b.y);
   for (const it of itens) it.draw();
 
@@ -401,12 +449,8 @@ export function desenharPredio(ctx: CanvasRenderingContext2D, p: Predio, e: Esta
     }
   }
 
-  for (const a of p.areas) {
-    const an = andarDe(a);
-    const y0 = an.face * TILE;
-    const h = (a.andar === 'cima' ? an.piso + an.linhas + 1 : an.piso + an.linhas) * TILE - y0;
-    if (a.x0 > 0) art.drawWallTop(ctx, a.x0 * TILE - 2, y0, 4, h, a.modelo.parede);
-  }
+  // o resto do pilar (tudo acima da parede sul) vai por cima, como sempre; a parte da parede sul já foi na ordenação
+  for (const d of pilares) desenharDivisoria(ctx, d, { y: d.y, h: d.sul ? d.sul.y - d.y : d.h });
   art.drawWallTop(ctx, 0, 0, 3, H, RECEPCAO.parede);
   art.drawWallTop(ctx, W - 3, 0, 3, H, p.areas[p.areas.length - 1].modelo.parede);
   art.drawSouthWall(ctx, 0, (ROWS - 1) * TILE, W, { base: '#cfd3da', trim: '#8a919c', pattern: 'brick', exterior: true });

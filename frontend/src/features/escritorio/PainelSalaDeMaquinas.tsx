@@ -195,7 +195,7 @@ export function PainelSalaDeMaquinas({ aoFechar }: Props) {
           }}
         >
           {(erroSaude || erroObs) && (
-            <div style={{ ...CARTAO, borderColor: 'var(--danger)', color: '#f0b7ab', fontSize: 11.5, lineHeight: 1.6 }}>
+            <div style={{ ...CARTAO, border: '1px solid var(--danger)', color: '#f0b7ab', fontSize: 11.5, lineHeight: 1.6 }}>
               {mensagemDeErro(erroObs ?? erroSaude)}
             </div>
           )}

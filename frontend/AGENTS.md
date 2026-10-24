@@ -2,7 +2,7 @@
 
 React 19 + Vite + TypeScript + TanStack Query + axios. A tela é o **prédio em pixel art** (`src/features/predio/`, tem `AGENTS.md` próprio) com a
 barra do topo e os painéis dos agentes por cima. Consome só a API do `backend/`: **nenhuma regra de negócio mora aqui**.
-Esta versão do frontend existe só na branch `feat/predio-pixel`; outras branches têm o escritório isométrico ou o 3D (veja `docs/mapa-de-branches.md`).
+O escritório isométrico (tag `v0.3.0`) e o 3D (`3d/v0.1`, branch de laboratório) são outras linhas; veja `docs/mapa-de-branches.md`.
 
 ## Camadas
 

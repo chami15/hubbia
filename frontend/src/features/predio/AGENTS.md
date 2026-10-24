@@ -20,6 +20,7 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `dev/catalogo.ts` | **Vitrine da arte**, só em desenvolvimento: abra `/#catalogo`. Agentes, salas, 20 poses, itens, 46 móveis, ícones, telas, pisos, paredes. Não entra no build de produção. |
 | `status.ts` | Estado do backend → status do prédio (puro, testado). |
 | `relogio.ts` | Relógio de mundo que para com a aba escondida (injetável, para teste). |
+| `atalho.ts` | Bolha de atalho ancorada no personagem (clique direito): quem tem atalho e a geometria pura (mundo → tela, encaixe sem sair da área). O HTML da bolha da Vita é `features/saude/BolhaVita.tsx`. |
 | `vagas.ts` | Quem está em cada vaga (`localStorage`; é a única peça que muda quando isso for para o backend). |
 | `PainelPredio.tsx` | Gerência: quem está no prédio (abrir/dispensar) e catálogo (adicionar). |
 | `habblaud/` | Arte do habblaud **copiada**. Não edite (veja "Arte"). |
@@ -91,6 +92,7 @@ Status novo toca, nesta ordem: tipo `Status` e `STATUS_ROTULO` (`sim.ts`) · `de
 | Sala que só funcionava em cima do corredor (móvel na coluna da porta de baixo) | `predio.test.ts` › "regressão: salas que só funcionavam em cima…" e o teste por sala nas duas posições |
 | Aba escondida acumulava tempo e os agentes "teleportavam" ao voltar | `relogio.test.ts` › "regressão: aba escondida…". Não troque `criarRelogio` por `Date.now()` |
 | `pensando` e `executando` do backend viraram o mesmo "trabalhando" na migração do isométrico | `status.test.ts` › "regressão: pensando e executando eram indistinguíveis…" |
+| Divisória entre salas de cima cobria a cabeça de quem andava no corredor sob a quina (era desenhada por último, por cima de tudo) | `predio.test.ts` › "regressão: a divisória das salas de cima…". O pedaço do pilar na parede sul entra na ordenação por profundidade (`divisorias()`); o resto continua por cima |
 | `pkill -f vite` derruba o shell do agente | (ambiente) use `kill $(lsof -ti tcp:PORTA)` |
 | Chromium headless a ~2 fps | (ambiente) espere 8–12 s para ver agentes andando; obra e elevador levam ~2,6 s |
 

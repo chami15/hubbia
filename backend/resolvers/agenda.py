@@ -101,6 +101,35 @@ def _ha_quanto_tempo(momento: datetime) -> str:
     return f"há {horas} hora{'s' if horas != 1 else ''}"
 
 
+def _registrar_fala(de: str, texto: str, acao_pendente_id: int | None = None) -> None:
+    """Guarda uma fala do chat para ele sobreviver ao reload (ver migration 012)."""
+    executar_query("conversa_agenda:inserir", commit=True, params=(de, texto, acao_pendente_id))
+
+
+def obter_conversa(limite: int = 200) -> dict:
+    """Histórico do chat + a pendência aberta agora, tudo de uma vez ao abrir o painel.
+
+    Só leitura e sem LLM, então é seguro abrir a tela sem gastar nada (RNF01). Substitui o truque
+    antigo de mandar a frase 'qual pendência em aberto?' como se o chefe a tivesse digitado, que com
+    o histórico gravado viraria uma fala falsa a cada abertura."""
+    falas = [
+        {
+            "id": f["id"],
+            "de": f["de"],
+            "texto": f["texto"],
+            "acao_pendente_id": f["acao_pendente_id"],
+            "criado_em": f["criado_em"].isoformat(),
+        }
+        for f in executar_query("conversa_agenda:ultimas", params=(limite,))
+    ]
+    pendente = _pendente_aberta(_agente_id())
+    return {
+        "falas": falas,
+        "acao_pendente_id": pendente["id"] if pendente else None,
+        "aguardando_confirmacao": bool(pendente) and pendente["tipo"] != "aguardando_info",
+    }
+
+
 def _responder_pendencia_atual(agente_id: int) -> dict:
     """Resposta determinística (sem LLM) pra "qual pendência em aberto?" —
     o chefe pode perder o fio no meio do chat e precisar consultar direto
@@ -229,6 +258,21 @@ def _responder_consulta_direta() -> dict:
 
 
 async def processar_mensagem(mensagem: str) -> dict:
+    """Processa a fala do chefe e grava a conversa. A fala dele entra ANTES de chamar o agente:
+    se o LLM falhar, a pergunta continua no histórico (sem resposta inventada)."""
+    _registrar_fala("chefe", mensagem)
+    resposta = await _processar_mensagem(mensagem)
+    _registrar_resposta(resposta)
+    return resposta
+
+
+def _registrar_resposta(resposta: dict) -> None:
+    # só a proposta guarda o id: é a única fala com botão (ver migration 012)
+    proposta = resposta.get("aguardando_confirmacao") is True
+    _registrar_fala("agente", resposta["mensagem"], resposta.get("acao_pendente_id") if proposta else None)
+
+
+async def _processar_mensagem(mensagem: str) -> dict:
     agente_id = _agente_id()
 
     # Checa ANTES de olhar pra pendência aberta: se o chefe está perguntando
@@ -244,7 +288,7 @@ async def processar_mensagem(mensagem: str) -> dict:
         pedido_original = pendente["payload"].get("pedido_original", mensagem)
 
         if pendente["tipo"] != "aguardando_info" and _PADRAO_CONFIRMACAO.match(mensagem):
-            return confirmar_acao(pendente["id"])
+            return _confirmar_acao(pendente["id"])
 
         if pendente["tipo"] != "aguardando_info" and _PADRAO_REJEICAO.match(mensagem):
             executar_query("acoes_pendentes:marcar_rejeitada", commit=True, params=(pendente["id"],))
@@ -265,6 +309,13 @@ async def processar_mensagem(mensagem: str) -> dict:
 
 
 def confirmar_acao(acao_id: int) -> dict:
+    """Confirmação pelo botão: grava só a resposta do agente (o clique não é uma fala do chefe)."""
+    resposta = _confirmar_acao(acao_id)
+    _registrar_resposta(resposta)
+    return resposta
+
+
+def _confirmar_acao(acao_id: int) -> dict:
     rows = executar_query("acoes_pendentes:buscar_por_id", params=(acao_id,))
     if not rows:
         raise ValueError(f"Ação pendente {acao_id} não encontrada.")
@@ -287,4 +338,6 @@ def confirmar_acao(acao_id: int) -> dict:
 
 def rejeitar_acao(acao_id: int) -> dict:
     executar_query("acoes_pendentes:marcar_rejeitada", commit=True, params=(acao_id,))
-    return {"mensagem": "Ação descartada.", "acao_pendente_id": acao_id}
+    resposta = {"mensagem": "Ação descartada.", "acao_pendente_id": acao_id}
+    _registrar_resposta(resposta)
+    return resposta

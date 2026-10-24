@@ -34,7 +34,7 @@ _TABELAS = [
     "agentes", "memorias", "relacionamentos", "mensagens", "eventos_mundo",
     "ticks", "tick_execucoes",
     "extratos_importados", "transacoes", "relatorios_financeiros",
-    "acoes_pendentes",
+    "acoes_pendentes", "conversa_agenda",
     "perfil_saude", "peso_historico", "hidratacao_historico", "sono_historico",
     "atividades_fisicas", "refeicoes", "ficha_treino_dias", "ficha_treino_exercicios",
     "planos_dieta", "relatorios_saude",

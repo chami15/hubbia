@@ -31,7 +31,7 @@ interface Props {
 }
 
 export function PainelAgenda({ agente }: Props) {
-  const { falas, pendenteId, erro, ocupado, enviar, confirmar, rejeitar } = useConversaAgenda()
+  const { carregando, falas, pendenteId, erro, ocupado, enviar, confirmar, rejeitar } = useConversaAgenda()
   const [texto, setTexto] = useState('')
   const fimDaLista = useRef<HTMLDivElement>(null)
 
@@ -50,7 +50,7 @@ export function PainelAgenda({ agente }: Props) {
   return (
     <>
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {falas.length === 0 && (
+        {falas.length === 0 && !carregando && (
           <div style={{ color: '#8d8779', fontSize: 12, lineHeight: 1.7, marginTop: 8 }}>
             Fale com a Agenda como você falaria com uma pessoa.
             <br />
@@ -101,7 +101,7 @@ export function PainelAgenda({ agente }: Props) {
                 ...BOTAO,
                 flex: 1,
                 background: 'rgba(74,222,128,0.2)',
-                borderColor: 'rgba(74,222,128,0.5)',
+                border: '1px solid rgba(74,222,128,0.5)',
                 opacity: ocupado ? 0.5 : 1,
               }}
             >
@@ -156,7 +156,7 @@ export function PainelAgenda({ agente }: Props) {
           style={{
             ...BOTAO,
             background: corCss(agente.cor),
-            borderColor: corCss(agente.cor),
+            border: `1px solid ${corCss(agente.cor)}`,
             color: '#ffffff',
             opacity: ocupado || !texto.trim() ? 0.45 : 1,
           }}

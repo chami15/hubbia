@@ -3,13 +3,14 @@
 // nada de axios, de endpoint nem de qual pendência está aberta.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { confirmarAcao, consultarPendencia, enviarMensagem, rejeitarAcao } from '../api/agenda'
+import { confirmarAcao, enviarMensagem, obterConversa, rejeitarAcao } from '../api/agenda'
 import { mensagemDeErro } from '../api/client'
 import type { RespostaAgenda } from '../types/agenda'
+import { conversaDoServidor } from '../features/agenda/conversa'
 
 export interface FalaChat {
-  // chave estável pro React — a conversa só cresce, então um contador
-  // simples basta e não depende de índice do array
+  // chave estável pro React. Fala vinda do servidor traz o id do banco (positivo); fala criada agora
+  // recebe um id local NEGATIVO, para nunca colidir com as do histórico
   id: number
   de: 'chefe' | 'agente'
   texto: string
@@ -19,18 +20,17 @@ export interface FalaChat {
   acaoPendenteId?: number
 }
 
-// O histórico da conversa é de SESSÃO, não de banco: a tabela `mensagens`
-// do backend é da camada social entre agentes, não deste chat. Fechar o
-// painel e reabrir começa limpo — a pendência em aberto, essa sim, é
-// recuperada do servidor ao abrir (ver `consultarPendencia`).
+// A conversa é gravada no backend (tabela `conversa_agenda`) e recarregada ao abrir o painel, junto
+// com a pendência aberta. Quem grava é o servidor: o frontend só mostra a fala na hora (otimista) e
+// o próximo reload traz a versão oficial.
 export function useConversaAgenda() {
   const [falas, setFalas] = useState<FalaChat[]>([])
   const [pendenteId, setPendenteId] = useState<number | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-  const proximoId = useRef(1)
+  const proximoId = useRef(-1)
 
   const adicionar = useCallback((de: FalaChat['de'], texto: string, acaoPendenteId?: number) => {
-    setFalas((atuais) => [...atuais, { id: proximoId.current++, de, texto, acaoPendenteId }])
+    setFalas((atuais) => [...atuais, { id: proximoId.current--, de, texto, acaoPendenteId }])
   }, [])
 
   // Toda resposta do backend passa por aqui: vira uma fala do agente e
@@ -98,34 +98,33 @@ export function useConversaAgenda() {
     mutacaoRejeitar.mutate(pendenteId)
   }, [pendenteId, mutacaoRejeitar])
 
-  // Ao abrir o painel, pergunta ao servidor o que ficou pendente — assim
-  // uma proposta esquecida de ontem reaparece com os botões, em vez de
-  // depender do chefe lembrar de perguntar (RF12).
+  // Ao abrir o painel, carrega o histórico e a pendência aberta (RF12: uma proposta esquecida de ontem
+  // reaparece com os botões, sem depender do chefe lembrar de perguntar).
   //
-  // Custo zero de LLM: essa frase é interceptada por regex no resolver
-  // antes de qualquer chamada de modelo (RNF01 respeitado).
+  // Custo zero de LLM: é um GET de leitura (RNF01 respeitado).
   //
-  // O ref existe porque o StrictMode roda o efeito duas vezes em dev —
-  // sem ele a pendência apareceria duplicada na conversa.
-  const jaConsultou = useRef(false)
+  // O ref existe porque o StrictMode roda o efeito duas vezes em dev — sem ele o histórico entraria
+  // duplicado. Quem digitou antes do histórico chegar não perde a fala: o histórico entra ANTES das locais.
+  const jaCarregou = useRef(false)
+  const [carregando, setCarregando] = useState(true)
   useEffect(() => {
-    if (jaConsultou.current) return
-    jaConsultou.current = true
-    consultarPendencia()
-      .then((resposta) => {
-        // silêncio quando não há nada pendente: anunciar "você não tem
-        // pendência" toda vez que abre o painel é ruído
-        if (resposta.acao_pendente_id === null) return
-        aplicarResposta(resposta)
+    if (jaCarregou.current) return
+    jaCarregou.current = true
+    obterConversa()
+      .then((conversa) => {
+        const { falas: historico, pendenteId: pendente } = conversaDoServidor(conversa)
+        setFalas((atuais) => [...historico, ...atuais])
+        setPendenteId((atual) => atual ?? pendente)
       })
       .catch(() => {
-        // backend fora do ar na abertura não vira erro vermelho — o
-        // painel abre normal e o chefe descobre ao tentar mandar algo.
-        // Falhar barulhento aqui puniria quem só quis abrir a tela.
+        // backend fora do ar na abertura não vira erro vermelho — o painel abre vazio e o chefe descobre
+        // ao tentar mandar algo. Falhar barulhento aqui puniria quem só quis abrir a tela.
       })
-  }, [aplicarResposta])
+      .finally(() => setCarregando(false))
+  }, [])
 
   return {
+    carregando,
     falas,
     pendenteId,
     erro,

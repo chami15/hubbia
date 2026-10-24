@@ -43,6 +43,17 @@ function horaDoMundo(iso: string | null | undefined): number | null {
 export function Escritorio() {
   const hospedeiroRef = useRef<HTMLDivElement>(null)
   const [mundo, setMundo] = useState<Mundo | null>(null)
+  // Suporte a deep linking para testes visuais e capturas automatizadas (ex: ?painel=maquinas ou ?painel=cifra).
+  // Deixado comentado para preservar o estado padrão limpo do escritório sem intervenção na URL.
+  // const [painel, setPainel] = useState<Painel | null>(() => {
+  //   const params = new URLSearchParams(window.location.search)
+  //   const p = params.get('painel')
+  //   if (p === 'maquinas') return { tipo: 'maquinas' }
+  //   if (p === 'mensagens') return { tipo: 'mensagens' }
+  //   if (p === 'configuracoes') return { tipo: 'configuracoes' }
+  //   if (p === 'cifra' || p === 'agenda' || p === 'vita' || p === 'norte') return { tipo: 'agente', id: p as AgenteId }
+  //   return null
+  // })
   const [painel, setPainel] = useState<Painel | null>(null)
   const [dryRunAtivo, setDryRunAtivoState] = useState(dryRunEstaAtivo)
   const [ultimoResultado, setUltimoResultado] = useState<ResultadoAvancoMundo | null>(() =>

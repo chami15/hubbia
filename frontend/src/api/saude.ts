@@ -4,6 +4,7 @@ import { api } from './client'
 import type {
   DashboardSaude,
   DiaFicha,
+  HistoricoSaude,
   PerfilEnviado,
   PerfilSaude,
   PlanoDieta,
@@ -39,6 +40,10 @@ export async function salvarPerfil(perfil: PerfilEnviado): Promise<PerfilSaude> 
 
 export async function obterDashboard(): Promise<DashboardSaude> {
   return (await api.get<DashboardSaude>('/saude/dashboard')).data
+}
+
+export async function obterHistorico(dias: number): Promise<HistoricoSaude> {
+  return (await api.get<HistoricoSaude>('/saude/historico', { params: { dias } })).data
 }
 
 export async function registrarPeso(peso_kg: number): Promise<unknown> {

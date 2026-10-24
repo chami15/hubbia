@@ -156,6 +156,11 @@ resolvidas na prática:**
 - **Peso nunca vem pré-preenchido** (decisão original mantida) e o campo
   limpa depois de registrar.
 
+**Histórico (feito):** o menu da Vita tem a aba "histórico": linha do tempo
+por dia (7/14/30 dias) com refeição, atividade, sono, peso e água (uma linha
+de água por dia, somada). Só leitura, sem LLM; estimativa que não é de alta
+confiança aparece marcada. Backend: `GET /saude/historico`.
+
 **RF19 (feito):** além dos atalhos no topo do painel, a Vita tem uma
 bolha de registro rápido ancorada nela no prédio: **clique direito** no
 personagem (a dica aparece no hover, nada fixo na tela). Peso em campo

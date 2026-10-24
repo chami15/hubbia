@@ -111,3 +111,14 @@ export interface RelatorioSemanal {
   hidratacao_total_ml: number
   analise: AnaliseRelatorio
 }
+
+// GET /saude/historico?dias=N — o que foi registrado, mais recente primeiro. Como no resto do domínio,
+// sem modelo/tokens/custo (RNF02): o backend nem seleciona essas colunas nesta leitura.
+export interface HistoricoSaude {
+  dias: number
+  refeicoes: RefeicaoRegistrada[]
+  sono: { id: number; horas: number; qualidade: QualidadeSono | null; data_referencia: string }[]
+  atividades: { id: number; tipo: TipoAtividade; duracao_min: number; observacao: string | null; registrado_em: string }[]
+  peso: { id: number; peso_kg: number; registrado_em: string }[]
+  hidratacao: { id: number; quantidade_ml: number; registrado_em: string }[]
+}

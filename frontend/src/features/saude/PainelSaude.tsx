@@ -8,6 +8,7 @@ import { FichaTreino } from './FichaTreino'
 import { FormPerfil } from './FormPerfil'
 import { FormRefeicao } from './FormRefeicao'
 import { FormAtividade, FormSono } from './FormsRegistro'
+import { Historico } from './Historico'
 import { PlanoDieta, RelatorioSemanal } from './GeradosPorIA'
 
 // O painel da Vita: menu de ações + forms determinísticos, sem chat.
@@ -17,12 +18,13 @@ import { PlanoDieta, RelatorioSemanal } from './GeradosPorIA'
 // dieta e relatório usam o perfil como contexto, então sem ele o backend
 // recusaria com um erro que não explicaria nada.
 
-type Vista = 'menu' | 'refeicao' | 'atividade' | 'sono' | 'ficha' | 'dieta' | 'relatorio' | 'perfil'
+type Vista = 'menu' | 'refeicao' | 'atividade' | 'sono' | 'ficha' | 'dieta' | 'relatorio' | 'historico' | 'perfil'
 
 const ACOES: { vista: Vista; rotulo: string; nota?: string }[] = [
   { vista: 'refeicao', rotulo: 'registrar refeição', nota: 'foto ou texto' },
   { vista: 'atividade', rotulo: 'registrar atividade' },
   { vista: 'sono', rotulo: 'registrar sono' },
+  { vista: 'historico', rotulo: 'histórico', nota: 'o que você registrou' },
   { vista: 'ficha', rotulo: 'ficha de treino' },
   { vista: 'dieta', rotulo: 'plano de dieta', nota: 'gera sob demanda' },
   { vista: 'relatorio', rotulo: 'relatório semanal', nota: 'gera sob demanda' },
@@ -37,6 +39,7 @@ const TITULOS: Record<Vista, string> = {
   ficha: 'ficha de treino',
   dieta: 'plano de dieta',
   relatorio: 'relatório semanal',
+  historico: 'histórico',
   perfil: 'editar perfil',
 }
 
@@ -83,6 +86,7 @@ export function PainelSaude() {
       {vista === 'ficha' && <FichaTreino />}
       {vista === 'dieta' && <PlanoDieta />}
       {vista === 'relatorio' && <RelatorioSemanal />}
+      {vista === 'historico' && <Historico />}
       {vista === 'perfil' && (
         <FormPerfil perfil={perfil} aoSalvar={() => setVista('menu')} aoCancelar={() => setVista('menu')} />
       )}
@@ -111,7 +115,7 @@ function Menu({ perfil, aoEscolher }: { perfil: string; aoEscolher: (v: Vista) =
 
       <AtalhosRapidos />
 
-      <div style={ROTULO}>o que você quer registrar</div>
+      <div style={ROTULO}>o que você quer fazer</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
         {ACOES.map((a) => (
           <button

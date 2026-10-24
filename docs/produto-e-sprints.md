@@ -473,7 +473,7 @@ Fechamento (2026-10-24), com um commit por item na branch `feat/fechar-sprint-1`
 3. ✅ `border`/`borderColor` misturados: corrigido em todo `features/`, com teste que impede a volta.
 4. ✅ Upload de extrato e foto de refeição com arquivo real: testado pelo chefe contra dado real, funcionando.
 5. ✅ Conversa da Agenda persistida (tabela `conversa_agenda`, `GET /agenda/conversa`).
-6. ⏳ **Pendente:** `GET` de histórico de refeição/sono/atividade (gravado, mas sem endpoint de leitura de volta). Não foi pedido ainda; só entra se o chefe quiser uma tela de histórico.
+6. ✅ Histórico da Vita: `GET /saude/historico?dias=N` e a aba "histórico" no painel (linha do tempo por dia, só leitura).
 
 #### Resultado esperado desta sprint
 

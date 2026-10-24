@@ -5,6 +5,7 @@ import * as apiSaude from '../api/saude'
 
 const CHAVE_PERFIL = ['saude', 'perfil']
 const CHAVE_DASHBOARD = ['saude', 'dashboard']
+const CHAVE_HISTORICO = ['saude', 'historico']
 const CHAVE_FICHA = ['saude', 'ficha-treino']
 const CHAVE_PLANO = ['saude', 'plano-dieta']
 const CHAVE_RELATORIO = ['saude', 'relatorio']
@@ -18,6 +19,10 @@ export function usePerfil() {
 
 export function useDashboard() {
   return useQuery({ queryKey: CHAVE_DASHBOARD, queryFn: apiSaude.obterDashboard })
+}
+
+export function useHistorico(dias: number) {
+  return useQuery({ queryKey: [...CHAVE_HISTORICO, dias], queryFn: () => apiSaude.obterHistorico(dias) })
 }
 
 export function useFichaTreino() {
@@ -39,7 +44,11 @@ function useRegistro<Entrada, Saida>(fn: (e: Entrada) => Promise<Saida>) {
   const cliente = useQueryClient()
   return useMutation({
     mutationFn: fn,
-    onSuccess: () => void cliente.invalidateQueries({ queryKey: CHAVE_DASHBOARD }),
+    onSuccess: () => {
+      void cliente.invalidateQueries({ queryKey: CHAVE_DASHBOARD })
+      // o que acabou de ser salvo tem de aparecer na aba de histórico sem recarregar
+      void cliente.invalidateQueries({ queryKey: CHAVE_HISTORICO })
+    },
   })
 }
 

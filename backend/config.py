@@ -18,12 +18,14 @@ class Settings(BaseSettings):
     llm_model_strong: str = "gpt-4o"
 
     # Motor de tick
-    tick_intervalo_min: int = 15
-    tick_minutos_simulados: int = 60
 
     # Relógio do mundo (só ambiente: céu, luz, expediente; não custa nada). 1 min real = `relogio_fator` min do mundo:
     # 24 faz o dia do mundo durar 1 hora real. Trocável em runtime por PUT /relogio/fator (aqui é só o valor inicial).
     relogio_fator: float = 24.0
+
+    # Expediente (hora do MUNDO, não a real): só dentro dele o tick automático dispara. Todo dia igual, sem fim de semana.
+    expediente_inicio: int = 9
+    expediente_fim: int = 18
 
     # Controle de custo
     orcamento_diario_usd: float = 1.0

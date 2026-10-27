@@ -1,13 +1,13 @@
 --QUERY: buscar_ultimo
-SELECT id, numero, hora_simulada, estado_mundo, processado_em
+SELECT id, numero, hora_simulada, estado_mundo, processado_em, origem
 FROM ticks
 ORDER BY numero DESC
 LIMIT 1;
 
 --QUERY: inserir
-INSERT INTO ticks (numero, hora_simulada, estado_mundo)
-VALUES (%s, %s, %s::jsonb)
-RETURNING id, numero, hora_simulada, estado_mundo, processado_em;
+INSERT INTO ticks (numero, hora_simulada, estado_mundo, origem)
+VALUES (%s, %s, %s::jsonb, %s)
+RETURNING id, numero, hora_simulada, estado_mundo, processado_em, origem;
 
 -- (a antiga `custo_gasto_hoje` vivia aqui: um UNION ALL escrito à mão
 -- sobre 5 tabelas de domínio. Foi aposentada — mora agora em

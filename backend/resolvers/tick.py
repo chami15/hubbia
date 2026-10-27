@@ -11,10 +11,11 @@ motor que existe pra ser autônomo no fim das contas (ver
 docs/backlog-futuro.md pra quando isso mudar).
 """
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from config import settings
+from resolvers import relogio
 from utils.query_executor import executar_query
 
 
@@ -33,13 +34,10 @@ def obter_tick_atual() -> dict | None:
 
 
 def _calcular_proximo_tick() -> dict:
+    """O tick NÃO tem hora própria (Sprint 2, fase C): é uma rodada de interação e grava a hora do relógio do mundo
+    naquele instante. Antes somava `tick_minutos_simulados` à hora do tick anterior."""
     ultimo = obter_tick_atual()
-    if ultimo is None:
-        return {"numero": 1, "hora_simulada": _agora()}
-    return {
-        "numero": ultimo["numero"] + 1,
-        "hora_simulada": ultimo["hora_simulada"] + timedelta(minutes=settings.tick_minutos_simulados),
-    }
+    return {"numero": 1 if ultimo is None else ultimo["numero"] + 1, "hora_simulada": relogio.hora_atual()}
 
 
 def orcamento_gasto_hoje() -> float:
@@ -61,7 +59,7 @@ def orcamento_disponivel_hoje() -> float:
     return max(0.0, settings.orcamento_diario_usd - orcamento_gasto_hoje())
 
 
-def avancar_tick(dry_run: bool = False) -> dict:
+def avancar_tick(dry_run: bool = False, origem: str = "manual") -> dict:
     """Avança o relógio simulado em 1 tick.
 
     dry_run=True calcula tudo (próximo número, hora simulada, orçamento
@@ -72,6 +70,8 @@ def avancar_tick(dry_run: bool = False) -> dict:
     dado que ele é o único ponto do hub pensado pra rodar sem supervisão
     direta no futuro.
     """
+    if origem not in ("manual", "automatico"):
+        raise ValueError(f"Origem de tick desconhecida: {origem!r} (use 'manual' ou 'automatico').")
     proximo = _calcular_proximo_tick()
     orcamento_disponivel = orcamento_disponivel_hoje()
 
@@ -80,6 +80,7 @@ def avancar_tick(dry_run: bool = False) -> dict:
         "hora_simulada": proximo["hora_simulada"].isoformat(),
         "orcamento_disponivel_hoje": round(orcamento_disponivel, 6),
         "dry_run": dry_run,
+        "origem": origem,
         "agentes_atualizados": 0,
     }
 
@@ -93,7 +94,7 @@ def avancar_tick(dry_run: bool = False) -> dict:
     executar_query(
         "ticks:inserir",
         returning=True,
-        params=(proximo["numero"], proximo["hora_simulada"], json.dumps(estado_mundo)),
+        params=(proximo["numero"], proximo["hora_simulada"], json.dumps(estado_mundo), origem),
     )
 
     # Etapa 1: sempre 'idle' — nenhum comportamento real ainda define o

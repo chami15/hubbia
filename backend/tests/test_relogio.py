@@ -39,6 +39,49 @@ class TestConta:
         assert h == ANCORA_MUNDO + timedelta(seconds=60)
 
 
+class TestExpediente:
+    """Expediente: 9h às 18h DO MUNDO, no fuso do chefe (config), todos os dias."""
+
+    @pytest.mark.parametrize(
+        "hora,esperado",
+        [(0, False), (8, False), (9, True), (13, True), (17, True), (18, False), (23, False)],
+    )
+    def test_faixa_de_9_as_18_inicio_inclusive_fim_exclusivo(self, hora, esperado):
+        from zoneinfo import ZoneInfo
+        h = datetime(2026, 10, 27, hora, 30, tzinfo=ZoneInfo("America/Sao_Paulo"))
+        assert relogio.em_expediente(h) is esperado
+
+    def test_le_a_hora_no_fuso_do_chefe_nao_em_utc(self):
+        # 12:00 UTC = 09:00 em São Paulo: já é expediente; 11:59 UTC (08:59) não
+        assert relogio.em_expediente(datetime(2026, 10, 27, 12, 0, tzinfo=UTC)) is True
+        assert relogio.em_expediente(datetime(2026, 10, 27, 11, 59, tzinfo=UTC)) is False
+
+    def test_todos_os_dias_sao_iguais_sem_fim_de_semana(self):
+        from zoneinfo import ZoneInfo
+        sabado = datetime(2026, 10, 31, 10, 0, tzinfo=ZoneInfo("America/Sao_Paulo"))
+        domingo = datetime(2026, 11, 1, 10, 0, tzinfo=ZoneInfo("America/Sao_Paulo"))
+        assert sabado.weekday() == 5 and domingo.weekday() == 6
+        assert relogio.em_expediente(sabado) and relogio.em_expediente(domingo)
+
+    def test_horas_vem_do_config(self, monkeypatch):
+        from zoneinfo import ZoneInfo
+        monkeypatch.setattr(relogio.settings, "expediente_inicio", 10)
+        monkeypatch.setattr(relogio.settings, "expediente_fim", 12)
+        assert relogio.em_expediente(datetime(2026, 10, 27, 9, 30, tzinfo=ZoneInfo("America/Sao_Paulo"))) is False
+        assert relogio.em_expediente(datetime(2026, 10, 27, 11, 30, tzinfo=ZoneInfo("America/Sao_Paulo"))) is True
+
+    def test_expediente_agora_usa_a_hora_do_mundo(self):
+        """Fator 24: 1 min real = 24 min do mundo. Começando às 10h do mundo, o expediente acaba (18h) 8h depois,
+        ou seja, 20 min reais depois."""
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+        t0 = datetime(2026, 10, 27, 10, 0, tzinfo=ZoneInfo("America/Sao_Paulo"))  # real e mundo começam às 10h
+        relogio.obter_relogio(agora=t0)
+        assert relogio.expediente_agora(agora=t0) is True
+        assert relogio.expediente_agora(agora=t0 + timedelta(minutes=19)) is True    # mundo 17:36
+        assert relogio.expediente_agora(agora=t0 + timedelta(minutes=20)) is False   # mundo 18:00, fim exclusivo
+
+
 class TestBanco:
     def test_primeira_leitura_cria_o_relogio_com_o_fator_do_config(self):
         r = relogio.obter_relogio(agora=ANCORA_REAL)

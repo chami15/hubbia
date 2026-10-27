@@ -1,6 +1,10 @@
 """Testes do motor de tick — Etapa 1 (fundação): relógio simulado, sem
 nenhum comportamento de agente ainda. Zero chamada de LLM em toda a
 suíte, condizente com o escopo real dessa etapa."""
+from unittest.mock import patch
+
+import pytest
+
 import resolvers.tick as tick
 from tests.helpers import registrar_gasto
 from utils.query_executor import executar_query
@@ -33,18 +37,38 @@ class TestRelogioSimulado:
         atual = tick.obter_tick_atual()
         assert atual["numero"] == 1
 
-    def test_segundo_tick_incrementa_numero_e_avanca_hora_simulada(self):
-        from datetime import datetime
-
+    def test_segundo_tick_incrementa_numero(self):
         primeiro = tick.avancar_tick()
         segundo = tick.avancar_tick()
         assert segundo["numero"] == primeiro["numero"] + 1
 
-        hora_1 = datetime.fromisoformat(primeiro["hora_simulada"])
-        hora_2 = datetime.fromisoformat(segundo["hora_simulada"])
-        diferenca_minutos = (hora_2 - hora_1).total_seconds() / 60
-        from config import settings
-        assert diferenca_minutos == settings.tick_minutos_simulados
+    def test_hora_do_tick_e_a_hora_do_mundo_no_instante_dele_nao_um_passo_fixo(self):
+        """Sprint 2 (fase C): o tick não tem hora própria. Antes cada tick somava `tick_minutos_simulados` (60 min)
+        à hora do anterior; agora grava a hora do relógio do mundo naquele instante, e dois ticks seguidos
+        saem com a hora que o relógio mandar, sem relação com um passo fixo."""
+        from datetime import datetime, timezone
+        h1 = datetime(2026, 10, 27, 9, 0, tzinfo=timezone.utc)
+        h2 = datetime(2026, 10, 27, 9, 7, tzinfo=timezone.utc)  # 7 min depois, não 60
+
+        with patch("resolvers.tick.relogio.hora_atual", side_effect=[h1, h2]):
+            primeiro = tick.avancar_tick()
+            segundo = tick.avancar_tick()
+
+        assert datetime.fromisoformat(primeiro["hora_simulada"]) == h1
+        assert datetime.fromisoformat(segundo["hora_simulada"]) == h2
+
+    def test_origem_padrao_e_manual_e_fica_gravada(self):
+        tick.avancar_tick()
+        assert tick.obter_tick_atual()["origem"] == "manual"
+
+    def test_origem_automatico_fica_gravada(self):
+        tick.avancar_tick(origem="automatico")
+        assert tick.obter_tick_atual()["origem"] == "automatico"
+
+    def test_origem_desconhecida_e_recusada_e_nao_grava(self):
+        with pytest.raises(ValueError):
+            tick.avancar_tick(origem="cron")
+        assert tick.obter_tick_atual() is None
 
     def test_dry_run_nao_persiste_nada(self):
         resultado = tick.avancar_tick(dry_run=True)

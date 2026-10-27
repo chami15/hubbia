@@ -53,6 +53,17 @@ def definir_fator(fator: float, agora: datetime | None = None) -> dict:
     return obter_relogio(agora)
 
 
+def em_expediente(hora: datetime) -> bool:
+    """9h às 18h DO MUNDO (início inclusive, fim exclusivo), no fuso do chefe. Todos os dias são iguais: não há
+    fim de semana (decisão do chefe: são agentes). Horas em `expediente_inicio`/`expediente_fim` do config."""
+    h = hora.astimezone(ZoneInfo(settings.timezone_padrao)).hour
+    return settings.expediente_inicio <= h < settings.expediente_fim
+
+
+def expediente_agora(agora: datetime | None = None) -> bool:
+    return em_expediente(hora_atual(agora))
+
+
 def descrever(agora: datetime | None = None) -> dict:
     """O que o frontend precisa para fazer a mesma conta sozinho (e corrigir a diferença de relógio com o servidor).
 

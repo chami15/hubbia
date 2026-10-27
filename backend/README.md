@@ -275,6 +275,7 @@ resolvers/                 # regra de negócio (o router chama isso, nunca o ban
                               # ficha de treino, plano de dieta, relatório semanal
   norte.py                     # projetos + cards — guardrail de "só 1 card ativo
                                # por vez" checado antes de qualquer chamada de LLM
+  tick_automatico.py            # POST /tick/automatico: decide se o timer do app pode rodar (limites + motivo de recusa)
   relogio.py                    # relógio do mundo (migration 013) + expediente 9–18 do mundo; o tick grava
                                 # a hora do mundo e a origem (manual|automatico, migration 014)
   infra.py                      # Motriz (sem LLM): observabilidade e orçamento

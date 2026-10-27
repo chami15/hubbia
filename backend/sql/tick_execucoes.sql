@@ -139,3 +139,13 @@ FROM tick_execucoes e
 JOIN agentes a ON a.id = e.agente_id
 WHERE e.dry_run = FALSE
 GROUP BY a.especialidade, a.nome;
+
+--QUERY: custo_automatico_desde
+-- O que os ticks AUTOMÁTICOS gastaram desde um instante: é a "fatia do orçamento do automático" (0,75 do teto).
+-- Gasto manual (do chefe) e ações fora de tick (tick NULL) não entram: é a reserva dele. dry_run nunca conta.
+SELECT COALESCE(SUM(e.custo_usd), 0) AS total
+FROM tick_execucoes e
+JOIN ticks t ON t.numero = e.tick
+WHERE t.origem = 'automatico'
+  AND e.criado_em >= %s
+  AND e.dry_run = FALSE;

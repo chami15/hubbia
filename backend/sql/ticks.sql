@@ -13,3 +13,13 @@ RETURNING id, numero, hora_simulada, estado_mundo, processado_em, origem;
 -- sobre 5 tabelas de domínio. Foi aposentada — mora agora em
 -- `tick_execucoes:custo_gasto_hoje`, sobre uma tabela só. O motivo está
 -- no comentário daquela query e em agents/_shared/execucoes.py.)
+
+--QUERY: automaticos_desde
+-- Quantos ticks automáticos rodaram desde um instante, e quando foi o último (mede o intervalo mínimo).
+SELECT COUNT(*) AS total, MAX(processado_em) AS ultimo
+FROM ticks
+WHERE origem = 'automatico'
+  AND processado_em >= %s;
+
+--QUERY: ultimo_automatico
+SELECT MAX(processado_em) AS ultimo FROM ticks WHERE origem = 'automatico';

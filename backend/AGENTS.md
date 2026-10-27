@@ -14,6 +14,7 @@ db/migrations/NNN_*.sql schema. Aditivas e imutáveis. `scripts/migrate.py` apli
 utils/                  infra compartilhada. Mudou aqui? Teste TODOS os agentes, não só o que motivou.
 ```
 
+- **Nunca `%` em comentário de `sql/*.sql`** (nem "75%"): o psycopg trata como placeholder e a query quebra com "incomplete placeholder". Escreva "0,75" ou "por cento".
 - Parâmetros do SQL sempre por `params=(...)` (`%s`). `**kwargs` do `executar_query` interpola identificador **interno**, nunca dado de fora.
 - `returning=True` para INSERT/UPDATE com `RETURNING`; `commit=True` devolve linhas afetadas; sem flag devolve as linhas do SELECT.
 - Mapeamento de erro nos routers: não encontrado → **404**, conflito de estado (já aceito, card ativo existe) → **409**, entrada inválida/falha de LLM → **422**.

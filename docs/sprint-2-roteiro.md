@@ -350,7 +350,7 @@ O fator mexe **só** no relógio (céu, luz, "dormindo", janela de expediente). 
 | C1 | ✅ Migration 013, relógio puro, `GET /relogio` e `PUT /relogio/fator` e testes | backend |
 | C2 | ✅ Frontend lê o relógio: céu, luz, dormindo e relógio do topo | frontend |
 | C3 | ✅ Expediente (função e config) e `ticks.origem` (migration 014); o tick passa a gravar a hora do mundo | backend |
-| C4 | `POST /tick/automatico` com os limites e os motivos de recusa | backend |
+| C4 | ✅ `POST /tick/automatico` com os limites e os motivos de recusa | backend |
 | C5 | Toggle, timer e aviso de parada no frontend | frontend |
 | C6 | `AGENTS.md` (princípio 2), docs e mapa | docs |
 

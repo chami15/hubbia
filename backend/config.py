@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     expediente_inicio: int = 9
     expediente_fim: int = 18
 
+    # Tick automático (opt-in no app; o backend garante os limites): 1 rodada a cada N min REAIS, no máximo M por dia real,
+    # gastando no máximo `fatia` do teto diário. O resto do teto fica de reserva para o que o chefe pedir na hora.
+    tick_automatico_intervalo_min: int = 5
+    tick_automatico_max_dia: int = 40
+    tick_automatico_fatia_orcamento: float = 0.75
+
     # Controle de custo
     orcamento_diario_usd: float = 1.0
 

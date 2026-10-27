@@ -5,6 +5,7 @@ quiser "avançar o tempo"), nunca automático nessa versão.
 from fastapi import APIRouter, Query
 
 from resolvers import tick as resolver
+from resolvers import tick_automatico
 
 router = APIRouter(prefix="/tick", tags=["tick"])
 
@@ -30,3 +31,10 @@ def obter_orcamento_do_dia():
         "gasto_hoje": round(resolver.orcamento_gasto_hoje(), 6),
         "disponivel_hoje": round(resolver.orcamento_disponivel_hoje(), 6),
     }
+
+
+@router.post("/automatico")
+async def tick_automatico_endpoint():
+    """O timer do app pede uma rodada. Recusa também é 200 (resultado esperado, não erro): o corpo diz
+    `executado`, o `motivo` e se o app deve `parar` (ver resolvers/tick_automatico.py)."""
+    return await tick_automatico.tentar_tick_automatico()

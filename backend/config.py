@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     tick_intervalo_min: int = 15
     tick_minutos_simulados: int = 60
 
+    # Relógio do mundo (só ambiente: céu, luz, expediente; não custa nada). 1 min real = `relogio_fator` min do mundo:
+    # 24 faz o dia do mundo durar 1 hora real. Trocável em runtime por PUT /relogio/fator (aqui é só o valor inicial).
+    relogio_fator: float = 24.0
+
     # Controle de custo
     orcamento_diario_usd: float = 1.0
 

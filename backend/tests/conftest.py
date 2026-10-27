@@ -32,7 +32,7 @@ MIGRATIONS_DIR = pathlib.Path(__file__).resolve().parent.parent / "db" / "migrat
 # pra nenhum depender de estado deixado por outro (isolamento).
 _TABELAS = [
     "agentes", "memorias", "relacionamentos", "mensagens", "eventos_mundo",
-    "ticks", "tick_execucoes",
+    "ticks", "tick_execucoes", "relogio_mundo",
     "extratos_importados", "transacoes", "relatorios_financeiros",
     "acoes_pendentes", "conversa_agenda",
     "perfil_saude", "peso_historico", "hidratacao_historico", "sono_historico",

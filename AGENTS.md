@@ -2,7 +2,7 @@
 
 Hub pessoal de agentes de IA especializados que simulam colegas num escritório:
 **Cifra** (financeiro), **Agenda**, **Vita** (saúde), **Norte** (projetos GitHub), **Motriz** (sala de máquinas, o único sem LLM).
-Backend FastAPI + Postgres + LangChain/OpenAI, com um motor de *tick* manual. Frontend React 19 + Vite + TanStack Query.
+Backend FastAPI + Postgres + LangChain/OpenAI, com um motor de *tick* (manual, ou automático opt-in). Frontend React 19 + Vite + TanStack Query.
 **Uma pessoa só usa** (o "chefe"): single-user é deliberado, não esqueça de multiusuário.
 
 > Este arquivo é lido em toda conversa: só entra o que um agente erraria sem saber. Detalhe fica em `docs/` e nos
@@ -21,7 +21,8 @@ Backend FastAPI + Postgres + LangChain/OpenAI, com um motor de *tick* manual. Fr
    explícito do chefe (nunca assuma). Correção pontual e refactor que ele pediu: faça direto.
 2. **Custo de LLM é requisito.** LLM só onde há estimativa/síntese real; chamada estruturada única por padrão; **nunca retry
    automático**; checagem determinística *antes* de gastar; todo gasto entra em `tick_execucoes`; nada dispara LLM sozinho
-   (upload, abrir tela, timer) e o tick é sempre manual.
+   (upload, abrir tela). **Única exceção, decidida pelo chefe:** o tick automático (botão "auto", desligado a cada carregamento),
+   só com o app aberto, no expediente e sob limites que o **backend** garante (`resolvers/tick_automatico.py`). Fora isso o tick é manual.
 3. **Sistema externo real** (Google Calendar etc.) só com confirmação humana (`acoes_pendentes`). Escrita só no banco próprio, não.
 4. **Custo nunca aparece na UI** (modelo, tokens, `custo_usd`), mas é sempre gravado.
 5. **Chat livre não é o padrão.** Cada agente usa a interação mais barata que o domínio permite (dashboard, forms, cards, chat roteado).

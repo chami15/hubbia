@@ -262,9 +262,12 @@ enquanto) já existem e estão testados. O que já dá pra prever sobre o
 frontend, pra não ficar refazendo depois:
 
 **Relógio simulado**
-- Disparo é sempre manual (`POST /tick/avancar`), nunca automático
-  nesta fase — precisa de um controle explícito na UI (botão "avançar
-  tempo"), não um timer rodando sozinho.
+- Disparo manual (`POST /tick/avancar`, botão "avançar tick") **ou**
+  automático opt-in (botão "auto", `POST /tick/automatico`), que o chefe
+  liga e que começa desligado a cada carregamento. O timer só roda com o
+  app aberto e a aba visível; quem decide se pode é o backend (expediente
+  9–18 do mundo, orçamento, 40 por dia real, 75% do teto, intervalo de 5
+  min) e a recusa volta com o motivo (Sprint 2, Parte 2b do roteiro).
 - Suporte a `dry_run`: a UI deveria deixar claro quando está só
   "conferindo" (calcula e mostra o que aconteceria) vs. de fato
   avançando e gravando.
@@ -274,9 +277,8 @@ frontend, pra não ficar refazendo depois:
 - Exibir orçamento diário gasto/disponível (`GET /tick/orcamento`) —
   visível pro chefe, ao contrário do custo por ação individual (que
   nunca aparece, ver RNF02).
-- Backlog: automação completa do relógio (rodar sozinho em intervalo)
-  fica pra depois, com visão de um botão + contador regressivo na UI
-  em vez do disparo manual atual.
+- Automação do relógio: feita como **tick automático opt-in** (botão "auto", ver "Disparo" acima). Ainda fora: contador
+  regressivo até o próximo tick na UI (melhoria futura, não bloqueia nada).
 
 **Construído — 1ª versão (cartão flutuante do relógio):** o relógio
 viveu um tempo como um cartão sozinho no canto inferior esquerdo, com
@@ -662,9 +664,11 @@ são o que a API já suporta e o frontend precisa cobrir.
 - **RNF08 (2D primeiro):** interface inicial é 2D (cartões/painéis), sem
   biblioteca gráfica pesada — 3D é evolução posterior, não bloqueia o
   resto (ver `avaliacao-mvp.md`).
-- **RNF09 (tick sempre manual):** nenhuma automação de relógio nesta
-  fase — todo avanço de tick é uma ação deliberada do chefe, mesma
-  disciplina do RNF01 aplicada ao próprio motor de interação.
+- **RNF09 (tick deliberado):** todo avanço de tick é uma ação deliberada
+  do chefe: o botão manual, ou o **liga/desliga do automático** (que
+  começa desligado e é opt-in). Revisado em 2026-10-27 (antes: "sempre
+  manual"); a mesma disciplina do RNF01, agora com limites garantidos no
+  backend em vez de só no gesto.
 
 ---
 

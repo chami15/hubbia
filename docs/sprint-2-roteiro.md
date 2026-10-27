@@ -352,7 +352,7 @@ O fator mexe **só** no relógio (céu, luz, "dormindo", janela de expediente). 
 | C3 | ✅ Expediente (função e config) e `ticks.origem` (migration 014); o tick passa a gravar a hora do mundo | backend |
 | C4 | ✅ `POST /tick/automatico` com os limites e os motivos de recusa | backend |
 | C5 | ✅ Toggle "auto", timer e aviso de parada no frontend | frontend |
-| C6 | `AGENTS.md` (princípio 2), docs e mapa | docs |
+| C6 | ✅ `AGENTS.md` (princípio 2), docs e mapa | docs |
 
 ### O que fica de fora
 Fase E (rotinas e movimento do prédio) continua separada e depende só do relógio (C1–C2). Departamentos e esteira (Fase D) ficam depois: precisam do custo médio real por tick, que o tick automático vai gerar.

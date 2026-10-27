@@ -43,6 +43,11 @@ class TestExecuta:
         assert r["tick"]["numero"] == 1 and r["rodada"]["tick"] == 1
         assert tick.obter_tick_atual()["origem"] == "automatico"
 
+    async def test_sucesso_diz_em_quantos_segundos_o_app_deve_voltar(self, monkeypatch):
+        """O intervalo mora só no config do backend; o app não repete o número."""
+        monkeypatch.setattr(auto.settings, "tick_automatico_intervalo_min", 7)
+        assert (await _rodar())["proximo_em_s"] == 420
+
 
 class TestTravas:
     async def test_fora_do_expediente_recusa_e_manda_parar(self, _dentro_do_expediente):

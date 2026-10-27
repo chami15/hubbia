@@ -62,4 +62,4 @@ async def tentar_tick_automatico() -> dict:
 
     resultado_tick = tick.avancar_tick(origem="automatico")
     rodada = await interacao.processar_tick_completo()
-    return {"executado": True, "tick": resultado_tick, "rodada": rodada}
+    return {"executado": True, "tick": resultado_tick, "rodada": rodada, "proximo_em_s": settings.tick_automatico_intervalo_min * 60}

@@ -19,6 +19,9 @@ import { definirDryRunAtivo, dryRunEstaAtivo, lerPreviewSalva, salvarPreview } f
 import { somAtivo, tocarSom } from './som'
 import { mensagemDeErro } from '../../api/client'
 import { BolhaVita } from '../saude/BolhaVita'
+import { useRelogioMundo } from '../../hooks/useRelogio'
+import { horaDoDia, horaDoMundoMs, horaLocalDoNavegador } from '../predio/relogioDoMundo'
+import { RelogioDoTopo } from './RelogioDoTopo'
 import type { RodadaProcessada } from '../../types/interacao'
 
 // A tela do hub: a barra do topo (marca, relógio simulado e as ações) e, embaixo, o PRÉDIO — cada agente na sua
@@ -34,12 +37,6 @@ type Painel =
   | { tipo: 'configuracoes' }
   | { tipo: 'maquinas' }
   | { tipo: 'predio'; vaga?: number }
-
-/** Hora (0–24) da hora simulada ISO, sem passar pelo fuso do navegador: é a hora do mundo, não a do relógio. */
-function horaDoMundo(iso: string | null | undefined): number | null {
-  const m = iso?.match(/T(\d{2}):(\d{2})/)
-  return m ? Number(m[1]) + Number(m[2]) / 60 : null
-}
 
 export function Escritorio() {
   const hospedeiroRef = useRef<HTMLDivElement>(null)
@@ -99,7 +96,21 @@ export function Escritorio() {
     return () => m.destruir()
   }, [abrirAgente])
 
-  const hora = horaDoMundo(tick?.hora_simulada) ?? new Date().getHours() + new Date().getMinutes() / 60
+  // Hora do mundo: conta sobre o tempo real (ver relogioDoMundo.ts). O prédio recebe a hora com fração a cada segundo
+  // (o céu muda aos poucos); o React só guarda a hora CHEIA, que é o que o status ("dormindo") precisa, para a tela
+  // não re-renderizar a cada segundo. Sem backend, cai no relógio do navegador.
+  const { data: relogioMundo } = useRelogioMundo()
+  const [horaCheia, setHoraCheia] = useState(() => Math.floor(horaLocalDoNavegador()))
+  useEffect(() => {
+    const aplicar = () => {
+      const h = relogioMundo ? horaDoDia(horaDoMundoMs(relogioMundo, Date.now()), relogioMundo.fusoMin) : horaLocalDoNavegador()
+      mundo?.definirHora(h)
+      setHoraCheia(Math.floor(h))
+    }
+    aplicar()
+    const t = setInterval(aplicar, 1000)
+    return () => clearInterval(t)
+  }, [mundo, relogioMundo])
 
   // Ponte entre o dado (GET /agentes e mensagens, por id numérico e especialidade) e o prédio (id local).
   const status = useMemo(() => {
@@ -112,13 +123,12 @@ export function Escritorio() {
       const aoVivo = local.especialidade ? agentesAoVivo?.find((a) => a.especialidade === local.especialidade) : undefined
       // agente conceito (ou backend fora do ar): fica trabalhando de mentira, só para o prédio ter vida
       if (!aoVivo) continue
-      mapa.set(local.id, statusNoPredio(aoVivo.estado, remetentesComNaoLida.has(aoVivo.id), hora))
+      mapa.set(local.id, statusNoPredio(aoVivo.estado, remetentesComNaoLida.has(aoVivo.id), horaCheia))
     }
     return mapa
-  }, [agentesAoVivo, mensagens, hora])
+  }, [agentesAoVivo, mensagens, horaCheia])
 
   useEffect(() => mundo?.definirStatus(status), [mundo, status])
-  useEffect(() => mundo?.definirHora(hora), [mundo, hora])
   // com o atalho aberto, o personagem fica parado: a bolha está ancorada nele
   useEffect(() => {
     mundo?.congelar(atalho)
@@ -194,7 +204,6 @@ export function Escritorio() {
     setAtalho(null)
     setPainel((atual) => (atual?.tipo === p.tipo ? null : p))
   }
-  const relogio = hora === null ? '--:--' : `${String(Math.floor(hora)).padStart(2, '0')}:${String(Math.floor((hora % 1) * 60)).padStart(2, '0')}`
 
   return (
     <div style={{ width: '100vw', height: '100dvh', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--void)', fontFamily: 'var(--fonte-display), ui-monospace, monospace', color: 'var(--ink)' }}>
@@ -216,7 +225,7 @@ export function Escritorio() {
         </div>
 
         <div title="relógio simulado do motor de tick" style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12, color: 'var(--ink-dim)' }}>
-          <span style={{ fontSize: 15, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{relogio}</span>
+          <RelogioDoTopo relogio={relogioMundo} />
           <span>tick {tick?.numero ?? '—'}</span>
           {dryRunAtivo && <span style={{ color: 'var(--official)' }}>· modo simulado</span>}
         </div>

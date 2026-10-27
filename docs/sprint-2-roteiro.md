@@ -268,7 +268,7 @@ Fase D dobra a superfície. Medir depois de dobrar é medir tarde.*
 
 B2 depende de B1. B3 depende dos dois.
 
-### Fase C — Tempo simulado
+### Fase C — Tempo simulado (**substituída pela Parte 2b: relógio do mundo + tick automático**)
 
 *Por que antes do departamento: o expediente é o guardrail de custo que
 torna vários departamentos viáveis dentro de USD 1/dia (1.5).*
@@ -304,6 +304,58 @@ fantasia por real gasto (1.2).*
 | E1 | Rotina determinística por hora simulada (tabela de horário por agente) |
 | E2 | Deslocamento visual entre móveis (ida à copa, volta pra mesa) |
 | E3 | Ocupação visível do departamento — quantos itens em cada estágio da esteira |
+
+---
+
+## Parte 2b — Fase C redesenhada: relógio do mundo e tick automático (decidida em 2026-10-27)
+
+> Decidido com o chefe; **o desenho técnico abaixo ainda precisa do "pode" para implementar.** Substitui C1–C3 acima.
+
+### Decisões fechadas
+
+| Tema | Decisão |
+|---|---|
+| Regra "tick sempre manual" | **Relaxada** pelo chefe: tick automático **opt-in**, com as travas abaixo. O `AGENTS.md` (princípio 2) é atualizado junto com o código. |
+| Fator do relógio | **24** (1 min real = 24 min do mundo; 1 dia do mundo = 1 h real). Se ficar acelerado demais, desce para **12**. É uma constante, trocar não refaz nada. |
+| Expediente | **9h às 18h do mundo** = 22,5 min reais por dia do mundo. Todos os dias são iguais (sem fim de semana). |
+| O que é um tick | Uma **rodada de interação** entre os agentes. **Não tem hora própria** (acaba a ideia de "1 tick = 1 hora"). |
+| Tick automático | A cada **5 min reais** |
+| Teto de ticks automáticos | **40 por dia real** |
+| Fatia do orçamento do automático | **75% do teto diário** (os 25% restantes ficam para o que o chefe pedir na hora: Agenda, relatórios) |
+
+O fator mexe **só** no relógio (céu, luz, "dormindo", janela de expediente). O custo é controlado por três limites diretos (intervalo, ticks por dia, fatia do orçamento), todos em tempo e dinheiro **reais**: o orçamento nunca é por dia simulado.
+
+### Três camadas
+
+| Camada | Custo | Como roda |
+|---|---|---|
+| Relógio e ambiente (céu, luz, dormindo) | zero | conta sobre o tempo real, sem processo rodando |
+| Vida do prédio (rotinas, andar, conversar com balão) | zero | tabela de horário pela hora do mundo (Fase E) |
+| Tick (trabalho e mensagem por LLM) | LLM | automático opt-in sob as travas, ou botão manual |
+
+### Desenho técnico
+
+1. **Relógio puro.** `hora_do_mundo = ancora_mundo + (agora_real − ancora_real) × fator`. Tabela singleton `relogio_mundo (ancora_real, ancora_mundo, fator)` (migration 013) e `GET /relogio`. Trocar o fator **rebasa a âncora** para a hora atual do mundo (sem saltos). A conta é função pura nos dois lados (backend e frontend), com os mesmos vetores de teste.
+2. **Expediente** é uma função pura `em_expediente(hora_do_mundo)`; as horas (9 e 18) ficam em `config.py`.
+3. **`ticks.origem`** (`manual` | `automatico`) na mesma migration; `ticks.hora_simulada` passa a guardar "a hora do mundo naquele instante" e `tick_minutos_simulados` deixa de existir. A fatia do automático é a soma do custo das execuções dos ticks com `origem = 'automatico'`.
+4. **O backend é quem garante os limites**, não o frontend. O tick automático recusa, com **motivo explícito**, se: fora do expediente; menos de 5 min desde o último automático; já houve 40 automáticos no dia real; o automático já gastou 75% do teto; ou o teto total do dia acabou.
+5. **Frontend dispara o timer** (só com o app aberto e a aba visível): quando o backend recusa, o toggle desliga sozinho e um aviso diz por quê. Fechou o app, parou de gastar.
+6. **Toggle de tick automático**: começa **desligado a cada carregamento** da página (padrão seguro), só o chefe liga. O botão "avançar tick" manual continua e ignora o expediente (o chefe pode forçar), mas obedece ao teto total.
+7. **Visual:** céu, luz e "dormindo" passam a ler a hora do mundo calculada localmente; o relógio do topo mostra a hora do mundo.
+
+### Fatias de entrega (um commit por item, testes junto)
+
+| # | Entrega | Camada |
+|---|---|---|
+| C1 | Migration 013, relógio puro, `GET /relogio` e testes | backend |
+| C2 | Frontend lê o relógio: céu, luz, dormindo e relógio do topo | frontend |
+| C3 | Expediente (função e config) e `ticks.origem` | backend |
+| C4 | `POST /tick/automatico` com os limites e os motivos de recusa | backend |
+| C5 | Toggle, timer e aviso de parada no frontend | frontend |
+| C6 | `AGENTS.md` (princípio 2), docs e mapa | docs |
+
+### O que fica de fora
+Fase E (rotinas e movimento do prédio) continua separada e depende só do relógio (C1–C2). Departamentos e esteira (Fase D) ficam depois: precisam do custo médio real por tick, que o tick automático vai gerar.
 
 ---
 
@@ -636,6 +688,8 @@ Registrado com o porquê, no mesmo espírito do `backlog-futuro.md`:
 ---
 
 ## Decisões que dependem do chefe antes de começar
+
+> **Atualização (2026-10-27):** a 4 (expediente) e a ordem das fases foram decididas na Parte 2b; a 1 (escala das salas) não se aplica mais ao prédio pixel. Seguem abertas a 2 e a 3 (marketing).
 
 1. **Teto da escala global das salas** (A4): 16, 20 ou 24? Define quanto
    o escritório atual encolhe (11%, 27% ou 38%).

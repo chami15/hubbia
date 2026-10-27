@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import * as apiTick from '../api/tick'
 import * as apiInteracao from '../api/interacao'
 import { mensagemDeErro } from '../api/client'
@@ -19,6 +19,14 @@ export interface ResultadoAvancoMundo {
   // vez de derrubar o avanço inteiro.
   rodada: RodadaProcessada | null
   avisoRodada?: string
+}
+
+/** O que muda depois de um tick de verdade (manual ou automático): tudo que a tela mostra do mundo. */
+export function invalidarDepoisDoTick(cliente: QueryClient) {
+  void cliente.invalidateQueries({ queryKey: ['tick', 'atual'] })
+  void cliente.invalidateQueries({ queryKey: ['tick', 'orcamento'] })
+  void cliente.invalidateQueries({ queryKey: ['agentes'] })
+  void cliente.invalidateQueries({ queryKey: ['mensagens'] })
 }
 
 export function useAvancarMundo() {
@@ -44,10 +52,7 @@ export function useAvancarMundo() {
     onSuccess: (_resultado, dryRun) => {
       // dry_run não gasta nem grava nada — nenhuma query real mudou
       if (dryRun) return
-      void cliente.invalidateQueries({ queryKey: ['tick', 'atual'] })
-      void cliente.invalidateQueries({ queryKey: ['tick', 'orcamento'] })
-      void cliente.invalidateQueries({ queryKey: ['agentes'] })
-      void cliente.invalidateQueries({ queryKey: ['mensagens'] })
+      invalidarDepoisDoTick(cliente)
     },
   })
 }

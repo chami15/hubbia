@@ -26,3 +26,17 @@ export interface OrcamentoDiario {
   gasto_hoje: number
   disponivel_hoje: number
 }
+
+// POST /tick/automatico (backend/resolvers/tick_automatico.py). Recusa também chega como 200: é resultado esperado.
+export type MotivoRecusaTick = 'fora_do_expediente' | 'orcamento_esgotado' | 'limite_diario' | 'fatia_orcamento' | 'cedo_demais'
+
+export type RespostaTickAutomatico =
+  | { executado: true; tick: TickAvancado; rodada: import('./interacao').RodadaProcessada; proximo_em_s: number }
+  | {
+      executado: false
+      motivo: MotivoRecusaTick
+      mensagem: string
+      // true = o app desliga o toggle e avisa; false (só "cedo_demais") = só espera `espera_s` e tenta de novo
+      parar: boolean
+      espera_s: number | null
+    }

@@ -20,6 +20,7 @@ import { somAtivo, tocarSom } from './som'
 import { mensagemDeErro } from '../../api/client'
 import { BolhaVita } from '../saude/BolhaVita'
 import { useRelogioMundo } from '../../hooks/useRelogio'
+import { useTickAutomatico } from '../../hooks/useTickAutomatico'
 import { horaDoDia, horaDoMundoMs, horaLocalDoNavegador } from '../predio/relogioDoMundo'
 import { RelogioDoTopo } from './RelogioDoTopo'
 import type { RodadaProcessada } from '../../types/interacao'
@@ -57,6 +58,8 @@ export function Escritorio() {
   const [atalho, setAtalho] = useState<AgenteId | null>(null)
   const areaRef = useRef<HTMLElement>(null)
   const [dryRunAtivo, setDryRunAtivoState] = useState(dryRunEstaAtivo)
+  // tick automático: SEMPRE começa desligado ao carregar a página (padrão seguro); só o chefe liga. Não é lembrado entre sessões.
+  const [autoLigado, setAutoLigado] = useState(false)
   const [ultimoResultado, setUltimoResultado] = useState<ResultadoAvancoMundo | null>(() =>
     dryRunEstaAtivo() ? lerPreviewSalva() : null,
   )
@@ -171,6 +174,16 @@ export function Escritorio() {
     }
   }
 
+  // o modo simulado (dry_run) é para conferir sem gastar: automático real ficaria contraditório, então fica desligado nele
+  useTickAutomatico({
+    ligado: autoLigado && !dryRunAtivo,
+    aoRodar: (r) => notificarResultadoDaRodada(r.rodada),
+    aoParar: (mensagem) => {
+      setAutoLigado(false)
+      notificar({ tipo: 'aviso', titulo: 'tick automático', texto: mensagem })
+    },
+  })
+
   function aoClicarAvancar() {
     avancar.mutate(dryRunAtivo, {
       onSuccess: (resultado) => {
@@ -243,6 +256,36 @@ export function Escritorio() {
           <BotaoBarra titulo="sala de máquinas" ativo={painel?.tipo === 'maquinas'} onClick={() => alternar({ tipo: 'maquinas' })}>
             <IconeSalaDeMaquinas tamanho={18} />
           </BotaoBarra>
+          <button
+            onClick={() => setAutoLigado((v) => !v)}
+            disabled={dryRunAtivo}
+            aria-pressed={autoLigado && !dryRunAtivo}
+            title={
+              dryRunAtivo
+                ? 'tick automático indisponível no modo simulado'
+                : autoLigado
+                  ? 'tick automático ligado: uma rodada de tempos em tempos, só no expediente e sob o orçamento. Clique para desligar'
+                  : 'ligar o tick automático (desligado por padrão)'
+            }
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              height: 34,
+              padding: '0 11px',
+              borderRadius: 8,
+              border: `1px solid ${autoLigado && !dryRunAtivo ? 'rgba(var(--accent-rgb), 0.5)' : 'var(--deck-line)'}`,
+              background: autoLigado && !dryRunAtivo ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
+              color: autoLigado && !dryRunAtivo ? 'var(--accent)' : 'var(--ink)',
+              font: 'inherit',
+              fontSize: 12,
+              cursor: dryRunAtivo ? 'default' : 'pointer',
+              opacity: dryRunAtivo ? 0.45 : 1,
+            }}
+          >
+            {autoLigado && !dryRunAtivo && <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', animation: 'consolePing 1.8s cubic-bezier(.4,0,.6,1) infinite' }} />}
+            auto
+          </button>
           <button
             onClick={aoClicarAvancar}
             disabled={avancar.isPending}

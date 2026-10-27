@@ -1,6 +1,6 @@
 // Chamadas do relógio simulado — espelha backend/routers/tick.py.
 import { api } from './client'
-import type { OrcamentoDiario, TickAtual, TickAvancado } from '../types/tick'
+import type { OrcamentoDiario, RespostaTickAutomatico, TickAtual, TickAvancado } from '../types/tick'
 
 export async function obterTickAtual(): Promise<TickAtual> {
   return (await api.get<TickAtual>('/tick/atual')).data
@@ -16,4 +16,10 @@ export async function avancarTick(dryRun: boolean): Promise<TickAvancado> {
 
 export async function obterOrcamentoDoDia(): Promise<OrcamentoDiario> {
   return (await api.get<OrcamentoDiario>('/tick/orcamento')).data
+}
+
+// Uma rodada pedida pelo timer do app. O backend decide se pode (expediente, orçamento, limites) e responde 200 com
+// `executado` true ou false + motivo: recusa não é erro.
+export async function tickAutomatico(): Promise<RespostaTickAutomatico> {
+  return (await api.post<RespostaTickAutomatico>('/tick/automatico')).data
 }

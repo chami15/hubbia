@@ -73,6 +73,19 @@ class TestBanco:
             relogio.definir_fator(fator)
 
 
+class TestFuso:
+    def test_regressao_horarios_saem_no_fuso_do_chefe_nao_em_utc(self):
+        """O banco devolve timestamptz em UTC. Sem converter, o frontend lia a hora do dia em UTC: o céu e o
+        'dormindo' ficavam 3 horas errados para quem está em America/Sao_Paulo."""
+        agora = datetime(2026, 10, 27, 15, 0, tzinfo=UTC)  # 12h em São Paulo
+
+        d = relogio.descrever(agora=agora)
+
+        assert d["ancora_mundo"].endswith("-03:00") and d["ancora_real"].endswith("-03:00")
+        assert d["ancora_mundo"].startswith("2026-10-27T12:00:00")
+        assert d["hora_do_mundo"].startswith("2026-10-27T12:00:00")
+
+
 class TestHttp:
     def test_get_relogio_traz_tudo_que_o_frontend_precisa_para_calcular_sozinho(self, client):
         r = client.get("/relogio")

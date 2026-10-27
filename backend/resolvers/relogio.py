@@ -54,13 +54,21 @@ def definir_fator(fator: float, agora: datetime | None = None) -> dict:
 
 
 def descrever(agora: datetime | None = None) -> dict:
-    """O que o frontend precisa para fazer a mesma conta sozinho (e corrigir a diferença de relógio com o servidor)."""
+    """O que o frontend precisa para fazer a mesma conta sozinho (e corrigir a diferença de relógio com o servidor).
+
+    Os horários saem no FUSO DO CHEFE (`timezone_padrao`), não no UTC do banco: o frontend lê a hora do dia
+    direto do deslocamento que vem na string, então UTC aqui deixaria o céu 3 horas errado."""
     agora = agora or _agora()
     r = obter_relogio(agora)
+    fuso = ZoneInfo(settings.timezone_padrao)
+
+    def local(d: datetime) -> str:
+        return d.astimezone(fuso).isoformat()
+
     return {
-        "ancora_real": r["ancora_real"].isoformat(),
-        "ancora_mundo": r["ancora_mundo"].isoformat(),
+        "ancora_real": local(r["ancora_real"]),
+        "ancora_mundo": local(r["ancora_mundo"]),
         "fator": r["fator"],
-        "agora_real": agora.isoformat(),
-        "hora_do_mundo": hora_do_mundo(agora, r["ancora_real"], r["ancora_mundo"], r["fator"]).isoformat(),
+        "agora_real": local(agora),
+        "hora_do_mundo": local(hora_do_mundo(agora, r["ancora_real"], r["ancora_mundo"], r["fator"])),
     }

@@ -79,6 +79,25 @@ export interface AgenteVivo {
   parado: boolean;
   /** Últimas atividades (mais recente no fim): a rotina usa para não repetir e não ir à copa toda hora. */
   recentes: Feito[];
+  /**
+   * Almoço de hoje: undefined = ainda não almoçou; 'indo'/'comendo' na copa ou na dupla; 'saindo_fora' a caminho do
+   * elevador; 'fora' almoçando fora (invisível até as 13h); 'feito' já almoçou.
+   */
+  almoco?: 'indo' | 'comendo' | 'saindo_fora' | 'fora' | 'feito';
+  /** Acabou de almoçar na copa: a próxima decisão é voltar para a mesa (senão o "fica onde está" o deixava na copa). */
+  voltarDoAlmoco?: boolean;
+}
+
+/** Como o escritório almoça hoje: todos na copa, em duplas, ou fora (saem pelo elevador). Sorteado ao meio-dia. */
+export type ModoAlmoco = 'copa' | 'duplas' | 'fora';
+
+export interface EstadoAlmoco {
+  ativo: boolean;
+  /** Já houve almoço hoje (para o "almoço atrasado" de quem estava ocupado não disparar ao abrir o app às 13h30). */
+  houveHoje: boolean;
+  modo: ModoAlmoco;
+  /** Duplas de hoje (cada um aponta para o parceiro). */
+  pares: Map<AgenteId, AgenteId>;
 }
 
 export interface Simulacao {
@@ -89,6 +108,11 @@ export interface Simulacao {
   elevadorAbriu: [number, number];
   /** Avisado quando um agente dispensado entra no elevador e some. */
   aoSair: (id: AgenteId) => void;
+  /** Hora do MUNDO (0..24) que o prédio está vivendo; undefined até o relógio chegar (sem almoço). */
+  hora?: number;
+  almoco: EstadoAlmoco;
+  /** Só para teste: fixa o modo do almoço em vez de sortear. */
+  modoAlmocoFixo?: ModoAlmoco;
 }
 
 const entre = (rnd: () => number, [a, b]: [number, number]) => a + rnd() * (b - a);
@@ -96,7 +120,15 @@ const entre = (rnd: () => number, [a, b]: [number, number]) => a + rnd() * (b - 
 const tempo = (sim: Simulacao, a: AgenteVivo, faixa: [number, number]) => entre(sim.rnd, faixa) * personalidadeDe(a.def.id).ritmo;
 
 export function criarSimulacao(predio: Predio, aoSair: (id: AgenteId) => void): Simulacao {
-  return { predio, agentes: [], ocupado: new Map(), rnd: mulberry32(20261022), elevadorAbriu: [-1e9, -1e9], aoSair };
+  return {
+    predio, agentes: [], ocupado: new Map(), rnd: mulberry32(20261022), elevadorAbriu: [-1e9, -1e9], aoSair,
+    almoco: { ativo: false, houveHoje: false, modo: 'copa', pares: new Map() },
+  };
+}
+
+/** O prédio recebe a hora do mundo (mundo.ts manda a cada segundo). É o que dispara e encerra o almoço. */
+export function definirHoraDoMundo(sim: Simulacao, hora: number): void {
+  sim.hora = hora;
 }
 
 /**
@@ -152,6 +184,8 @@ export function mudarStatus(sim: Simulacao, id: AgenteId, status: Status, agora:
   const a = sim.agentes.find((x) => x.def.id === id);
   if (!a || a.status === status || a.saindo) return;
   a.status = status;
+  // almoçando fora: o status vale quando ele voltar, às 13h (mexer no `ate` traria ele de volta antes)
+  if (a.almoco === 'fora' || a.almoco === 'saindo_fora') return;
   a.ate = agora;
 }
 
@@ -266,6 +300,122 @@ function elevador(i: number): Lugar {
   return { id: `elevador:${i}`, area: 'recepcao', tile: [c, r], x, y, dir: 'up', pose: 'stand', sortY: y, rotulo: 'Indo embora' };
 }
 
+// ------------------------------------------------------------------ almoço (12h às 13h do mundo)
+
+const INICIO_ALMOCO = 12;
+const FIM_ALMOCO = 13;
+/** Até quando quem estava ocupado ainda almoça (sozinho, na copa). */
+const FIM_ALMOCO_ATRASADO = 14;
+const PESOS_ALMOCO: [ModoAlmoco, number][] = [['copa', 0.45], ['duplas', 0.35], ['fora', 0.2]];
+/** Onde as duplas sentam, por rótulo do lugar: mesinha da copa, sofá da copa, recepção. */
+const LUGARES_DE_DUPLA: [string, string][] = [
+  ['Café na mesinha', 'Café na mesinha'],
+  ['Batendo papo no sofá', 'Batendo papo no sofá'],
+  ['No banco da recepção', 'Conversando na recepção'],
+];
+
+/** Sorteio do plano do almoço (puro): o modo pelo peso e as duplas embaralhadas. */
+export function planejarAlmoco(rnd: () => number, ids: readonly AgenteId[]): { modo: ModoAlmoco; pares: Map<AgenteId, AgenteId> } {
+  let alvo = rnd();
+  let modo: ModoAlmoco = 'copa';
+  for (const [m, p] of PESOS_ALMOCO) {
+    if (alvo < p) {
+      modo = m;
+      break;
+    }
+    alvo -= p;
+  }
+  const embaralhados = [...ids];
+  for (let i = embaralhados.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [embaralhados[i], embaralhados[j]] = [embaralhados[j], embaralhados[i]];
+  }
+  const pares = new Map<AgenteId, AgenteId>();
+  for (let i = 0; i + 1 < embaralhados.length; i += 2) {
+    pares.set(embaralhados[i], embaralhados[i + 1]);
+    pares.set(embaralhados[i + 1], embaralhados[i]);
+  }
+  return { modo, pares };
+}
+
+const naJanela = (h: number | undefined, de: number, ate: number) => h !== undefined && h >= de && h < ate;
+
+/** Abre e fecha o almoço conforme a hora do mundo. */
+function cuidarDoAlmoco(sim: Simulacao, agora: number): void {
+  const st = sim.almoco;
+  if (sim.hora !== undefined && sim.hora < INICIO_ALMOCO) st.houveHoje = false; // manhã: dia novo
+  const dentro = naJanela(sim.hora, INICIO_ALMOCO, FIM_ALMOCO);
+  if (dentro && !st.ativo && !st.houveHoje) {
+    const plano = planejarAlmoco(sim.rnd, sim.agentes.map((a) => a.def.id));
+    st.ativo = true;
+    st.houveHoje = true;
+    st.modo = sim.modoAlmocoFixo ?? plano.modo;
+    st.pares = plano.pares;
+    for (const a of sim.agentes) {
+      a.almoco = undefined;
+      // quem está livre decide logo (espalhado, para não saírem todos no mesmo segundo)
+      if (a.status === 'ocioso' && !a.caminho.length && !a.chegando) a.ate = Math.min(a.ate, agora + entre(sim.rnd, [0, 6000]));
+    }
+  }
+  if (!dentro && st.ativo) {
+    st.ativo = false;
+    let k = 0;
+    for (const a of sim.agentes) {
+      if (a.almoco === 'fora') {
+        // volta pelo elevador, um de cada vez
+        a.almoco = 'feito';
+        a.ate = agora + 400 + k++ * 900;
+      } else if (a.almoco === 'comendo' || a.almoco === 'indo' || a.almoco === 'saindo_fora') {
+        a.almoco = 'feito';
+        a.voltarDoAlmoco = true;
+        if (!a.caminho.length) a.ate = agora + entre(sim.rnd, [0, 5000]);
+      }
+    }
+  }
+}
+
+function lugarPorRotulo(sim: Simulacao, rotulo: string, ignorar?: string): Lugar | undefined {
+  return sim.predio.lugares.find((l) => l.rotulo === rotulo && l.id !== ignorar && ehComum(l));
+}
+
+/** Vai almoçar (true) ou não precisa/não dá (false). */
+function irAlmocar(sim: Simulacao, a: AgenteVivo): boolean {
+  const st = sim.almoco;
+  const atrasado = !st.ativo;
+  if (!atrasado && st.modo === 'fora') {
+    const i = sim.agentes.indexOf(a) % 2;
+    if (!irPara(sim, a, elevador(i), false)) return false;
+    a.almoco = 'saindo_fora';
+    return true;
+  }
+  if (!atrasado && st.modo === 'duplas') {
+    const parceiro = st.pares.get(a.def.id);
+    const p = parceiro && sim.agentes.find((x) => x.def.id === parceiro);
+    if (p && p.status === 'ocioso') {
+      // a dupla de índice k usa o par de lugares k; quem vem primeiro no par senta no primeiro lugar
+      const ordem = [...new Set([...st.pares.keys()].map((id) => [id, st.pares.get(id) as AgenteId].sort().join('|')))];
+      const k = ordem.indexOf([a.def.id, parceiro].sort().join('|'));
+      const par = LUGARES_DE_DUPLA[k];
+      if (par) {
+        const primeiro = lugarPorRotulo(sim, par[0]);
+        const segundo = lugarPorRotulo(sim, par[1], primeiro?.id);
+        const meu = a.def.id < parceiro ? primeiro : segundo;
+        if (meu && (!sim.ocupado.has(meu.id) || sim.ocupado.get(meu.id) === a.def.id) && irPara(sim, a, meu, false)) {
+          a.almoco = 'indo';
+          return true;
+        }
+      }
+    }
+  }
+  // copa (o modo, o atrasado ou a dupla que não deu): um lugar livre da copa, sentado de preferência
+  const livres = sim.predio.lugares.filter((l) => l.area === 'copa' && !sim.ocupado.has(l.id));
+  const sentados = livres.filter((l) => l.seated);
+  const alvo = (sentados.length ? sentados : livres)[Math.floor(sim.rnd() * (sentados.length || livres.length))];
+  if (!alvo || !irPara(sim, a, alvo, false)) return false;
+  a.almoco = 'indo';
+  return true;
+}
+
 function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   if (a.saindo) {
     if (!a.destino?.id.startsWith('elevador')) {
@@ -276,8 +426,23 @@ function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   }
   const mesa = mesaDe(sim.predio, a.def.id);
   if (!mesa) return;
+  // terminou o almoço atrasado (ou foi chamado no meio): segue a vida
+  if ((a.almoco === 'comendo' || a.almoco === 'indo') && (!sim.almoco.ativo || a.status !== 'ocioso')) a.almoco = 'feito';
+  // almoço: só quem está livre; quem estava ocupado vai depois, sozinho, até as 14h
+  const horaDeAlmocar = sim.almoco.ativo || (sim.almoco.houveHoje && naJanela(sim.hora, FIM_ALMOCO, FIM_ALMOCO_ATRASADO));
+  if (a.status === 'ocioso' && a.almoco === undefined && horaDeAlmocar && irAlmocar(sim, a)) {
+    a.ate = agora + 1e9;
+    return;
+  }
   const naMesa = a.lugar?.id === mesa.id;
   const quer = (l: Lugar | undefined, correndo = false) => !!l && (a.lugar?.id === l.id || irPara(sim, a, l, correndo));
+  if (a.voltarDoAlmoco) {
+    a.voltarDoAlmoco = false;
+    if (!naMesa && quer(mesa)) {
+      a.ate = agora + 1e9;
+      return;
+    }
+  }
 
   if (a.status === 'dormindo') {
     // dorme no descanso da própria sala (não na cadeira); se alguém estiver lá, na mesa mesmo
@@ -342,7 +507,7 @@ function chegou(sim: Simulacao, a: AgenteVivo, agora: number): void {
   a.seated = !!l.seated;
   a.sortY = l.sortY;
   a.correndo = false;
-  if (a.saindo) {
+  if (a.saindo || a.almoco === 'saindo_fora') {
     // Na frente do elevador: a porta abre, ele entra e some.
     const i = l.id === 'elevador:0' ? 0 : 1;
     sim.elevadorAbriu[i] = agora;
@@ -352,6 +517,12 @@ function chegou(sim: Simulacao, a: AgenteVivo, agora: number): void {
   if (a.status === 'dormindo' && (l.descanso || l.mesa)) {
     deitar(a);
     a.ate = agora + 1e9;
+    return;
+  }
+  if (a.almoco === 'indo') {
+    // almoçando: na janela fica até as 13h (cuidarDoAlmoco libera); atrasado, só uma pausa longa
+    a.almoco = 'comendo';
+    a.ate = sim.almoco.ativo ? agora + 1e9 : agora + tempo(sim, a, TEMPO_NA_PAUSA) * 2;
     return;
   }
   if (l.mesa) {
@@ -388,7 +559,24 @@ function andar(a: AgenteVivo, dt: number): boolean {
 
 /** Avança a simulação `dt` ms até `agora`. */
 export function passo(sim: Simulacao, agora: number, dt: number): void {
+  cuidarDoAlmoco(sim, agora);
   for (const a of [...sim.agentes]) {
+    if (a.embarcouEm !== undefined && a.almoco === 'saindo_fora') {
+      // almoço fora: some no elevador, mas continua no prédio (volta às 13h pelo mesmo caminho de quem chega)
+      if (agora - a.embarcouEm > EMBARQUE_MS) {
+        liberar(sim, a);
+        a.embarcouEm = undefined;
+        a.chegando = true;
+        a.almoco = 'fora';
+        a.ate = Infinity;
+        const [x, y] = pesNoTile(...SAIDA_ELEVADOR[sim.agentes.indexOf(a) % 2]);
+        a.x = x;
+        a.y = y;
+        a.sortY = y;
+        a.pose = 'stand';
+      }
+      continue;
+    }
     if (a.embarcouEm !== undefined) {
       if (agora - a.embarcouEm > EMBARQUE_MS) {
         liberar(sim, a);

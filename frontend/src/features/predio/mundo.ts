@@ -12,7 +12,7 @@ import { SALAS } from './salas'
 import { criarRelogio } from './relogio'
 import { pontoNaTela, temAtalho } from './atalho'
 import {
-  adicionarAgente, areasOcupadas, criarSimulacao, definirParado, dispensarAgente, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
+  adicionarAgente, areasOcupadas, criarSimulacao, definirHoraDoMundo, definirParado, dispensarAgente, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
   atividadeDe, type AgenteVivo, type Status,
 } from './sim'
 
@@ -293,6 +293,7 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
     },
     definirHora: (h) => {
       hora = h
+      definirHoraDoMundo(sim, h)
     },
     selecionar: (id) => {
       selecionado = id

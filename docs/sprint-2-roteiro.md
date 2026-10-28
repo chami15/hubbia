@@ -359,6 +359,41 @@ Fase E (rotinas e movimento do prédio) continua separada e depende só do reló
 
 ---
 
+## Parte 2c — Fase E: vida do prédio (decidida em 2026-10-28)
+
+> Decidida com o chefe; implementação na branch `feat/vida-do-predio` (base: `feat/relogio-do-mundo`). Custo de LLM: **zero**.
+> Tudo no frontend (`features/predio/`), guiado pela hora do mundo (Parte 2b) e pelo que o backend já manda.
+
+### O que o chefe pediu
+- **Personalidade e aleatoriedade**: cada agente faz o que *ele* faria, na própria sala (Norte no fliperama, Vita se alongando,
+  Cifra nas papeladas...), sorteado com preferência, não uma rotina fixa igual para todos.
+- **Menos agitação**: menos idas e vindas (nada de "3 idas do Cifra à copa em 5 minutos"); variar o destino, sem repetir.
+- **Descanso em cada sala**: um lugar para descansar que não seja a cadeira da mesa, com a cara do agente. Dormindo lá, **a luz da
+  sala dele apaga**. Cada um tem o **próprio horário de sono** (Norte e Motriz são noturnos).
+- **Almoço das 12h às 13h do mundo**: em grupo na copa, em duplas, ou **fora** (saem pelo elevador e voltam às 13h). Quem estiver
+  ocupado almoça mais tarde.
+- **Encontros**: quando chega uma mensagem social real entre dois agentes, o remetente vai até a sala do outro e um **balão em
+  pixel art** mostra o que ele está dizendo.
+
+### Regras que valem para tudo
+- **O estado real manda.** Executando, pensando, conversando ou esperando o chefe: fica na mesa, em qualquer hora. A rotina só
+  ocupa quem está ocioso (ou trabalhando entre uma pausa e outra).
+- **Sem poluição**: nada fixo na tela; o balão só aparece durante a conversa.
+- **Arte**: só peças do catálogo do habblaud; móvel novo em sala só onde faltar um lugar de descanso.
+
+### Fatias (um commit cada)
+| # | Entrega |
+|---|---|
+| E1 | `personalidade.ts` (sono, ritmo, gosto por sair, favoritos) + escolha pura de atividade sem repetir e com a copa limitada |
+| E2 | O prédio usa a personalidade, com ritmo mais calmo |
+| E3 | Descanso em cada sala, sono individual e luz apagada (agentes conceito também dormem) |
+| E4 | Almoço das 12h às 13h do mundo (grupo, duplas, fora pelo elevador; atrasado para quem estava ocupado) |
+| E5 | Encontros a partir de mensagens sociais reais, com balão pixel |
+
+A "ocupação visível da esteira" (E3 original) fica para a Fase D, porque depende dos departamentos.
+
+---
+
 ## Parte 3 — Arquitetura proposta
 
 ### 3.1 Departamento é conceito de BACKEND. Sala é conceito de FRONTEND. Não acoplar.

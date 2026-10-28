@@ -24,6 +24,7 @@ import { useTickAutomatico } from '../../hooks/useTickAutomatico'
 import { horaDoDia, horaDoMundoMs, horaLocalDoNavegador } from '../predio/relogioDoMundo'
 import { RelogioDoTopo } from './RelogioDoTopo'
 import { personalidadeDe } from '../predio/personalidade'
+import { planejarEncontros } from '../predio/encontros'
 import type { RodadaProcessada } from '../../types/interacao'
 
 // A tela do hub: a barra do topo (marca, relógio simulado e as ações) e, embaixo, o PRÉDIO — cada agente na sua
@@ -136,6 +137,26 @@ export function Escritorio() {
   }, [agentesAoVivo, mensagens, horaCheia])
 
   useEffect(() => mundo?.definirStatus(status), [mundo, status])
+
+  // Encontros: mensagem SOCIAL nova entre dois agentes vira visita com balão no prédio (Fase E). As que já existiam quando
+  // a página abriu ficam de fora: reabrir o app não pode reencenar a conversa de ontem.
+  const mensagensVistas = useRef<Set<number> | null>(null)
+  useEffect(() => {
+    if (!mundo || !mensagens || !agentesAoVivo) return
+    if (mensagensVistas.current === null) {
+      mensagensVistas.current = new Set(mensagens.map((m) => m.id))
+      return
+    }
+    const vistas = mensagensVistas.current
+    const novas = mensagens.filter((m) => !vistas.has(m.id))
+    if (!novas.length) return
+    for (const m of novas) vistas.add(m.id)
+    const localDe = (idBackend: number) => {
+      const aoVivo = agentesAoVivo.find((a) => a.id === idBackend)
+      return aoVivo ? AGENTES.find((l) => l.especialidade === aoVivo.especialidade)?.id : undefined
+    }
+    mundo.aplicarEncontros(planejarEncontros(novas, { localDe, presentes: new Set(mundo.agentes().map((a) => a.id)), visitando: mundo.visitando() }))
+  }, [mundo, mensagens, agentesAoVivo])
   // com o atalho aberto, o personagem fica parado: a bolha está ancorada nele
   useEffect(() => {
     mundo?.congelar(atalho)

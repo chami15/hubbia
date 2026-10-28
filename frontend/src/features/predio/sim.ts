@@ -84,8 +84,14 @@ export interface AgenteVivo {
    * elevador; 'fora' almoçando fora (invisível até as 13h); 'feito' já almoçou.
    */
   almoco?: 'indo' | 'comendo' | 'saindo_fora' | 'fora' | 'feito';
-  /** Acabou de almoçar na copa: a próxima decisão é voltar para a mesa (senão o "fica onde está" o deixava na copa). */
-  voltarDoAlmoco?: boolean;
+  /** Acabou de almoçar ou de visitar alguém: a próxima decisão é voltar para a mesa (senão o "fica onde está" o deixava lá). */
+  voltarParaMesa?: boolean;
+  /** Visita a outro agente por causa de uma mensagem social real (encontros.ts). */
+  visita?: { para: AgenteId; linhas: string[]; lugarId?: string; chegou?: boolean };
+  /** Alguém está vindo visitá-lo: espera onde está até a conversa acabar (senão a visita falava sozinha). */
+  recebendo?: AgenteId;
+  /** Balão de fala desenhado acima da cabeça até `ate`. */
+  fala?: { linhas: string[]; ate: number };
 }
 
 /** Como o escritório almoça hoje: todos na copa, em duplas, ou fora (saem pelo elevador). Sorteado ao meio-dia. */
@@ -187,6 +193,46 @@ export function mudarStatus(sim: Simulacao, id: AgenteId, status: Status, agora:
   // almoçando fora: o status vale quando ele voltar, às 13h (mexer no `ate` traria ele de volta antes)
   if (a.almoco === 'fora' || a.almoco === 'saindo_fora') return;
   a.ate = agora;
+}
+
+// ------------------------------------------------------------------ encontros (mensagens sociais reais)
+
+/** Quanto o balão fica na tela: o suficiente para ler, nunca fixo. */
+const duracaoDaFala = (linhas: readonly string[]) => Math.min(12000, 4000 + linhas.join(' ').length * 90);
+
+/** Dá para conversar com ele agora? (no prédio, acordado e não almoçando fora) */
+function disponivel(a: AgenteVivo): boolean {
+  return !a.saindo && !a.chegando && a.embarcouEm === undefined && a.status !== 'dormindo' && a.almoco !== 'fora' && a.almoco !== 'saindo_fora';
+}
+
+/** O remetente de uma mensagem social vai até o destinatário e fala. false = agora não dá (e o encontro é descartado). */
+export function visitar(sim: Simulacao, de: AgenteId, para: AgenteId, linhas: string[], agora: number): boolean {
+  const v = sim.agentes.find((a) => a.def.id === de);
+  const alvo = sim.agentes.find((a) => a.def.id === para);
+  if (!v || !alvo || v === alvo || !disponivel(v) || !disponivel(alvo) || v.parado || v.visita) return false;
+  if (v.almoco === 'indo' || v.almoco === 'comendo') v.almoco = 'feito';
+  v.visita = { para, linhas };
+  v.ate = agora;
+  alvo.recebendo = de;
+  return true;
+}
+
+/** Balão em quem já está no lugar (a resposta para quem veio visitar). */
+export function falar(sim: Simulacao, quem: AgenteId, linhas: string[], agora: number): boolean {
+  const a = sim.agentes.find((x) => x.def.id === quem);
+  if (!a || !disponivel(a)) return false;
+  a.fala = { linhas, ate: agora + duracaoDaFala(linhas) };
+  // vez de falar: quem estava conversando com ele cala (senão os dois balões ficavam um em cima do outro)
+  for (const v of sim.agentes) {
+    const interlocutor = v.visita?.para === quem || a.visita?.para === v.def.id;
+    if (v !== a && interlocutor && v.fala && v.fala.ate > agora) v.fala.ate = agora;
+  }
+  return true;
+}
+
+/** Quem está visitando quem agora (para a resposta virar balão em vez de outra visita). */
+export function visitando(sim: Simulacao): Map<AgenteId, AgenteId> {
+  return new Map(sim.agentes.filter((a) => a.visita).map((a) => [a.def.id, (a.visita as NonNullable<AgenteVivo['visita']>).para]));
 }
 
 /**
@@ -367,7 +413,7 @@ function cuidarDoAlmoco(sim: Simulacao, agora: number): void {
         a.ate = agora + 400 + k++ * 900;
       } else if (a.almoco === 'comendo' || a.almoco === 'indo' || a.almoco === 'saindo_fora') {
         a.almoco = 'feito';
-        a.voltarDoAlmoco = true;
+        a.voltarParaMesa = true;
         if (!a.caminho.length) a.ate = agora + entre(sim.rnd, [0, 5000]);
       }
     }
@@ -416,6 +462,73 @@ function irAlmocar(sim: Simulacao, a: AgenteVivo): boolean {
   return true;
 }
 
+/** Ladrilhos ao redor de quem é visitado, do mais natural (ao lado) ao menos (na diagonal, a dois passos). */
+const AO_REDOR: readonly [number, number][] = [[-1, 0], [1, 0], [0, 1], [0, -1], [-1, 1], [1, 1], [-2, 0], [2, 0], [0, 2]];
+
+/**
+ * Onde a visita para: um ladrilho livre AO LADO de quem ela veio ver (ou de onde ele está indo, se estiver andando), na
+ * mesma área. Não depende de haver um "lugar" pronto ali: antes a visita só usava lugares em pé e, sem vaga perto (a Vita
+ * no balcão da recepção), ia para a sala do outro e conversava de longe.
+ */
+function pontoDeVisita(sim: Simulacao, a: AgenteVivo, alvo: AgenteVivo): Lugar | undefined {
+  const [c0, r0] = alvo.destino ? alvo.destino.tile : tileDe(alvo.x, alvo.y);
+  const area = areaEm(sim.predio, c0 * TILE + 8, r0 * TILE + 8)?.id;
+  // ladrilhos de lugares reservados por outros ficam de fora (alguém vai sentar ou parar ali)
+  const reservados = new Set(sim.predio.lugares.filter((l) => sim.ocupado.has(l.id) && sim.ocupado.get(l.id) !== a.def.id).map((l) => `${l.tile[0]},${l.tile[1]}`));
+  for (const v of sim.agentes) if (v !== a && v.visita?.lugarId?.startsWith('visita:')) reservados.add(v.visita.lugarId.slice(7));
+  for (const [dc, dr] of AO_REDOR) {
+    const c = c0 + dc;
+    const r = r0 + dr;
+    if (!sim.predio.andavel[r]?.[c] || reservados.has(`${c},${r}`)) continue;
+    const [x, y] = pesNoTile(c, r);
+    if (areaEm(sim.predio, x, y - 4)?.id !== area) continue;
+    // de frente para o anfitrião
+    const dir = dc < 0 ? 'right' : dc > 0 ? 'left' : dr > 0 ? 'up' : 'down';
+    return { id: `visita:${c},${r}`, area: area ?? alvo.def.id, tile: [c, r], x, y, dir, pose: 'talk', sortY: y, rotulo: 'Conversando' };
+  }
+  return undefined;
+}
+
+function soltarAnfitriao(sim: Simulacao, visitante: AgenteVivo): void {
+  const alvo = sim.agentes.find((x) => x.def.id === visitante.visita?.para);
+  if (alvo?.recebendo === visitante.def.id) {
+    alvo.recebendo = undefined;
+    alvo.ate = Math.min(alvo.ate, 0);
+  }
+}
+
+/** Segue a visita em andamento. true = a decisão de agora é a visita. */
+function continuarVisita(sim: Simulacao, a: AgenteVivo, agora: number): boolean {
+  const v = a.visita as NonNullable<AgenteVivo['visita']>;
+  if (v.chegou) {
+    // ainda na conversa (falando ou ouvindo a resposta): o status do backend não interrompe
+    const anfitriao = sim.agentes.find((x) => x.def.id === v.para);
+    const fim = Math.max(a.fala?.ate ?? 0, anfitriao?.fala?.ate ?? 0);
+    if (agora < fim) {
+      a.ate = fim + 800;
+      return true;
+    }
+    soltarAnfitriao(sim, a);
+    a.visita = undefined;
+    a.voltarParaMesa = true;
+    return false;
+  }
+  if (v.lugarId && a.destino?.id === v.lugarId) {
+    a.ate = agora + 1e9;
+    return true;
+  }
+  const alvo = sim.agentes.find((x) => x.def.id === v.para);
+  const l = alvo && disponivel(alvo) ? pontoDeVisita(sim, a, alvo) : undefined;
+  if (!l || !irPara(sim, a, l, false)) {
+    soltarAnfitriao(sim, a);
+    a.visita = undefined;
+    return false;
+  }
+  v.lugarId = l.id;
+  a.ate = agora + 1e9;
+  return true;
+}
+
 function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   if (a.saindo) {
     if (!a.destino?.id.startsWith('elevador')) {
@@ -426,6 +539,17 @@ function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   }
   const mesa = mesaDe(sim.predio, a.def.id);
   if (!mesa) return;
+  // visita (mensagem social real) vem antes de tudo, menos de ir embora
+  if (a.visita && continuarVisita(sim, a, agora)) return;
+  // quem está sendo visitado espera onde está (termina o passo, se estiver andando) até a visita ir embora
+  if (a.recebendo) {
+    const visitante = sim.agentes.find((x) => x.def.id === a.recebendo);
+    if (visitante?.visita?.para === a.def.id) {
+      a.ate = agora + 1500;
+      return;
+    }
+    a.recebendo = undefined;
+  }
   // terminou o almoço atrasado (ou foi chamado no meio): segue a vida
   if ((a.almoco === 'comendo' || a.almoco === 'indo') && (!sim.almoco.ativo || a.status !== 'ocioso')) a.almoco = 'feito';
   // almoço: só quem está livre; quem estava ocupado vai depois, sozinho, até as 14h
@@ -436,8 +560,8 @@ function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   }
   const naMesa = a.lugar?.id === mesa.id;
   const quer = (l: Lugar | undefined, correndo = false) => !!l && (a.lugar?.id === l.id || irPara(sim, a, l, correndo));
-  if (a.voltarDoAlmoco) {
-    a.voltarDoAlmoco = false;
+  if (a.voltarParaMesa) {
+    a.voltarParaMesa = false;
     if (!naMesa && quer(mesa)) {
       a.ate = agora + 1e9;
       return;
@@ -517,6 +641,19 @@ function chegou(sim: Simulacao, a: AgenteVivo, agora: number): void {
   if (a.status === 'dormindo' && (l.descanso || l.mesa)) {
     deitar(a);
     a.ate = agora + 1e9;
+    return;
+  }
+  if (a.visita?.lugarId === l.id) {
+    // chegou na visita: em pé, virado para quem veio ver, e o balão com o que ele disse
+    const alvo = sim.agentes.find((x) => x.def.id === a.visita?.para);
+    if (alvo) a.dir = Math.abs(alvo.x - a.x) > Math.abs(alvo.y - a.y) ? (alvo.x < a.x ? 'left' : 'right') : alvo.y < a.y ? 'up' : 'down';
+    // o anfitrião se vira para a visita (sentado não: a pose de assento tem direção fixa do móvel)
+    if (alvo && !alvo.seated && !alvo.caminho.length) alvo.dir = a.dir === 'left' ? 'right' : a.dir === 'right' ? 'left' : a.dir === 'up' ? 'down' : 'up';
+    a.pose = 'talk';
+    a.held = undefined;
+    a.visita.chegou = true;
+    a.fala = { linhas: a.visita.linhas, ate: agora + duracaoDaFala(a.visita.linhas) };
+    a.ate = a.fala.ate + 800;
     return;
   }
   if (a.almoco === 'indo') {
@@ -613,6 +750,7 @@ export function passo(sim: Simulacao, agora: number, dt: number): void {
 
 /** Ícone sobre a cabeça agora (ou nada). */
 export function iconeDe(a: AgenteVivo, agora: number): IconName | undefined {
+  if (a.fala && agora < a.fala.ate) return undefined; // o balão já diz o que está acontecendo
   if (a.saindo) return 'wave';
   if (a.status === 'precisa_de_voce') return 'alert';
   if (a.status === 'dormindo' && (a.lugar?.mesa || a.lugar?.descanso)) return 'zzz';

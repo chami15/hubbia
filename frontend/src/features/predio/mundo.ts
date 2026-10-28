@@ -11,8 +11,9 @@ import { DESMONTE_MS, H, MAX_VAGAS, OBRA_MS, areaEm, desenharPredio, lugaresInal
 import { SALAS } from './salas'
 import { criarRelogio } from './relogio'
 import { pontoNaTela, temAtalho } from './atalho'
+import { ALTURA_LINHA, layoutBalao, type Encontro } from './encontros'
 import {
-  adicionarAgente, areasOcupadas, criarSimulacao, definirHoraDoMundo, definirParado, dispensarAgente, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
+  adicionarAgente, areasOcupadas, criarSimulacao, definirHoraDoMundo, definirParado, dispensarAgente, falar, visitando, visitar, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
   atividadeDe, type AgenteVivo, type Status,
 } from './sim'
 
@@ -42,6 +43,10 @@ export interface Mundo {
   definirStatus: (status: ReadonlyMap<AgenteId, Status>) => void
   definirHora: (hora: number) => void
   selecionar: (id: AgenteId | null) => void
+  /** Encontros a partir de mensagens sociais reais (visita com balão, ou só o balão de resposta). */
+  aplicarEncontros: (lista: Encontro[]) => void
+  /** Quem está visitando quem agora (o planejador usa para a resposta virar balão). */
+  visitando: () => Map<AgenteId, AgenteId>
   /** Congela só este agente (o atalho está aberto nele); `null` solta quem estava congelado. */
   congelar: (id: AgenteId | null) => void
   /** Cabeça do agente em coordenada de tela (viewport), ou null se ele não está visível. Para ancorar HTML por cima do canvas. */
@@ -197,8 +202,28 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
 
   // ---------------------------------------------------------------- laço
 
+  /** Balão de fala em pixel art: borda escura com cantos cortados, fundo creme e cauda em degraus apontando para quem fala. */
+  function desenharBalao(c: CanvasRenderingContext2D, linhas: string[], x: number, topo: number) {
+    const b = layoutBalao(linhas, x, topo, predio.W)
+    const tinta = '#1f2430'
+    const papel = '#fbf7ef'
+    c.fillStyle = tinta
+    c.fillRect(b.x0 + 1, b.y0, b.w - 2, b.h)
+    c.fillRect(b.x0, b.y0 + 1, b.w, b.h - 2)
+    c.fillRect(b.caudaX - 2, b.y0 + b.h, 5, 1)
+    c.fillRect(b.caudaX - 1, b.y0 + b.h + 1, 3, 1)
+    c.fillRect(b.caudaX, b.y0 + b.h + 2, 1, 1)
+    c.fillStyle = papel
+    c.fillRect(b.x0 + 1, b.y0 + 1, b.w - 2, b.h - 2)
+    c.fillRect(b.caudaX - 1, b.y0 + b.h - 1, 3, 1)
+    c.fillRect(b.caudaX, b.y0 + b.h, 1, 1)
+    // +3: espaço dos acentos, que a fonte desenha acima da letra
+    linhas.forEach((l, i) => pixelText(c, l, b.x0 + 3, b.y0 + 6 + i * ALTURA_LINHA, tinta))
+  }
+
   function sobreposicoes(t: number) {
     return (c: CanvasRenderingContext2D) => {
+      const baloes: (() => void)[] = []
       for (const a of sim.agentes) {
         if (!visivel(a, t)) continue
         const cor = corCss(a.def.cor)
@@ -217,6 +242,8 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
           const sp = art.iconSprite(icone)
           c.drawImage(sp.canvas, Math.round(a.x - sp.ax), Math.round(topo - 4 - pisca - sp.ay))
         }
+        const fala = a.fala
+        if (fala && t < fala.ate) baloes.push(() => desenharBalao(c, fala.linhas, Math.round(a.x), Math.round(topo)))
         if (marcado || a.def.id === sobre) {
           // quem tem atalho avisa como chegar nele, só no hover (nada fixo na tela)
           const nome = a.def.nome.toLowerCase() + (a.def.id === sobre && temAtalho(a.def.id) && opcoes.aoAtalhoAgente ? ' (clique direito)' : '')
@@ -230,6 +257,7 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
           pixelText(c, nome, x0 + 3, y0 + 2, '#e6ebf4')
         }
       }
+      for (const desenhar of baloes) desenhar()
     }
   }
 
@@ -301,6 +329,14 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
     congelar: (id) => {
       for (const a of sim.agentes) definirParado(sim, a.def.id, a.def.id === id)
     },
+    aplicarEncontros: (lista) => {
+      const t = relogio()
+      for (const e of lista) {
+        if (e.tipo === 'visita') visitar(sim, e.de, e.para, e.linhas, t)
+        else falar(sim, e.de, e.linhas, t)
+      }
+    },
+    visitando: () => visitando(sim),
     ancora: (id) => {
       const a = sim.agentes.find((g) => g.def.id === id)
       if (!a || !visivel(a, relogio())) return null

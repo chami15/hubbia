@@ -18,6 +18,9 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `sim.ts` | Comportamento sem DOM: A\*, pausas, elevador, status. |
 | `mundo.ts` | O prédio vivo e imperativo: canvas, laço, câmera, clique. O React só cria, empurra dados e escuta cliques. |
 | `dev/catalogo.ts` | **Vitrine da arte**, só em desenvolvimento: abra `/#catalogo`. Agentes, salas, 20 poses, itens, 46 móveis, ícones, telas, pisos, paredes. Não entra no build de produção. |
+| `personalidade.ts` | **Quem cada agente é** no prédio: horário de sono (Norte e Motriz noturnos), `ritmo` (mais calmo = levanta menos), gosto por sair da sala e favoritos por rótulo de lugar. |
+| `rotina.ts` | Escolha pura da próxima atividade: sorteio com os favoritos, sem repetir as duas últimas, no máximo uma saída da sala a cada três. |
+| `encontros.ts` | Encontros a partir de mensagens sociais reais (puro): texto para a fonte pixel, quebra em linhas, quem visita quem, posição do balão. |
 | `status.ts` | Estado do backend → status do prédio (puro, testado). |
 | `relogioDoMundo.ts` | A **hora do mundo** (céu, luz, "dormindo", relógio do topo): conta pura sobre o tempo real, mesma do backend (`resolvers/relogio.py`), testada com os mesmos vetores. Não confundir com `relogio.ts`. |
 | `relogio.ts` | Relógio de mundo que para com a aba escondida (injetável, para teste). |
@@ -25,10 +28,14 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `vagas.ts` | Quem está em cada vaga (`localStorage`; é a única peça que muda quando isso for para o backend). |
 | `PainelPredio.tsx` | Gerência: quem está no prédio (abrir/dispensar) e catálogo (adicionar). |
 | `habblaud/` | Arte do habblaud **copiada**. Não edite (veja "Arte"). |
-| `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**), `relogio.test.ts` e `status.test.ts`. |
+| `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**), `relogio.test.ts`, `status.test.ts` e os da Fase E: `rotina`, `ritmo`, `descanso`, `almoco`, `encontros`, `visita`. |
 
 O status vem do backend em `status.ts::statusNoPredio` (mensagem não lida → `precisa_de_voce`; `pensando` → `pensando` (lê papéis, lâmpada); `executando` → `trabalhando` (digita);
-`falando` → `conversando`; `idle` → `ocioso`, `dormindo` de madrugada pela hora simulada do tick). Os quatro estados do backend **têm de continuar distintos**: o teste cobra.
+`falando` → `conversando`; `idle` → `ocioso`, ou `dormindo` na janela de sono **da personalidade** pela hora do mundo; agente conceito: ocioso de dia, dormindo de noite).
+Os quatro estados do backend **têm de continuar distintos**: o teste cobra.
+
+**Ordem do que manda em `decidir` (sim.ts):** ir embora > visita (mensagem social real) > receber visita > almoço (12h–13h, só ocioso) > dormindo (no descanso) >
+precisa de você / pensando / conversando (mesa) > trabalhando (mesa + pausas da rotina) > ocioso (rotina sem pressa). Comportamento novo entra nessa fila, não por fora.
 
 ## Conceitos que todo mundo erra no começo
 
@@ -65,11 +72,13 @@ export const SALAS = { /* ... */ lume: {
      (`armchair 'left'` → `dir 'left'`; `sofa 'down'` → `'down'`); bebedouro → `drink` com `held: 'water'`.
    - `extra`: `janela` (céu por hora), `quadro` (usa `quadro: Q('xx>..')`, `x` feito, `>` andando, `.` pendente), `relogio`, `tv` e `tela` (usam a `tela` do agente), `placa` (texto = nome).
    - Cada sala precisa de identidade própria: piso, parede (`pattern`) e ao menos 2 móveis que contem o domínio. Não copie a sala de outro agente trocando a cor.
-3. **Backend**: se o agente existe lá, `especialidade` igual à do `seed.py`; se **não** existe, `especialidade: null` (aparece como conceito, com aviso) e a ponte fica pendente. Entrada em `INICIAIS` só se já vem no prédio de fábrica.
-4. **Painel**: agente real ganha o painel em `features/agentes/PainelDoAgente.tsx`; o Motriz abre a sala de máquinas (ver `abrirAgente` em `Escritorio.tsx`).
-5. **Verifique**: `npm test` (alcançável em cima **e** embaixo do corredor), olhe a sala na vitrine (`/#catalogo`), depois no navegador com `/verificar-visual`: adicione o agente pelo painel do prédio e confira obra, chegada pelo elevador,
+3. **Personalidade e descanso** (o teste cobra os dois): entrada em `PERSONALIDADES` (`personalidade.ts`: sono, ritmo, `saiDaSala`, favoritos com rótulos
+   que **existem** na sala) e **um** lugar `descanso: true` na sala, sentado e fora da mesa, num móvel que tenha a cara do agente (é onde ele dorme e a sala apaga).
+4. **Backend**: se o agente existe lá, `especialidade` igual à do `seed.py`; se **não** existe, `especialidade: null` (aparece como conceito, com aviso) e a ponte fica pendente. Entrada em `INICIAIS` só se já vem no prédio de fábrica.
+5. **Painel**: agente real ganha o painel em `features/agentes/PainelDoAgente.tsx`; o Motriz abre a sala de máquinas (ver `abrirAgente` em `Escritorio.tsx`).
+6. **Verifique**: `npm test` (alcançável em cima **e** embaixo do corredor), olhe a sala na vitrine (`/#catalogo`), depois no navegador com `/verificar-visual`: adicione o agente pelo painel do prédio e confira obra, chegada pelo elevador,
    mesa, pausas, dispensar. Olhe o PNG: sala cheia mas respirável, nada sobreposto, agente legível.
-6. Documente: linha em `docs/guia-tecnico-frontend.md` PARTE 0 só se mudou arquitetura; o resto o código já diz.
+7. Documente: linha em `docs/guia-tecnico-frontend.md` PARTE 0 só se mudou arquitetura; o resto o código já diz.
 
 ## Receita: comportamento ou status novo
 
@@ -94,6 +103,11 @@ Status novo toca, nesta ordem: tipo `Status` e `STATUS_ROTULO` (`sim.ts`) · `de
 | Aba escondida acumulava tempo e os agentes "teleportavam" ao voltar | `relogio.test.ts` › "regressão: aba escondida…". Não troque `criarRelogio` por `Date.now()` |
 | `pensando` e `executando` do backend viraram o mesmo "trabalhando" na migração do isométrico | `status.test.ts` › "regressão: pensando e executando eram indistinguíveis…" |
 | Divisória entre salas de cima cobria a cabeça de quem andava no corredor sob a quina (era desenhada por último, por cima de tudo) | `predio.test.ts` › "regressão: a divisória das salas de cima…". O pedaço do pilar na parede sul entra na ordenação por profundidade (`divisorias()`); o resto continua por cima |
+| Prédio parecia um formigueiro: ocioso trocava de lugar a cada 7–13 s, Cifra ia 19 vezes à copa em 10 min | `ritmo.test.ts` › "regressão: agentes andavam pra lá e pra cá…" e `rotina.test.ts` (copa no máximo uma vez a cada três) |
+| Dormia sentado na cadeira da mesa, com a luz da sala acesa a noite toda | `descanso.test.ts` › "regressão: dormia sentado na cadeira…" |
+| Depois do almoço, o "fica onde está" deixava o agente na copa | `almoco.test.ts` › "às 13h voltam para a própria sala" (`voltarParaMesa`) |
+| Visita chegava e o anfitrião já tinha saído; visita conversava de longe; os dois balões se sobrepunham | `visita.test.ts` › as três "regressão: …" (anfitrião espera, ladrilho ao lado, vez de falar) |
+| `%`/`?`/`!` e aspas não existem na fonte pixel (viram espaço) | `encontros.test.ts` › `limparParaFonte` |
 | `pkill -f vite` derruba o shell do agente | (ambiente) use `kill $(lsof -ti tcp:PORTA)` |
 | Chromium headless a ~2 fps | (ambiente) espere 8–12 s para ver agentes andando; obra e elevador levam ~2,6 s |
 

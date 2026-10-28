@@ -384,11 +384,11 @@ Fase E (rotinas e movimento do prédio) continua separada e depende só do reló
 ### Fatias (um commit cada)
 | # | Entrega |
 |---|---|
-| E1 | `personalidade.ts` (sono, ritmo, gosto por sair, favoritos) + escolha pura de atividade sem repetir e com a copa limitada |
-| E2 | O prédio usa a personalidade, com ritmo mais calmo |
-| E3 | Descanso em cada sala, sono individual e luz apagada (agentes conceito também dormem) |
-| E4 | Almoço das 12h às 13h do mundo (grupo, duplas, fora pelo elevador; atrasado para quem estava ocupado) |
-| E5 | Encontros a partir de mensagens sociais reais, com balão pixel |
+| E1 | ✅ `personalidade.ts` (sono, ritmo, gosto por sair, favoritos) + escolha pura de atividade sem repetir e com a copa limitada |
+| E2 | ✅ O prédio usa a personalidade, com ritmo mais calmo |
+| E3 | ✅ Descanso em cada sala, sono individual e luz apagada (agentes conceito também dormem) |
+| E4 | ✅ Almoço das 12h às 13h do mundo (grupo, duplas, fora pelo elevador; atrasado para quem estava ocupado) |
+| E5 | ✅ Encontros a partir de mensagens sociais reais, com balão pixel |
 
 A "ocupação visível da esteira" (E3 original) fica para a Fase D, porque depende dos departamentos.
 

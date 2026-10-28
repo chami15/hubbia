@@ -12,6 +12,8 @@ import { TILE, type Dir, type HeldItem, type IconName, type Pose } from './habbl
 import { mulberry32 } from './habblaud/shared/hash';
 import { agentePorId, type AgenteId, type AgenteVisual } from './agentes';
 import { SAIDA_ELEVADOR, areaEm, mesaDe, passagem, pesNoTile, type AreaId, type Figura, type Lugar, type Predio } from './predio';
+import { personalidadeDe } from './personalidade';
+import { escolherAtividade, type Feito, type Opcao } from './rotina';
 
 /**
  * Estados que o prédio sabe desenhar. Vêm do backend (estado do agente + mensagens não lidas + hora simulada; ver
@@ -31,12 +33,18 @@ export const STATUS_ROTULO: Record<Status, string> = {
 const VELOCIDADE_ANDAR = 3.2 * TILE; // px/s (as do habblaud)
 const VELOCIDADE_CORRER = 6 * TILE;
 
-/** Quanto tempo fica em cada coisa (ms): [mínimo, máximo]. */
-const TEMPO_NA_MESA: [number, number] = [16000, 30000];
-const TEMPO_NA_PAUSA: [number, number] = [6000, 11000];
-const TEMPO_OCIOSO: [number, number] = [7000, 13000];
-/** Chance de a pausa ser na copa/recepção em vez da própria sala. */
-const PAUSA_FORA = 0.4;
+/**
+ * Quanto tempo fica em cada coisa (ms reais): [mínimo, máximo], multiplicado pelo `ritmo` da personalidade.
+ * Eram 16–30 s na mesa e 7–13 s ocioso: o prédio parecia um formigueiro ("3 idas do Cifra à copa em 5 minutos").
+ * O teste `ritmo.test.ts` cobra o teto de idas e vindas.
+ */
+const TEMPO_NA_MESA: [number, number] = [60000, 120000];
+const TEMPO_NA_PAUSA: [number, number] = [18000, 35000];
+const TEMPO_OCIOSO: [number, number] = [30000, 55000];
+/** Chance de quem está ocioso simplesmente continuar onde está em vez de procurar outra coisa. */
+const FICAR_ONDE_ESTA = 0.35;
+/** Quantas atividades recentes cada agente lembra (a rotina evita repetir e limita a copa). */
+const MEMORIA = 5;
 /** Quanto tempo a porta do elevador fica aberta antes de quem sai sumir. */
 const EMBARQUE_MS = 900;
 
@@ -69,6 +77,8 @@ export interface AgenteVivo {
   embarcouEm?: number;
   /** Congelado no lugar (o chefe está com o atalho aberto nele): não anda nem decide nada até soltar. */
   parado: boolean;
+  /** Últimas atividades (mais recente no fim): a rotina usa para não repetir e não ir à copa toda hora. */
+  recentes: Feito[];
 }
 
 export interface Simulacao {
@@ -82,6 +92,8 @@ export interface Simulacao {
 }
 
 const entre = (rnd: () => number, [a, b]: [number, number]) => a + rnd() * (b - a);
+/** Tempo de uma faixa ajustado ao ritmo do agente (mais calmo = mais tempo em cada coisa). */
+const tempo = (sim: Simulacao, a: AgenteVivo, faixa: [number, number]) => entre(sim.rnd, faixa) * personalidadeDe(a.def.id).ritmo;
 
 export function criarSimulacao(predio: Predio, aoSair: (id: AgenteId) => void): Simulacao {
   return { predio, agentes: [], ocupado: new Map(), rnd: mulberry32(20261022), elevadorAbriu: [-1e9, -1e9], aoSair };
@@ -102,7 +114,7 @@ export function adicionarAgente(sim: Simulacao, id: AgenteId, agora: number, o: 
     def,
     appearance: art.appearanceFromSeed(def.seed, { look: def.look, parts: def.parts }),
     status: o.status ?? 'trabalhando',
-    x, y, dir: 'down', pose: 'stand', seated: false, sortY: y, parado: false,
+    x, y, dir: 'down', pose: 'stand', seated: false, sortY: y, parado: false, recentes: [],
     caminho: [], correndo: false,
     ate: o.chegaEm ?? agora,
     iconeAte: 0,
@@ -199,16 +211,30 @@ export function aEstrela(p: Predio, de: [number, number], para: [number, number]
 
 // ------------------------------------------------------------------ decisões
 
-function lugaresPara(sim: Simulacao, a: AgenteVivo, fora: boolean): Lugar[] {
-  return sim.predio.lugares.filter((l) => {
-    if (l.mesa) return false;
-    const comum = l.area === 'copa' || l.area === 'recepcao';
-    return fora ? comum : l.area === a.def.id;
-  });
+const ehComum = (l: Lugar) => l.area === 'copa' || l.area === 'recepcao';
+
+/** O que o agente pode fazer agora: lugares livres da própria sala e das áreas comuns (e a mesa, se `comMesa`). */
+function opcoesDe(sim: Simulacao, a: AgenteVivo, comMesa: boolean): Map<string, Lugar> {
+  const porId = new Map<string, Lugar>();
+  for (const l of sim.predio.lugares) {
+    const dele = l.area === a.def.id && (!l.mesa || (comMesa && l.mesa === a.def.id));
+    if (!dele && !(ehComum(l) && !l.mesa)) continue;
+    const dono = sim.ocupado.get(l.id);
+    if (dono && dono !== a.def.id) continue;
+    porId.set(l.id, l);
+  }
+  return porId;
 }
 
-function sortear<T>(rnd: () => number, lista: readonly T[]): T | undefined {
-  return lista.length ? lista[Math.floor(rnd() * lista.length)] : undefined;
+/** Escolhe e vai para a próxima atividade, pela personalidade. false = não achou nada (ou não há caminho). */
+function proximaAtividade(sim: Simulacao, a: AgenteVivo, comMesa: boolean): boolean {
+  const porId = opcoesDe(sim, a, comMesa);
+  const opcoes: Opcao[] = [...porId.values()].filter((l) => l.id !== a.lugar?.id).map((l) => ({ id: l.id, rotulo: l.rotulo, fora: ehComum(l) }));
+  const o = escolherAtividade(personalidadeDe(a.def.id), opcoes, a.recentes, sim.rnd);
+  const l = o && porId.get(o.id);
+  if (!o || !l || !irPara(sim, a, l, false)) return false;
+  a.recentes = [...a.recentes, { id: o.id, fora: o.fora }].slice(-MEMORIA);
+  return true;
 }
 
 function liberar(sim: Simulacao, a: AgenteVivo): void {
@@ -262,18 +288,19 @@ function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   if (a.status === 'trabalhando') {
     if (!naMesa) {
       quer(mesa);
-      a.ate = agora + entre(sim.rnd, TEMPO_NA_MESA);
+      a.ate = agora + tempo(sim, a, TEMPO_NA_MESA);
       return;
     }
-    const fora = sim.rnd() < PAUSA_FORA;
-    const livre = lugaresPara(sim, a, fora).filter((l) => !sim.ocupado.has(l.id));
-    a.ate = quer(sortear(sim.rnd, livre)) ? agora + 1e9 : agora + entre(sim.rnd, TEMPO_NA_MESA);
+    // pausa: a personalidade escolhe para onde (sem repetir, copa no máximo uma vez a cada três)
+    a.ate = proximaAtividade(sim, a, false) ? agora + 1e9 : agora + tempo(sim, a, TEMPO_NA_MESA);
     return;
   }
-  // Ocioso: passeia.
-  const fora = sim.rnd() < 0.5;
-  const livre = [...lugaresPara(sim, a, fora), ...(sim.rnd() < 0.2 ? [mesa] : [])].filter((l) => !sim.ocupado.has(l.id) && l.id !== a.lugar?.id);
-  a.ate = quer(sortear(sim.rnd, livre)) ? agora + 1e9 : agora + 2000;
+  // Ocioso: sem pressa. Às vezes só fica onde está; senão faz algo da personalidade (a mesa conta como opção).
+  if (a.lugar && sim.rnd() < FICAR_ONDE_ESTA) {
+    a.ate = agora + tempo(sim, a, TEMPO_OCIOSO);
+    return;
+  }
+  a.ate = proximaAtividade(sim, a, true) ? agora + 1e9 : agora + 5000;
 }
 
 function aplicarPoseDaMesa(a: AgenteVivo): void {
@@ -304,10 +331,10 @@ function chegou(sim: Simulacao, a: AgenteVivo, agora: number): void {
   }
   if (l.mesa) {
     aplicarPoseDaMesa(a);
-    a.ate = a.status === 'trabalhando' ? agora + entre(sim.rnd, TEMPO_NA_MESA) : a.status === 'ocioso' ? agora + entre(sim.rnd, TEMPO_OCIOSO) : agora + 1e9;
+    a.ate = a.status === 'trabalhando' ? agora + tempo(sim, a, TEMPO_NA_MESA) : a.status === 'ocioso' ? agora + tempo(sim, a, TEMPO_OCIOSO) : agora + 1e9;
     return;
   }
-  a.ate = agora + entre(sim.rnd, a.status === 'ocioso' ? TEMPO_OCIOSO : TEMPO_NA_PAUSA);
+  a.ate = agora + tempo(sim, a, a.status === 'ocioso' ? TEMPO_OCIOSO : TEMPO_NA_PAUSA);
 }
 
 function andar(a: AgenteVivo, dt: number): boolean {

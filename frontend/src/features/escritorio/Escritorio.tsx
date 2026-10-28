@@ -23,6 +23,7 @@ import { useRelogioMundo } from '../../hooks/useRelogio'
 import { useTickAutomatico } from '../../hooks/useTickAutomatico'
 import { horaDoDia, horaDoMundoMs, horaLocalDoNavegador } from '../predio/relogioDoMundo'
 import { RelogioDoTopo } from './RelogioDoTopo'
+import { personalidadeDe } from '../predio/personalidade'
 import type { RodadaProcessada } from '../../types/interacao'
 
 // A tela do hub: a barra do topo (marca, relógio simulado e as ações) e, embaixo, o PRÉDIO — cada agente na sua
@@ -124,9 +125,12 @@ export function Escritorio() {
     const mapa = new Map<AgenteId, Status>()
     for (const local of AGENTES) {
       const aoVivo = local.especialidade ? agentesAoVivo?.find((a) => a.especialidade === local.especialidade) : undefined
-      // agente conceito (ou backend fora do ar): fica trabalhando de mentira, só para o prédio ter vida
+      const sono = personalidadeDe(local.id).sono
+      // agente conceito (sem backend): também tem dia e noite, pela personalidade
+      if (!local.especialidade) mapa.set(local.id, statusNoPredio(undefined, false, horaCheia, sono))
+      // backend fora do ar: fica com o status padrão do prédio
       if (!aoVivo) continue
-      mapa.set(local.id, statusNoPredio(aoVivo.estado, remetentesComNaoLida.has(aoVivo.id), horaCheia))
+      mapa.set(local.id, statusNoPredio(aoVivo.estado, remetentesComNaoLida.has(aoVivo.id), horaCheia, sono))
     }
     return mapa
   }, [agentesAoVivo, mensagens, horaCheia])

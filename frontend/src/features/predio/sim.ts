@@ -279,7 +279,16 @@ function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   const naMesa = a.lugar?.id === mesa.id;
   const quer = (l: Lugar | undefined, correndo = false) => !!l && (a.lugar?.id === l.id || irPara(sim, a, l, correndo));
 
-  if (a.status === 'precisa_de_voce' || a.status === 'dormindo' || a.status === 'conversando' || a.status === 'pensando') {
+  if (a.status === 'dormindo') {
+    // dorme no descanso da própria sala (não na cadeira); se alguém estiver lá, na mesa mesmo
+    const cama = descansoDe(sim, a);
+    const alvo = cama && (!sim.ocupado.has(cama.id) || sim.ocupado.get(cama.id) === a.def.id) ? cama : mesa;
+    if (a.lugar?.id !== alvo.id && a.destino?.id !== alvo.id) quer(alvo);
+    a.ate = agora + 1e9;
+    if (a.lugar?.id === alvo.id) deitar(a);
+    return;
+  }
+  if (a.status === 'precisa_de_voce' || a.status === 'conversando' || a.status === 'pensando') {
     if (!naMesa && !a.destino) quer(mesa, a.status === 'precisa_de_voce');
     a.ate = agora + 1e9;
     if (naMesa) aplicarPoseDaMesa(a);
@@ -301,6 +310,17 @@ function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
     return;
   }
   a.ate = proximaAtividade(sim, a, true) ? agora + 1e9 : agora + 5000;
+}
+
+function descansoDe(sim: Simulacao, a: AgenteVivo): Lugar | undefined {
+  return sim.predio.lugares.find((l) => l.descanso && l.area === a.def.id);
+}
+
+/** Pose de sono em qualquer assento (a 'sleep' é sentada: cabeça baixa). */
+function deitar(a: AgenteVivo): void {
+  a.pose = 'sleep';
+  a.seated = true;
+  a.held = undefined;
 }
 
 function aplicarPoseDaMesa(a: AgenteVivo): void {
@@ -327,6 +347,11 @@ function chegou(sim: Simulacao, a: AgenteVivo, agora: number): void {
     const i = l.id === 'elevador:0' ? 0 : 1;
     sim.elevadorAbriu[i] = agora;
     a.embarcouEm = agora;
+    return;
+  }
+  if (a.status === 'dormindo' && (l.descanso || l.mesa)) {
+    deitar(a);
+    a.ate = agora + 1e9;
     return;
   }
   if (l.mesa) {
@@ -402,7 +427,7 @@ export function passo(sim: Simulacao, agora: number, dt: number): void {
 export function iconeDe(a: AgenteVivo, agora: number): IconName | undefined {
   if (a.saindo) return 'wave';
   if (a.status === 'precisa_de_voce') return 'alert';
-  if (a.status === 'dormindo' && a.lugar?.mesa) return 'zzz';
+  if (a.status === 'dormindo' && (a.lugar?.mesa || a.lugar?.descanso)) return 'zzz';
   if (a.status === 'conversando' && a.lugar?.mesa) return 'chat';
   if (a.status === 'pensando' && a.lugar?.mesa) return 'idea';
   if (a.lugar?.held === 'coffee' || a.lugar?.rotulo === 'Tirando um café') return 'coffee';
@@ -420,6 +445,7 @@ export function atividadeDe(a: AgenteVivo): string {
     return l?.mesa ? 'Voltando para a mesa' : l ? `A caminho: ${l.rotulo.toLowerCase()}` : 'Andando';
   }
   if (!a.lugar) return 'Chegando';
+  if (a.status === 'dormindo' && a.lugar.descanso) return 'Dormindo';
   if (a.lugar.mesa) {
     if (a.status === 'precisa_de_voce') return 'Esperando você responder';
     if (a.status === 'dormindo') return 'Cochilando na mesa';
@@ -449,11 +475,12 @@ export function figuras(sim: Simulacao, t: number): Figura[] {
   }));
 }
 
-/** Área em que cada agente visível está agora (para a luz das salas). */
+/** Área em que cada agente visível e ACORDADO está agora (para a luz das salas: quem dorme apaga a luz). */
 export function areasOcupadas(sim: Simulacao, t: number): Set<AreaId> {
   const s = new Set<AreaId>();
   for (const a of sim.agentes) {
     if (!visivel(a, t)) continue;
+    if (a.status === 'dormindo' && !a.caminho.length) continue;
     const ar = areaEm(sim.predio, a.x, a.y - 4);
     if (ar) s.add(ar.id);
   }

@@ -259,7 +259,7 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
       const naSala = areaEm(predio, a.x, a.y - 4)?.id === a.def.id
       const naMesa = !!a.lugar?.mesa
       telas[a.def.id] =
-        naMesa && a.status === 'trabalhando' ? a.def.tela : naMesa && a.status === 'precisa_de_voce' ? 'alert' : naMesa && a.status === 'conversando' ? 'chat' : naMesa && a.status === 'pensando' ? 'search' : naSala ? 'standby' : 'off'
+        a.status === 'dormindo' ? 'off' : naMesa && a.status === 'trabalhando' ? a.def.tela : naMesa && a.status === 'precisa_de_voce' ? 'alert' : naMesa && a.status === 'conversando' ? 'chat' : naMesa && a.status === 'pensando' ? 'search' : naSala ? 'standby' : 'off'
     }
     desenharPredio(
       ctx,

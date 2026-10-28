@@ -33,6 +33,8 @@ export interface LugarModelo {
   rotulo: string;
   /** A mesa de trabalho do dono (a pose muda com o status). */
   mesa?: boolean;
+  /** Onde o dono dorme (um por sala, sentado, fora da mesa): a pose vira 'sleep' e a luz da sala apaga. */
+  descanso?: boolean;
 }
 
 export interface ModeloSala {
@@ -50,7 +52,7 @@ export interface ModeloSala {
 
 const m = (kind: FurnitureKind, lx: number, ly: number, o: Partial<MovelModelo> = {}): MovelModelo => ({ kind, lx, ly, ...o });
 const pe = (lx: number, ly: number, dir: Dir, pose: Pose, rotulo: string, held?: HeldItem): LugarModelo => ({ lx, ly, dir, pose, rotulo, held });
-const senta = (lx: number, ly: number, dir: Dir, pose: Pose, rotulo: string, o: { held?: HeldItem; dx?: number } = {}): LugarModelo => ({ lx, ly, dir, pose, rotulo, sentado: true, ...o });
+const senta = (lx: number, ly: number, dir: Dir, pose: Pose, rotulo: string, o: { held?: HeldItem; dx?: number; descanso?: boolean } = {}): LugarModelo => ({ lx, ly, dir, pose, rotulo, sentado: true, ...o });
 /** Mesa do dono: cadeira virada para baixo + mesa vista por trás (o rosto fica visível). */
 const mesa = (lx: number, ly: number, cadeira: string, tampo: string, seed = 1): { moveis: MovelModelo[]; lugar: LugarModelo } => ({
   moveis: [m('office_chair_front', lx, ly, { variant: cadeira, dx: TILE / 2 }), m('desk_back', lx, ly + 1, { variant: tampo, seed })],
@@ -141,7 +143,7 @@ export const SALAS: Record<string, ModeloSala> = {
     ],
     lugares: [
       cifra.lugar, pe(1, 1, 'up', 'read', 'Consultando a estante', 'book'), pe(0, 5, 'up', 'use', 'Imprimindo o relatório', 'papers'),
-      pe(12, 1, 'right', 'use', 'Arquivando extratos'), senta(12, 4, 'left', 'read', 'Revisando gastos na poltrona', { held: 'papers' }),
+      pe(12, 1, 'right', 'use', 'Arquivando extratos'), senta(12, 4, 'left', 'read', 'Revisando gastos na poltrona', { held: 'papers', descanso: true }),
     ],
     quadro: Q('xx>..'),
   },
@@ -157,7 +159,7 @@ export const SALAS: Record<string, ModeloSala> = {
     ],
     lugares: [
       agenda.lugar, senta(1, 4, 'right', 'talk', 'Ao telefone', { held: 'phone' }), senta(4, 4, 'left', 'read', 'Lendo a pauta', { held: 'papers' }),
-      pe(10, 1, 'up', 'read', 'Procurando um contato', 'book'), pe(1, 1, 'up', 'drink', 'Olhando a janela', 'coffee'), senta(11, 6, 'down', 'sit', 'No sofá'),
+      pe(10, 1, 'up', 'read', 'Procurando um contato', 'book'), pe(1, 1, 'up', 'drink', 'Olhando a janela', 'coffee'), senta(11, 6, 'down', 'sit', 'No sofá', { descanso: true }),
     ],
     tapetes: [{ lx: 1, ly: 3.4, w: 4, h: 2.6, cor: '#7d9ad6' }],
     quadro: Q('x>>...'),
@@ -174,7 +176,7 @@ export const SALAS: Record<string, ModeloSala> = {
     ],
     lugares: [
       vita.lugar, pe(0, 1, 'up', 'drink', 'No bebedouro', 'water'), pe(1, 1, 'up', 'groom', 'No espelho', 'comb'), pe(3, 3, 'down', 'stretch', 'Se alongando'),
-      senta(2, 5, 'down', 'read', 'No puff', { held: 'book' }), senta(4, 5, 'down', 'sit', 'Descansando no puff'), pe(13, 5, 'up', 'use', 'Pegando uma fruta'),
+      senta(2, 5, 'down', 'read', 'No puff', { held: 'book' }), senta(4, 5, 'down', 'sit', 'Descansando no puff', { descanso: true }), pe(13, 5, 'up', 'use', 'Pegando uma fruta'),
     ],
     tapetes: [{ lx: 1, ly: 4.25, w: 5, h: 2.5, cor: '#f2a46b' }],
   },
@@ -186,12 +188,13 @@ export const SALAS: Record<string, ModeloSala> = {
     chao: [
       m('plant_tall', 0, 0, { variant: 'palm' }), ...norte.moveis, m('desk', 2, 4, { variant: 'dark', seed: 8, extra: 'tela' }),
       m('office_chair', 2, 5, { variant: 'black', dx: TILE / 2 }), m('trash_bin', 4, 3), m('meeting_table', 9, 3, { seed: 2 }),
-      m('stool', 9, 2), m('stool', 11, 2), m('stool', 9, 5), m('stool', 11, 5), m('arcade', 13, 3), m('bookshelf', 12, 0, { seed: 9 }),
+      m('stool', 9, 2), m('stool', 11, 2), m('stool', 9, 5), m('stool', 11, 5), m('arcade', 13, 3), m('bookshelf', 12, 0, { seed: 9 }), m('beanbag', 12, 6, { variant: 'blue' }),
       m('plant_small', 0, 7, { variant: 'fern' }),
     ],
     lugares: [
       norte.lugar, pe(2, 0, 'up', 'use', 'No quadro do projeto'), senta(9, 2, 'down', 'talk', 'Planejando na mesa de reunião', { held: 'laptop' }),
       senta(11, 5, 'up', 'read', 'Lendo um PR', { held: 'papers' }), pe(13, 4, 'up', 'game', 'No fliperama', 'controller'), pe(12, 1, 'up', 'read', 'Na estante', 'book'),
+      senta(12, 6, 'down', 'game', 'Jogando no puff', { held: 'controller', descanso: true }),
     ],
     quadro: Q('xxx>...'),
   },
@@ -204,11 +207,12 @@ export const SALAS: Record<string, ModeloSala> = {
       ...motriz.moveis, m('desk', 2, 4, { variant: 'dark', seed: 10, extra: 'tela' }), m('office_chair', 2, 5, { variant: 'gray', dx: TILE / 2 }),
       m('binder_shelf', 10, 0, { seed: 21 }), m('binder_shelf', 11, 0, { seed: 22 }), m('binder_shelf', 12, 0, { seed: 23 }), m('binder_shelf', 13, 0, { seed: 24 }),
       m('filing_cabinet', 10, 3), m('filing_cabinet', 11, 3), m('filing_cabinet', 12, 3), m('filing_cabinet', 13, 3),
-      m('arcade', 13, 5), m('printer', 0, 4), m('trash_bin', 4, 3), m('water_cooler', 0, 7), m('plant_small', 13, 7, { variant: 'succulent' }),
+      m('arcade', 13, 5), m('armchair', 10, 6, { variant: 'right' }), m('printer', 0, 4), m('trash_bin', 4, 3), m('water_cooler', 0, 7), m('plant_small', 13, 7, { variant: 'succulent' }),
     ],
     lugares: [
       motriz.lugar, pe(11, 1, 'up', 'use', 'Checando os racks'), pe(12, 4, 'up', 'use', 'Conferindo as conexões'),
       pe(13, 6, 'up', 'use', 'No console de monitoramento'), pe(0, 5, 'up', 'use', 'Imprimindo o log', 'papers'), pe(4, 0, 'up', 'use', 'Olhando o painel de status'),
+      senta(10, 6, 'right', 'read', 'De olho nos servidores', { held: 'laptop', descanso: true }),
     ],
   },
   // Estudos (conceito): biblioteca com poltronas de leitura
@@ -223,7 +227,7 @@ export const SALAS: Record<string, ModeloSala> = {
     ],
     lugares: [
       lume.lugar, pe(8, 1, 'up', 'read', 'Escolhendo um livro', 'book'), pe(11, 1, 'up', 'read', 'Na estante', 'book'),
-      senta(9, 4, 'right', 'read', 'Lendo na poltrona', { held: 'book' }), senta(12, 4, 'left', 'read', 'Revisando anotações', { held: 'papers' }),
+      senta(9, 4, 'right', 'read', 'Lendo na poltrona', { held: 'book', descanso: true }), senta(12, 4, 'left', 'read', 'Revisando anotações', { held: 'papers' }),
       pe(4, 5, 'down', 'stretch', 'Pausa para alongar'),
     ],
     tapetes: [{ lx: 8.5, ly: 3.25, w: 5, h: 2.5, cor: '#a58fd8' }],
@@ -240,7 +244,7 @@ export const SALAS: Record<string, ModeloSala> = {
     ],
     lugares: [
       lar.lugar, pe(1, 1, 'up', 'use', 'Lavando a louça'), pe(2, 1, 'up', 'use', 'Esquentando o almoço'), pe(13, 1, 'up', 'use', 'Conferindo a geladeira'),
-      senta(2, 4, 'right', 'read', 'Fazendo a lista de compras', { held: 'papers' }), senta(4, 4, 'left', 'drink', 'Café da tarde', { held: 'coffee' }), senta(11, 6, 'down', 'sit', 'No sofá'),
+      senta(2, 4, 'right', 'read', 'Fazendo a lista de compras', { held: 'papers' }), senta(4, 4, 'left', 'drink', 'Café da tarde', { held: 'coffee' }), senta(11, 6, 'down', 'sit', 'No sofá', { descanso: true }),
     ],
   },
   // Viagens (conceito): janelas, sofá, guia de viagem, mala
@@ -253,7 +257,7 @@ export const SALAS: Record<string, ModeloSala> = {
       m('bench', 1, 6), m('plant_tall', 13, 0, { variant: 'monstera' }), m('plant_tall', 0, 0, { variant: 'palm' }), m('plant_small', 13, 7, { variant: 'flower' }),
     ],
     lugares: [
-      rota.lugar, pe(1, 1, 'up', 'drink', 'Sonhando na janela', 'coffee'), senta(10, 2, 'down', 'read', 'Lendo um guia de viagem', { held: 'book' }),
+      rota.lugar, pe(1, 1, 'up', 'drink', 'Sonhando na janela', 'coffee'), senta(10, 2, 'down', 'read', 'Lendo um guia de viagem', { held: 'book', descanso: true }),
       senta(12, 4, 'left', 'talk', 'Ligando para o hotel', { held: 'phone' }), senta(1, 6, 'down', 'sit', 'Arrumando a mala', { held: 'box', dx: 4 }),
     ],
     tapetes: [{ lx: 8.5, ly: 1.5, w: 4, h: 3, cor: '#e7a0bd' }],

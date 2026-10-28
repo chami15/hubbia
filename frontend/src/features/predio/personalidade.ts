@@ -54,7 +54,7 @@ export function personalidadeDe(id: AgenteId): Personalidade {
 }
 
 /** Está na janela de sono? `hora` é a hora do mundo (0..24, com fração). */
-export function horaDeDormir(p: Personalidade, hora: number): boolean {
+export function horaDeDormir(p: Pick<Personalidade, 'sono'>, hora: number): boolean {
   const [dorme, acorda] = p.sono
   return dorme <= acorda ? hora >= dorme && hora < acorda : hora >= dorme || hora < acorda
 }

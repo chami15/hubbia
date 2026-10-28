@@ -72,6 +72,8 @@ export interface Lugar {
   seated?: boolean;
   sortY: number;
   mesa?: AgenteId;
+  /** Onde o dono da sala dorme (ver `LugarModelo.descanso`). */
+  descanso?: boolean;
   rotulo: string;
 }
 
@@ -133,7 +135,7 @@ export function montarPredio(vagas: readonly (AgenteId | null)[]): Predio {
         const baseY = (r + 1) * TILE;
         lugares.push({
           id: `${a.id}:${l.lx},${l.ly}:${l.dx ?? 0}`, area: a.id, tile: [c, r], x: c * TILE + 8 + (l.dx ?? 0), y: baseY - SEAT_FOOT_DY,
-          dir: l.dir, pose: l.pose, held: l.held, seated: true, sortY: baseY + 0.25, mesa: l.mesa ? a.dono : undefined, rotulo: l.rotulo,
+          dir: l.dir, pose: l.pose, held: l.held, seated: true, sortY: baseY + 0.25, mesa: l.mesa ? a.dono : undefined, descanso: l.descanso, rotulo: l.rotulo,
         });
       } else {
         const y = r * TILE + WALK_FOOT_DY;

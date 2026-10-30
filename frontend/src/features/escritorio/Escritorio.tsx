@@ -14,6 +14,7 @@ import { Toasts, useToasts } from './Toasts'
 import { useAvancarMundo, type ResultadoAvancoMundo } from '../../hooks/useMundo'
 import { useContagemNaoLidas, useMensagens } from '../../hooks/useMensagens'
 import { useAgentes, useRelacionamentos } from '../../hooks/useAgentes'
+import { useHumores } from '../../hooks/useHumores'
 import { useTickAtual } from '../../hooks/useTick'
 import { definirDryRunAtivo, dryRunEstaAtivo, lerPreviewSalva, salvarPreview } from './dry-run'
 import { somAtivo, tocarSom } from './som'
@@ -138,6 +139,10 @@ export function Escritorio() {
   }, [agentesAoVivo, mensagens, horaCheia])
 
   useEffect(() => mundo?.definirStatus(status), [mundo, status])
+
+  // Humor com motivo (dado real): vira postura no prédio e o pensamento ao selecionar o agente
+  const humores = useHumores()
+  useEffect(() => mundo?.definirHumores(humores), [mundo, humores])
 
   // Afinidade real entre colegas: o prédio usa para juntar amigos no almoço em duplas
   const { data: relacionamentos } = useRelacionamentos()

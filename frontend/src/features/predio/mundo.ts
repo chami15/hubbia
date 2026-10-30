@@ -11,11 +11,12 @@ import { DESMONTE_MS, H, MAX_VAGAS, OBRA_MS, areaEm, desenharPredio, lugaresInal
 import { SALAS } from './salas'
 import { criarRelogio } from './relogio'
 import { pontoNaTela, temAtalho } from './atalho'
-import { ALTURA_LINHA, layoutBalao, type Encontro } from './encontros'
+import { ALTURA_LINHA, layoutBalao, textoParaBalao, type Encontro } from './encontros'
+import type { Humor } from './humor'
 import { dataComHora } from './relogioDoMundo'
 import { afinidade, type Afinidades } from './relacoes'
 import {
-  adicionarAgente, areasOcupadas, criarSimulacao, definirHoraDoMundo, definirParado, dispensarAgente, falar, visitando, visitar, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
+  adicionarAgente, areasOcupadas, criarSimulacao, definirHoraDoMundo, definirHumores, definirParado, dispensarAgente, falar, pensar, visitando, visitar, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
   atividadeDe, type AgenteVivo, type Status,
 } from './sim'
 
@@ -45,6 +46,8 @@ export interface Mundo {
   definirStatus: (status: ReadonlyMap<AgenteId, Status>) => void
   definirHora: (hora: number) => void
   selecionar: (id: AgenteId | null) => void
+  /** Humor de cada agente com o motivo (humor.ts): vira postura e o pensamento ao selecionar. */
+  definirHumores: (m: ReadonlyMap<AgenteId, { humor: Humor; motivo: string }>) => void
   /** Afinidade real entre colegas (relacoes.ts): o almoço em duplas passa a juntar quem se dá bem. */
   definirAfinidades: (m: Afinidades) => void
   /** Encontros a partir de mensagens sociais reais (visita com balão, ou só o balão de resposta). */
@@ -80,6 +83,7 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
   let statusDesejado: ReadonlyMap<AgenteId, Status> = new Map()
   let hora = new Date().getHours()
   let selecionado: AgenteId | null = null
+  let humores: ReadonlyMap<AgenteId, { humor: Humor; motivo: string }> = new Map()
   let sobre: AgenteId | undefined
   let vagaSob: number | undefined
 
@@ -207,20 +211,31 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
   // ---------------------------------------------------------------- laço
 
   /** Balão de fala em pixel art: borda escura com cantos cortados, fundo creme e cauda em degraus apontando para quem fala. */
-  function desenharBalao(c: CanvasRenderingContext2D, linhas: string[], x: number, topo: number) {
+  function desenharBalao(c: CanvasRenderingContext2D, linhas: string[], x: number, topo: number, pensamento = false) {
     const b = layoutBalao(linhas, x, topo, predio.W)
     const tinta = '#1f2430'
     const papel = '#fbf7ef'
     c.fillStyle = tinta
     c.fillRect(b.x0 + 1, b.y0, b.w - 2, b.h)
     c.fillRect(b.x0, b.y0 + 1, b.w, b.h - 2)
-    c.fillRect(b.caudaX - 2, b.y0 + b.h, 5, 1)
-    c.fillRect(b.caudaX - 1, b.y0 + b.h + 1, 3, 1)
-    c.fillRect(b.caudaX, b.y0 + b.h + 2, 1, 1)
+    if (pensamento) {
+      // pensamento: a cauda são duas bolinhas descendo até a cabeça (como nos quadrinhos), não o bico da fala
+      c.fillRect(b.caudaX - 2, b.y0 + b.h + 1, 4, 4)
+      c.fillRect(b.caudaX, b.y0 + b.h + 6, 3, 3)
+    } else {
+      c.fillRect(b.caudaX - 2, b.y0 + b.h, 5, 1)
+      c.fillRect(b.caudaX - 1, b.y0 + b.h + 1, 3, 1)
+      c.fillRect(b.caudaX, b.y0 + b.h + 2, 1, 1)
+    }
     c.fillStyle = papel
     c.fillRect(b.x0 + 1, b.y0 + 1, b.w - 2, b.h - 2)
-    c.fillRect(b.caudaX - 1, b.y0 + b.h - 1, 3, 1)
-    c.fillRect(b.caudaX, b.y0 + b.h, 1, 1)
+    if (pensamento) {
+      c.fillRect(b.caudaX - 1, b.y0 + b.h + 2, 2, 2)
+      c.fillRect(b.caudaX + 1, b.y0 + b.h + 7, 1, 1)
+    } else {
+      c.fillRect(b.caudaX - 1, b.y0 + b.h - 1, 3, 1)
+      c.fillRect(b.caudaX, b.y0 + b.h, 1, 1)
+    }
     // +3: espaço dos acentos, que a fonte desenha acima da letra
     linhas.forEach((l, i) => pixelText(c, l, b.x0 + 3, b.y0 + 6 + i * ALTURA_LINHA, tinta))
   }
@@ -247,7 +262,7 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
           c.drawImage(sp.canvas, Math.round(a.x - sp.ax), Math.round(topo - 4 - pisca - sp.ay))
         }
         const fala = a.fala
-        if (fala && t < fala.ate) baloes.push(() => desenharBalao(c, fala.linhas, Math.round(a.x), Math.round(topo)))
+        if (fala && t < fala.ate) baloes.push(() => desenharBalao(c, fala.linhas, Math.round(a.x), Math.round(topo), fala.pensamento))
         if (marcado || a.def.id === sobre) {
           // quem tem atalho avisa como chegar nele, só no hover (nada fixo na tela)
           const nome = a.def.nome.toLowerCase() + (a.def.id === sobre && temAtalho(a.def.id) && opcoes.aoAtalhoAgente ? ' (clique direito)' : '')
@@ -329,7 +344,16 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
       definirHoraDoMundo(sim, h)
     },
     selecionar: (id) => {
+      // selecionar alguém com humor mostra o porquê num balão de pensamento (só nesse momento; some sozinho)
+      if (id && id !== selecionado) {
+        const h = humores.get(id)
+        if (h) pensar(sim, id, textoParaBalao(h.motivo), relogio())
+      }
       selecionado = id
+    },
+    definirHumores: (m) => {
+      humores = m
+      definirHumores(sim, m, relogio())
     },
     congelar: (id) => {
       for (const a of sim.agentes) definirParado(sim, a.def.id, a.def.id === id)

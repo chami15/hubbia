@@ -15,6 +15,7 @@ import { SAIDA_ELEVADOR, areaEm, mesaDe, passagem, pesNoTile, type AreaId, type 
 import { personalidadeDe } from './personalidade';
 import { escolherAtividade, type Feito, type Opcao } from './rotina';
 import { parearPorAfinidade } from './relacoes';
+import type { Humor } from './humor';
 
 /**
  * Estados que o prédio sabe desenhar. Vêm do backend (estado do agente + mensagens não lidas + hora simulada; ver
@@ -91,8 +92,13 @@ export interface AgenteVivo {
   visita?: { para: AgenteId; linhas: string[]; lugarId?: string; chegou?: boolean };
   /** Alguém está vindo visitá-lo: espera onde está até a conversa acabar (senão a visita falava sozinha). */
   recebendo?: AgenteId;
-  /** Balão de fala desenhado acima da cabeça até `ate`. */
-  fala?: { linhas: string[]; ate: number };
+  /** Balão de fala desenhado acima da cabeça até `ate` (`pensamento`: balão de pensar, ao selecionar o agente). */
+  fala?: { linhas: string[]; ate: number; pensamento?: boolean };
+  /** Humor de agora (humor.ts), que vira postura quando ele está parado. */
+  humor?: Humor;
+  /** Comemorando (humor orgulhoso que acabou de chegar) até este instante; `poseAntes` volta depois. */
+  comemorarAte?: number;
+  poseAntes?: Pose;
 }
 
 /** Como o escritório almoça hoje: todos na copa, em duplas, ou fora (saem pelo elevador). Sorteado ao meio-dia. */
@@ -217,6 +223,41 @@ export function visitar(sim: Simulacao, de: AgenteId, para: AgenteId, linhas: st
   v.visita = { para, linhas };
   v.ate = agora;
   alvo.recebendo = de;
+  return true;
+}
+
+// ------------------------------------------------------------------ humor (ideias do 3D, fase 3)
+
+/** O humor vira postura, só com poses que a arte já tem. ansioso/orgulhoso não mudam a postura parada. */
+export function poseDoHumor(humor: Humor, sentado: boolean): Pose | undefined {
+  if (humor === 'tenso' || humor === 'preocupado') return 'sulk';
+  if (humor === 'entediado') return sentado ? 'wait' : 'stretch';
+  if (humor === 'contido') return sentado ? 'wait' : 'sulk';
+  return undefined;
+}
+
+/** Recebe o humor de cada agente (sem humor = fora do mapa). Orgulhoso que acabou de chegar comemora uma vez. */
+export function definirHumores(sim: Simulacao, humores: ReadonlyMap<AgenteId, { humor: Humor }>, agora: number): void {
+  for (const a of sim.agentes) {
+    const novo = humores.get(a.def.id)?.humor;
+    if (novo === a.humor) continue;
+    a.humor = novo;
+    const parado = !a.caminho.length && !a.chegando && a.embarcouEm === undefined;
+    if (novo === 'orgulhoso' && parado) {
+      a.poseAntes = a.pose;
+      a.pose = 'cheer';
+      a.comemorarAte = agora + COMEMORACAO_MS;
+    } else if (parado && a.lugar?.mesa && a.status === 'ocioso') aplicarPoseDaMesa(a);
+  }
+}
+
+const COMEMORACAO_MS = 3000;
+
+/** Balão de PENSAMENTO (o porquê do humor), quando o chefe seleciona o agente. Some sozinho. */
+export function pensar(sim: Simulacao, quem: AgenteId, linhas: string[], agora: number): boolean {
+  const a = sim.agentes.find((x) => x.def.id === quem);
+  if (!a || !disponivel(a)) return false;
+  a.fala = { linhas, ate: agora + duracaoDaFala(linhas), pensamento: true };
   return true;
 }
 
@@ -605,6 +646,9 @@ function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   // Ocioso: sem pressa. Às vezes só fica onde está; senão faz algo da personalidade (a mesa conta como opção).
   if (a.lugar && sim.rnd() < FICAR_ONDE_ESTA) {
     a.ate = agora + tempo(sim, a, TEMPO_OCIOSO);
+    // parado, o humor aparece na postura (cabisbaixo, entediado...); sem humor, a pose do lugar
+    const p = a.humor && poseDoHumor(a.humor, a.seated);
+    if (p) a.pose = p;
     return;
   }
   a.ate = proximaAtividade(sim, a, true) ? agora + 1e9 : agora + 5000;
@@ -622,7 +666,7 @@ function deitar(a: AgenteVivo): void {
 }
 
 function aplicarPoseDaMesa(a: AgenteVivo): void {
-  a.pose = a.status === 'precisa_de_voce' ? 'raise_hand' : a.status === 'dormindo' ? 'sleep' : a.status === 'conversando' ? 'talk' : a.status === 'pensando' ? 'read' : a.status === 'ocioso' ? 'sit' : 'type';
+  a.pose = a.status === 'precisa_de_voce' ? 'raise_hand' : a.status === 'dormindo' ? 'sleep' : a.status === 'conversando' ? 'talk' : a.status === 'pensando' ? 'read' : a.status === 'ocioso' ? (a.humor && poseDoHumor(a.humor, true)) || 'sit' : 'type';
   a.seated = true;
   // pensando = de papéis na mão, lendo; os demais estados ficam de mãos livres
   a.held = a.status === 'pensando' ? 'papers' : undefined;
@@ -748,6 +792,11 @@ export function passo(sim: Simulacao, agora: number, dt: number): void {
       a.chegando = false;
       a.ate = agora + 450;
       continue;
+    }
+    if (a.comemorarAte !== undefined && agora >= a.comemorarAte) {
+      if (a.pose === 'cheer' && a.poseAntes) a.pose = a.poseAntes;
+      a.comemorarAte = undefined;
+      a.poseAntes = undefined;
     }
     if (agora >= a.ate) decidir(sim, a, agora);
     if (agora >= a.proximoIcone) {

@@ -12,12 +12,17 @@ describe('proximoPasso', () => {
     expect(proximoPasso(ok(420))).toEqual({ tipo: 'agendar', emMs: 420_000 })
   })
 
-  it.each<[MotivoRecusaTick]>([['fora_do_expediente'], ['orcamento_esgotado'], ['limite_diario'], ['fatia_orcamento']])(
+  it.each<[MotivoRecusaTick]>([['orcamento_esgotado'], ['limite_diario'], ['fatia_orcamento']])(
     'recusa dura (%s): desliga e mostra a mensagem do backend',
     (motivo) => {
       expect(proximoPasso(recusa(motivo, true))).toEqual({ tipo: 'parar', mensagem: `msg ${motivo}` })
     },
   )
+
+  it('regressão: fora do expediente não desliga mais o auto, espera o expediente do mundo abrir', () => {
+    // com o fator 24 a noite do mundo dura ~37 min reais; desligar obrigava o chefe a religar o auto a cada hora
+    expect(proximoPasso(recusa('fora_do_expediente', false, 1951))).toEqual({ tipo: 'agendar', emMs: 1_951_000 })
+  })
 
   it('cedo demais não desliga: espera o que o backend pediu e tenta de novo', () => {
     expect(proximoPasso(recusa('cedo_demais', false, 42))).toEqual({ tipo: 'agendar', emMs: 42_000 })

@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
-import { formatarHora, horaDoDia, horaDoMundoMs, horaLocalDoNavegador, type RelogioMundo } from '../predio/relogioDoMundo'
+import { formatarHora, horaDoDia, horaDoMundoMs, horaLocalDoNavegador, msAteProximoMinuto, type RelogioMundo } from '../predio/relogioDoMundo'
 
-// Hora do mundo no topo. Tem o próprio intervalo (como o Contador tem o próprio estado) para o resto da tela não
-// re-renderizar a cada segundo: o React só troca o texto quando o minuto do mundo muda (a cada ~2,5 s no fator 24).
+// Hora do mundo no topo. Tem o próprio temporizador (como o Contador tem o próprio estado) para o resto da tela não
+// re-renderizar à toa, e se reagenda para a VIRADA de cada minuto do mundo: assim as trocas ficam igualmente espaçadas
+// (no fator 24, a cada 2,5 s). Sem relógio do backend, mostra a hora do navegador e confere a cada segundo.
 export function RelogioDoTopo({ relogio }: { relogio: RelogioMundo | undefined }) {
   const ler = () => formatarHora(relogio ? horaDoDia(horaDoMundoMs(relogio, Date.now()), relogio.fusoMin) : horaLocalDoNavegador())
   const [texto, setTexto] = useState(ler)
 
   useEffect(() => {
-    const atualizar = () => setTexto(ler())
+    let t: ReturnType<typeof setTimeout>
+    const atualizar = () => {
+      setTexto(ler())
+      t = setTimeout(atualizar, relogio ? msAteProximoMinuto(relogio, Date.now()) : 1000)
+    }
     atualizar()
-    const t = setInterval(atualizar, 1000)
-    return () => clearInterval(t)
+    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `ler` só depende de `relogio`
   }, [relogio])
 

@@ -1,8 +1,10 @@
 """Tick automático (Sprint 2, fase C): o timer do app pede uma rodada a cada N minutos reais e AQUI se decide se pode.
 
 Quem garante os limites é o backend, nunca o frontend (um segundo navegador aberto, ou um bug de timer, não pode furar o
-teto). Cada recusa volta com um MOTIVO e com `parar`: motivo "duro" desliga o toggle no app e avisa o chefe; o único
-"mole" é o intervalo mínimo (o app só espera `espera_s` e tenta de novo, para jitter de timer não desligar nada).
+teto). Cada recusa volta com um MOTIVO e com `parar`: motivo "duro" (orçamento, limite do dia) desliga o toggle no app e
+avisa o chefe; os "moles" só fazem o app esperar `espera_s` e tentar de novo: o intervalo mínimo (jitter de timer não pode
+desligar nada) e o fora do expediente (com o fator 24 a noite do mundo dura ~37 min reais; desligar obrigava o chefe a
+religar o auto a cada hora).
 
 Ordem das travas (a dura sempre ganha da mole, senão o app tentaria de novo a noite inteira):
   1. fora do expediente (hora do MUNDO)   2. orçamento total do dia esgotado   3. máximo de ticks automáticos no dia real
@@ -33,10 +35,13 @@ async def tentar_tick_automatico() -> dict:
     inicio_dia = tick._inicio_do_dia()
 
     if not relogio.expediente_agora():
+        # espera, não desliga: com o relógio acelerado a noite do mundo passa em minutos e o auto volta sozinho
         return _recusa(
             "fora_do_expediente",
             f"Fora do expediente ({settings.expediente_inicio}h às {settings.expediente_fim}h do mundo): "
-            "o tick automático espera o escritório abrir.",
+            "o tick automático volta quando o escritório abrir.",
+            parar=False,
+            espera_s=int(relogio.segundos_ate_abrir_expediente()) + 1,
         )
 
     if tick.orcamento_disponivel_hoje() <= 0:

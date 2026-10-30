@@ -50,12 +50,17 @@ class TestExecuta:
 
 
 class TestTravas:
-    async def test_fora_do_expediente_recusa_e_manda_parar(self, _dentro_do_expediente):
+    async def test_regressao_fora_do_expediente_desligava_o_auto_a_cada_dia_do_mundo(self, _dentro_do_expediente):
+        """O que acontecia: fora do expediente era recusa "dura" e desligava o botão. Com o fator 24 o expediente dura
+        22,5 min de cada hora real, então o auto desligava sozinho uma vez por hora e parecia não rodar de 5 em 5 min.
+        Agora é espera: não grava nada, não gasta nada, e diz em quantos segundos reais o expediente do mundo abre."""
         _dentro_do_expediente.return_value = False
 
-        r = await _rodar()
+        with patch("resolvers.relogio.segundos_ate_abrir_expediente", return_value=1950):
+            r = await _rodar()
 
-        assert r == {"executado": False, "motivo": "fora_do_expediente", "parar": True, "espera_s": None, "mensagem": r["mensagem"]}
+        assert r["executado"] is False and r["motivo"] == "fora_do_expediente"
+        assert r["parar"] is False and r["espera_s"] == 1951  # +1 s de folga: o app não acorda um instante antes de abrir
         assert tick.obter_tick_atual() is None  # nada gravado
 
     async def test_intervalo_minimo_recusa_sem_mandar_parar_e_diz_quanto_esperar(self):
@@ -145,15 +150,15 @@ class TestTravas:
 
 
 class TestOrdemDasTravas:
-    async def test_regressao_motivo_duro_ganha_do_mole(self, _dentro_do_expediente):
-        """Se o expediente acabou E o intervalo ainda não passou, o motivo é o expediente (parar), não 'cedo demais'
-        (esperar): senão o frontend ficaria tentando de novo a noite inteira."""
+    async def test_fora_do_expediente_ganha_do_intervalo_minimo(self, _dentro_do_expediente):
+        """Fora do expediente E dentro do intervalo: a espera é até o expediente abrir (a maior), não os 5 minutos."""
         await _rodar()
         _dentro_do_expediente.return_value = False
 
-        r = await _rodar()
+        with patch("resolvers.relogio.segundos_ate_abrir_expediente", return_value=1950):
+            r = await _rodar()
 
-        assert r["motivo"] == "fora_do_expediente" and r["parar"] is True
+        assert r["motivo"] == "fora_do_expediente" and r["espera_s"] == 1951
 
 
 class TestHttp:

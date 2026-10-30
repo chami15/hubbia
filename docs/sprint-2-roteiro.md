@@ -339,6 +339,7 @@ O fator mexe **só** no relógio (céu, luz, "dormindo", janela de expediente). 
 2. **Expediente** é uma função pura `em_expediente(hora_do_mundo)`; as horas (9 e 18) ficam em `config.py`.
 3. **`ticks.origem`** (`manual` | `automatico`) na mesma migration; `ticks.hora_simulada` passa a guardar "a hora do mundo naquele instante" e `tick_minutos_simulados` deixa de existir. A fatia do automático é a soma do custo das execuções dos ticks com `origem = 'automatico'`.
 4. **O backend é quem garante os limites**, não o frontend. O tick automático recusa, com **motivo explícito**, se: fora do expediente; menos de 5 min desde o último automático; já houve 40 automáticos no dia real; o automático já gastou 75% do teto; ou o teto total do dia acabou.
+   **Revisado (2026-10-30):** fora do expediente e intervalo mínimo são **esperas** (o app aguarda `espera_s` e tenta de novo); só orçamento e limite do dia desligam o botão. Com o fator 24 a noite do mundo dura ~37 min reais, e desligar obrigava o chefe a religar o auto a cada hora.
 5. **Frontend dispara o timer** (só com o app aberto e a aba visível): quando o backend recusa, o toggle desliga sozinho e um aviso diz por quê. Fechou o app, parou de gastar.
 6. **Toggle de tick automático**: começa **desligado a cada carregamento** da página (padrão seguro), só o chefe liga. O botão "avançar tick" manual continua e ignora o expediente (o chefe pode forçar), mas obedece ao teto total.
 7. **Visual:** céu, luz e "dormindo" passam a ler a hora do mundo calculada localmente; o relógio do topo mostra a hora do mundo.

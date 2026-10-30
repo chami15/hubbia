@@ -12,6 +12,7 @@ import { SALAS } from './salas'
 import { criarRelogio } from './relogio'
 import { pontoNaTela, temAtalho } from './atalho'
 import { ALTURA_LINHA, layoutBalao, type Encontro } from './encontros'
+import { dataComHora } from './relogioDoMundo'
 import {
   adicionarAgente, areasOcupadas, criarSimulacao, definirHoraDoMundo, definirParado, dispensarAgente, falar, visitando, visitar, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
   atividadeDe, type AgenteVivo, type Status,
@@ -295,7 +296,8 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
       {
         t,
         hora,
-        agora: new Date(),
+        // relógio de parede na hora do MUNDO (antes era a do navegador: dois relógios diferentes na mesma tela)
+        agora: dataComHora(hora),
         telas,
         luz,
         elevadores: [portaDoElevador(sim.elevadorAbriu[0], t), portaDoElevador(sim.elevadorAbriu[1], t)],

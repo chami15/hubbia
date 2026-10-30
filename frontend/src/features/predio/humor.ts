@@ -8,6 +8,16 @@ import type { AgenteId } from './agentes'
 
 export type Humor = 'ansioso' | 'tenso' | 'contido' | 'preocupado' | 'orgulhoso' | 'entediado'
 
+/** Como o humor aparece escrito no painel (uma palavra, sem ícone nem número). */
+export const ROTULO_HUMOR: Record<Humor, string> = {
+  ansioso: 'ansioso',
+  tenso: 'tenso',
+  contido: 'contido',
+  preocupado: 'preocupado',
+  orgulhoso: 'orgulhoso',
+  entediado: 'entediado',
+}
+
 export interface Sinais {
   naoLidas: number
   falhasHoje: number

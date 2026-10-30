@@ -27,6 +27,8 @@ export function invalidarDepoisDoTick(cliente: QueryClient) {
   void cliente.invalidateQueries({ queryKey: ['tick', 'orcamento'] })
   void cliente.invalidateQueries({ queryKey: ['agentes'] })
   void cliente.invalidateQueries({ queryKey: ['mensagens'] })
+  // falhas do dia mudam o humor (fase 3): as métricas da sala de máquinas também se renovam
+  void cliente.invalidateQueries({ queryKey: ['infra'] })
 }
 
 export function useAvancarMundo() {

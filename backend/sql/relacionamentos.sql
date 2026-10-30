@@ -17,3 +17,12 @@ WHERE agente_id = %s;
 UPDATE relacionamentos SET afinidade = %s, atualizado_em = now()
 WHERE agente_id = %s AND alvo_agente_id = %s
 RETURNING agente_id, alvo_agente_id, afinidade;
+
+--QUERY: listar_entre_colegas
+-- Afinidade entre colaboradores ativos, nas duas direções (é direcional: A gostar de B não é B gostar de A).
+-- Chefe fora (ele não é simulado) e sem `opiniao` (nunca escrita). Leitura pura, sem LLM.
+SELECT r.agente_id, r.alvo_agente_id, r.afinidade
+FROM relacionamentos r
+JOIN agentes a ON a.id = r.agente_id AND a.ativo AND a.tipo = 'colaborador'
+JOIN agentes b ON b.id = r.alvo_agente_id AND b.ativo AND b.tipo = 'colaborador'
+ORDER BY r.agente_id, r.alvo_agente_id;

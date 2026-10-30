@@ -282,7 +282,7 @@ resolvers/                 # regra de negócio (o router chama isso, nunca o ban
                                 # a partir de tick_execucoes (migrations 010–011)
 
 routers/                   # HTTP fino — só parse de request/response
-  agentes.py                # GET /agentes
+  agentes.py                # GET /agentes, GET /agentes/relacionamentos (afinidade entre colegas, leitura)
   mensagens.py               # GET /mensagens
   financeiro.py               # POST /financeiro/extrato, GET /dashboard, /relatorio
   agenda.py                    # GET /agenda/conversa (histórico + pendência), POST /agenda/mensagem,

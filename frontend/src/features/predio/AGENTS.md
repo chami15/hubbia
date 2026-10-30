@@ -21,6 +21,8 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `personalidade.ts` | **Quem cada agente é** no prédio: horário de sono (Norte e Motriz noturnos), `ritmo` (mais calmo = levanta menos), gosto por sair da sala e favoritos por rótulo de lugar. |
 | `rotina.ts` | Escolha pura da próxima atividade: sorteio com os favoritos, sem repetir as duas últimas, no máximo uma saída da sala a cada três. |
 | `encontros.ts` | Encontros a partir de mensagens sociais reais (puro): texto para a fonte pixel, quebra em linhas, quem visita quem, posição do balão. |
+| `relacoes.ts` | Afinidade real entre colegas (puro): média das duas direções, "se dá bem com" do painel e duplas do almoço com peso na afinidade. |
+| `humor.ts` | Humor com motivo (puro): sinais reais da API → um humor por vez e o porquê em texto. Vira postura (`poseDoHumor` no sim) e pensamento ao selecionar. Nunca custo/tokens. |
 | `status.ts` | Estado do backend → status do prédio (puro, testado). |
 | `relogioDoMundo.ts` | A **hora do mundo** (céu, luz, "dormindo", relógio do topo): conta pura sobre o tempo real, mesma do backend (`resolvers/relogio.py`), testada com os mesmos vetores. Não confundir com `relogio.ts`. |
 | `relogio.ts` | Relógio de mundo que para com a aba escondida (injetável, para teste). |
@@ -28,7 +30,7 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `vagas.ts` | Quem está em cada vaga (`localStorage`; é a única peça que muda quando isso for para o backend). |
 | `PainelPredio.tsx` | Gerência: quem está no prédio (abrir/dispensar) e catálogo (adicionar). |
 | `habblaud/` | Arte do habblaud **copiada**. Não edite (veja "Arte"). |
-| `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**), `relogio.test.ts`, `status.test.ts` e os da Fase E: `rotina`, `ritmo`, `descanso`, `almoco`, `encontros`, `visita`. |
+| `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**), `relogio.test.ts`, `status.test.ts` e os da Fase E: `rotina`, `ritmo`, `descanso`, `almoco`, `encontros`, `visita`, `relacoes`, `humor`, `humor-predio`. |
 
 O status vem do backend em `status.ts::statusNoPredio` (mensagem não lida → `precisa_de_voce`; `pensando` → `pensando` (lê papéis, lâmpada); `executando` → `trabalhando` (digita);
 `falando` → `conversando`; `idle` → `ocioso`, ou `dormindo` na janela de sono **da personalidade** pela hora do mundo; agente conceito: ocioso de dia, dormindo de noite).

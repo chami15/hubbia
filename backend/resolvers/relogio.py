@@ -64,6 +64,20 @@ def expediente_agora(agora: datetime | None = None) -> bool:
     return em_expediente(hora_atual(agora))
 
 
+def segundos_ate_abrir_expediente(agora: datetime | None = None) -> float:
+    """Segundos REAIS até o expediente do mundo abrir (0 se já está aberto). É o quanto o tick automático espera fora
+    do expediente: com o fator 24, a noite do mundo passa em ~37 min reais."""
+    agora = agora or _agora()
+    r = obter_relogio(agora)
+    mundo = hora_do_mundo(agora, r["ancora_real"], r["ancora_mundo"], r["fator"]).astimezone(ZoneInfo(settings.timezone_padrao))
+    if em_expediente(mundo):
+        return 0.0
+    abre = mundo.replace(hour=settings.expediente_inicio, minute=0, second=0, microsecond=0)
+    if abre <= mundo:
+        abre += timedelta(days=1)
+    return (abre - mundo).total_seconds() / r["fator"]
+
+
 def descrever(agora: datetime | None = None) -> dict:
     """O que o frontend precisa para fazer a mesma conta sozinho (e corrigir a diferença de relógio com o servidor).
 

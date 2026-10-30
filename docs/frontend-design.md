@@ -267,7 +267,9 @@ frontend, pra não ficar refazendo depois:
   liga e que começa desligado a cada carregamento. O timer só roda com o
   app aberto e a aba visível; quem decide se pode é o backend (expediente
   9–18 do mundo, orçamento, 40 por dia real, 75% do teto, intervalo de 5
-  min) e a recusa volta com o motivo (Sprint 2, Parte 2b do roteiro).
+  min) e a recusa volta com o motivo (Sprint 2, Parte 2b do roteiro). Fora do
+  expediente o auto **espera** a abertura do escritório (não desliga); só
+  orçamento e limite do dia desligam o botão e avisam.
 - Suporte a `dry_run`: a UI deveria deixar claro quando está só
   "conferindo" (calcula e mostra o que aconteceria) vs. de fato
   avançando e gravando.

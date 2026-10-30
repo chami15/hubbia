@@ -82,6 +82,35 @@ class TestExpediente:
         assert relogio.expediente_agora(agora=t0 + timedelta(minutes=20)) is False   # mundo 18:00, fim exclusivo
 
 
+class TestAteAbrirExpediente:
+    """Quantos segundos REAIS faltam para o expediente do mundo abrir (o tick automático espera isso)."""
+
+    def _em(self, hora_mundo: int, fator: float = 24):
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+        t0 = datetime(2026, 10, 27, hora_mundo, 0, tzinfo=ZoneInfo("America/Sao_Paulo"))
+        relogio.obter_relogio(agora=t0)
+        if fator != 24:
+            relogio.definir_fator(fator, agora=t0)
+        return relogio.segundos_ate_abrir_expediente(agora=t0), timedelta
+
+    def test_noite_do_mundo_espera_ate_as_9h_do_dia_seguinte(self):
+        s, _ = self._em(20)  # 20h -> 9h = 13 h do mundo = 13/24 h reais = 1950 s
+        assert s == pytest.approx(1950, abs=1)
+
+    def test_madrugada_espera_ate_as_9h_do_mesmo_dia(self):
+        s, _ = self._em(7)  # 7h -> 9h = 2 h do mundo = 300 s reais
+        assert s == pytest.approx(300, abs=1)
+
+    def test_fator_1_e_tempo_real(self):
+        s, _ = self._em(7, fator=1)
+        assert s == pytest.approx(7200, abs=1)
+
+    def test_dentro_do_expediente_e_zero(self):
+        s, _ = self._em(10)
+        assert s == 0
+
+
 class TestBanco:
     def test_primeira_leitura_cria_o_relogio_com_o_fator_do_config(self):
         r = relogio.obter_relogio(agora=ANCORA_REAL)

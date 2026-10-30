@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatarHora, fusoDaString, horaDoDia, horaDoMundoMs, relogioDoServidor } from '../relogioDoMundo'
+import { dataComHora, formatarHora, fusoDaString, horaDoDia, horaDoMundoMs, msAteProximoMinuto, relogioDoServidor } from '../relogioDoMundo'
 
 // Mesmos vetores de backend/tests/test_relogio.py: o frontend e o backend precisam concordar na conta.
 const api = (extra: Partial<Parameters<typeof relogioDoServidor>[0]> = {}) => ({
@@ -68,5 +68,39 @@ describe('formatarHora', () => {
     expect(formatarHora(9.5)).toBe('09:30')
     expect(formatarHora(23.9999)).toBe('23:59')
     expect(formatarHora(0)).toBe('00:00')
+  })
+})
+
+describe('regressão: o relógio do topo andava aos trancos (2 s, 3 s, 2 s...)', () => {
+  // O que acontecia: o texto era recalculado uma vez por segundo; no fator 24 o minuto do mundo dura 2,5 s reais, então
+  // a troca caía às vezes em 2 s e às vezes em 3 s, e o relógio parecia acelerar e frear. Agora o próximo redesenho é
+  // agendado para a virada exata do minuto do mundo.
+  it('agenda a próxima atualização na virada do minuto do mundo', () => {
+    const r = relogioDoServidor(api(), real)
+    // mundo às 09:00:00 em ponto: o próximo minuto vem em 60 s do mundo = 2,5 s reais
+    expect(msAteProximoMinuto(r, real)).toBeCloseTo(2500, -1)
+    // 1 s real depois (mundo 09:00:24): faltam 36 s do mundo = 1,5 s reais
+    expect(msAteProximoMinuto(r, real + 1000)).toBeCloseTo(1500, -1)
+  })
+
+  it('as trocas de minuto ficam igualmente espaçadas', () => {
+    const r = relogioDoServidor(api(), real)
+    const trocas: number[] = []
+    let t = real + 300
+    for (let i = 0; i < 10; i++) {
+      t += msAteProximoMinuto(r, t)
+      trocas.push(t)
+    }
+    const intervalos = trocas.slice(1).map((x, i) => x - trocas[i])
+    for (const d of intervalos) expect(Math.abs(d - 2500)).toBeLessThanOrEqual(20)
+  })
+})
+
+describe('regressão: os relógios de parede das salas mostravam a hora real', () => {
+  // O que acontecia: o desenho recebia `new Date()` (hora do navegador) enquanto o topo e o céu seguiam a hora do mundo:
+  // dois relógios diferentes na mesma tela. Agora o relógio de parede recebe a hora do mundo.
+  it('a data entregue ao desenho tem a hora e o minuto do mundo', () => {
+    const d = dataComHora(15.5, new Date(2026, 9, 30, 8, 0))
+    expect([d.getHours(), d.getMinutes()]).toEqual([15, 30])
   })
 })

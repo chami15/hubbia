@@ -54,3 +54,20 @@ export function formatarHora(hora: number): string {
 export function horaLocalDoNavegador(agora: Date = new Date()): number {
   return agora.getHours() + agora.getMinutes() / 60
 }
+
+/**
+ * Milissegundos reais até o próximo minuto do MUNDO virar. O relógio do topo se reagenda por aqui: recalcular uma vez por
+ * segundo fazia a troca cair às vezes em 2 s e às vezes em 3 s (no fator 24 o minuto dura 2,5 s) e o relógio parecia frear.
+ */
+export function msAteProximoMinuto(r: RelogioMundo, agoraLocalMs: number): number {
+  const m = horaDoMundoMs(r, agoraLocalMs)
+  const resto = 60_000 - (((m % 60_000) + 60_000) % 60_000)
+  return resto / r.fator + 2 // +2 ms: cai do outro lado da virada, nunca no mesmo minuto
+}
+
+/** Uma Date com a hora e o minuto do mundo (para o desenho dos relógios de parede, que leem getHours/getMinutes). */
+export function dataComHora(hora: number, base: Date = new Date()): Date {
+  const d = new Date(base)
+  d.setHours(Math.floor(hora), Math.floor((hora % 1) * 60), 0, 0)
+  return d
+}

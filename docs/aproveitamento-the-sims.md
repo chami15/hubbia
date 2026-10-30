@@ -166,6 +166,11 @@ A tabela existe e nada a usa. Um "diário" (observação, reflexão, plano) seri
 
 ## 7. Plano em fases (sem HUD novo em nenhuma)
 
+> **Andamento (2026-10-30):** a fase 1 (conversas visíveis com balão) e a rotina por hora (6.5) saíram na Fase E da Sprint 2
+> (`feat/vida-do-predio`). A **fase 2 (relações reais)** está na `feat/relacoes`: `GET /agentes/relacionamentos`, duplas do
+> almoço pela afinidade e a faixa "se dá bem com" no painel (barra por colega, sem número). Decisão 1 da seção 8 respondida
+> como proposto. Faltam a fase 3 (humor com motivo) e a 4 (autonomia por traço real, `extroversao`).
+
 | Fase | Entrega | Backend novo | Teste de regressão |
 |---|---|---|---|
 | 1 | Conversas visíveis (6.1) + espaço pessoal (6.6) | nenhum | agentes não se sobrepõem; mensagem social gera encontro |

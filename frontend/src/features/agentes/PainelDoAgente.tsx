@@ -3,6 +3,7 @@ import { AGENTES, ehConceito } from '../predio/agentes'
 import { useAgentes } from '../../hooks/useAgentes'
 import { PainelAgente, type LarguraPainel } from './PainelAgente'
 import { EsqueletoPainel } from './EsqueletoPainel'
+import { SeDaBemCom } from './SeDaBemCom'
 
 // Escolhe QUAL painel abrir pra cada agente. Existe porque não há um
 // "painel genérico" que sirva pros quatro (ver frontend-design.md): o
@@ -53,6 +54,7 @@ export function PainelDoAgente({ agenteId, aoFechar }: Props) {
       estado={backend?.estado}
       largura={LARGURA_POR_AGENTE[agenteId] ?? 'estreito'}
       aoFechar={aoFechar}
+      extra={<SeDaBemCom agente={agente} />}
     >
       <Suspense fallback={<EsqueletoPainel />}>
         {agenteId === 'agenda' && <PainelAgenda agente={agente} />}

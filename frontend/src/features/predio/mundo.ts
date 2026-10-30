@@ -13,6 +13,7 @@ import { criarRelogio } from './relogio'
 import { pontoNaTela, temAtalho } from './atalho'
 import { ALTURA_LINHA, layoutBalao, type Encontro } from './encontros'
 import { dataComHora } from './relogioDoMundo'
+import { afinidade, type Afinidades } from './relacoes'
 import {
   adicionarAgente, areasOcupadas, criarSimulacao, definirHoraDoMundo, definirParado, dispensarAgente, falar, visitando, visitar, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
   atividadeDe, type AgenteVivo, type Status,
@@ -44,6 +45,8 @@ export interface Mundo {
   definirStatus: (status: ReadonlyMap<AgenteId, Status>) => void
   definirHora: (hora: number) => void
   selecionar: (id: AgenteId | null) => void
+  /** Afinidade real entre colegas (relacoes.ts): o almoço em duplas passa a juntar quem se dá bem. */
+  definirAfinidades: (m: Afinidades) => void
   /** Encontros a partir de mensagens sociais reais (visita com balão, ou só o balão de resposta). */
   aplicarEncontros: (lista: Encontro[]) => void
   /** Quem está visitando quem agora (o planejador usa para a resposta virar balão). */
@@ -330,6 +333,9 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
     },
     congelar: (id) => {
       for (const a of sim.agentes) definirParado(sim, a.def.id, a.def.id === id)
+    },
+    definirAfinidades: (m) => {
+      sim.afinidade = (a, b) => afinidade(m, a, b)
     },
     aplicarEncontros: (lista) => {
       const t = relogio()

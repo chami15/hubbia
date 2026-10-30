@@ -14,6 +14,7 @@ import { agentePorId, type AgenteId, type AgenteVisual } from './agentes';
 import { SAIDA_ELEVADOR, areaEm, mesaDe, passagem, pesNoTile, type AreaId, type Figura, type Lugar, type Predio } from './predio';
 import { personalidadeDe } from './personalidade';
 import { escolherAtividade, type Feito, type Opcao } from './rotina';
+import { parearPorAfinidade } from './relacoes';
 
 /**
  * Estados que o prédio sabe desenhar. Vêm do backend (estado do agente + mensagens não lidas + hora simulada; ver
@@ -119,6 +120,8 @@ export interface Simulacao {
   almoco: EstadoAlmoco;
   /** Só para teste: fixa o modo do almoço em vez de sortear. */
   modoAlmocoFixo?: ModoAlmoco;
+  /** Afinidade real entre dois agentes (relacoes.ts); sem ela, as duplas do almoço são sorteadas sem peso. */
+  afinidade?: (a: AgenteId, b: AgenteId) => number;
 }
 
 const entre = (rnd: () => number, [a, b]: [number, number]) => a + rnd() * (b - a);
@@ -361,7 +364,11 @@ const LUGARES_DE_DUPLA: [string, string][] = [
 ];
 
 /** Sorteio do plano do almoço (puro): o modo pelo peso e as duplas embaralhadas. */
-export function planejarAlmoco(rnd: () => number, ids: readonly AgenteId[]): { modo: ModoAlmoco; pares: Map<AgenteId, AgenteId> } {
+export function planejarAlmoco(
+  rnd: () => number,
+  ids: readonly AgenteId[],
+  afinidade?: (a: AgenteId, b: AgenteId) => number,
+): { modo: ModoAlmoco; pares: Map<AgenteId, AgenteId> } {
   let alvo = rnd();
   let modo: ModoAlmoco = 'copa';
   for (const [m, p] of PESOS_ALMOCO) {
@@ -371,6 +378,8 @@ export function planejarAlmoco(rnd: () => number, ids: readonly AgenteId[]): { m
     }
     alvo -= p;
   }
+  // com afinidade real, amigos tendem a almoçar juntos (sem virar rotina fixa)
+  if (afinidade) return { modo, pares: parearPorAfinidade(ids, afinidade, rnd) };
   const embaralhados = [...ids];
   for (let i = embaralhados.length - 1; i > 0; i--) {
     const j = Math.floor(rnd() * (i + 1));
@@ -392,7 +401,7 @@ function cuidarDoAlmoco(sim: Simulacao, agora: number): void {
   if (sim.hora !== undefined && sim.hora < INICIO_ALMOCO) st.houveHoje = false; // manhã: dia novo
   const dentro = naJanela(sim.hora, INICIO_ALMOCO, FIM_ALMOCO);
   if (dentro && !st.ativo && !st.houveHoje) {
-    const plano = planejarAlmoco(sim.rnd, sim.agentes.map((a) => a.def.id));
+    const plano = planejarAlmoco(sim.rnd, sim.agentes.map((a) => a.def.id), sim.afinidade);
     st.ativo = true;
     st.houveHoje = true;
     st.modo = sim.modoAlmocoFixo ?? plano.modo;

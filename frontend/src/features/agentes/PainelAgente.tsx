@@ -40,10 +40,12 @@ interface Props {
   estado?: EstadoAgente
   largura: LarguraPainel
   aoFechar: () => void
+  /** Faixa logo abaixo do cabeçalho, comum a todos os agentes (hoje: "se dá bem com"). */
+  extra?: ReactNode
   children: ReactNode
 }
 
-export function PainelAgente({ agente, estado, largura, aoFechar, children }: Props) {
+export function PainelAgente({ agente, estado, largura, aoFechar, extra, children }: Props) {
   const cor = corCss(agente.cor)
 
   return (
@@ -145,6 +147,8 @@ export function PainelAgente({ agente, estado, largura, aoFechar, children }: Pr
             ×
           </button>
         </header>
+
+        {extra}
 
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{children}</div>
       </div>

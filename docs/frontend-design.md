@@ -743,7 +743,10 @@ design.
   (mensagens — caixa de entrada + mural)". A ideia de balão saindo do
   AVATAR no escritório 2D (mais espacial) segue não implementada — o
   que foi construído é o painel/log, não algo sobre a cena isométrica.
-- **Afinidade entre agentes aparece na UI ou fica só interna?** Ainda
+- **Afinidade entre agentes aparece na UI ou fica só interna?** **Decidido (2026-10-30):**
+  aparece como comportamento (amigos almoçam juntos) e como a faixa "se dá bem com"
+  no painel de cada agente, uma barra por colega, sem número (`SeDaBemCom.tsx`).
+  Histórico da discussão: ainda
   não decidido se o "escritório vivo" mostra de alguma forma visual
   (proximidade dos avatares, indicador de relação) o quanto dois
   agentes se dão bem, ou se isso só molda comportamento (quem fala com

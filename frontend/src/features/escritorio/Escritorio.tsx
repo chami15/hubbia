@@ -13,7 +13,7 @@ import { PainelSalaDeMaquinas } from './PainelSalaDeMaquinas'
 import { Toasts, useToasts } from './Toasts'
 import { useAvancarMundo, type ResultadoAvancoMundo } from '../../hooks/useMundo'
 import { useContagemNaoLidas, useMensagens } from '../../hooks/useMensagens'
-import { useAgentes } from '../../hooks/useAgentes'
+import { useAgentes, useRelacionamentos } from '../../hooks/useAgentes'
 import { useTickAtual } from '../../hooks/useTick'
 import { definirDryRunAtivo, dryRunEstaAtivo, lerPreviewSalva, salvarPreview } from './dry-run'
 import { somAtivo, tocarSom } from './som'
@@ -25,6 +25,7 @@ import { horaDoDia, horaDoMundoMs, horaLocalDoNavegador } from '../predio/relogi
 import { RelogioDoTopo } from './RelogioDoTopo'
 import { personalidadeDe } from '../predio/personalidade'
 import { planejarEncontros } from '../predio/encontros'
+import { afinidadesDoServidor } from '../predio/relacoes'
 import type { RodadaProcessada } from '../../types/interacao'
 
 // A tela do hub: a barra do topo (marca, relógio simulado e as ações) e, embaixo, o PRÉDIO — cada agente na sua
@@ -137,6 +138,17 @@ export function Escritorio() {
   }, [agentesAoVivo, mensagens, horaCheia])
 
   useEffect(() => mundo?.definirStatus(status), [mundo, status])
+
+  // Afinidade real entre colegas: o prédio usa para juntar amigos no almoço em duplas
+  const { data: relacionamentos } = useRelacionamentos()
+  useEffect(() => {
+    if (!mundo || !relacionamentos || !agentesAoVivo) return
+    const localDe = (idBackend: number) => {
+      const aoVivo = agentesAoVivo.find((a) => a.id === idBackend)
+      return aoVivo ? AGENTES.find((l) => l.especialidade === aoVivo.especialidade)?.id : undefined
+    }
+    mundo.definirAfinidades(afinidadesDoServidor(relacionamentos, localDe))
+  }, [mundo, relacionamentos, agentesAoVivo])
 
   // Encontros: mensagem SOCIAL nova entre dois agentes vira visita com balão no prédio (Fase E). As que já existiam quando
   // a página abriu ficam de fora: reabrir o app não pode reencenar a conversa de ontem.

@@ -107,3 +107,25 @@ describe('planejarAlmoco (sorteio puro)', () => {
     expect(pares.size).toBe(4)
   })
 })
+
+describe('almoço em duplas com afinidade real', () => {
+  it('com a afinidade, quem se dá bem almoça junto na maioria dos dias', async () => {
+    const { planejarAlmoco } = await import('../sim')
+    const { mulberry32 } = await import('../habblaud/shared/hash')
+    const rnd = mulberry32(21)
+    const af = (a: string, b: string) => ([a, b].sort().join('|') === 'cifra|vita' ? 100 : 0)
+    let juntos = 0
+    for (let i = 0; i < 1000; i++) if (planejarAlmoco(rnd, IDS, af).pares.get('cifra') === 'vita') juntos++
+    // sem afinidade seria ~1/3. Não chega perto de 100%: quando o primeiro sorteado é alguém neutro com todos, ele
+    // pode levar um dos amigos (é o que mantém a variedade que o chefe pediu). Na conta: ~0,5 x 0,82 + 0,5 x 1/3 = 58%.
+    expect(juntos).toBeGreaterThan(500)
+    expect(juntos).toBeLessThan(900)
+  })
+
+  it('o prédio passa a afinidade do sim para o plano do almoço', () => {
+    const { sim, rodar } = predio('duplas')
+    sim.afinidade = (a, b) => ([a, b].sort().join('|') === 'agenda|norte' ? 100 : 0)
+    rodar(12, 1000)
+    expect(sim.almoco.pares.size).toBe(4)
+  })
+})

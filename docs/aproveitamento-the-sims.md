@@ -172,7 +172,10 @@ A tabela existe e nada a usa. Um "diário" (observação, reflexão, plano) seri
 > como proposto. A **fase 3 (humor com motivo)** está na `feat/humor`: humor de sinais reais (mensagem esperando, falhas
 > do dia, orçamento, projeto parado, entrega recente, tempo parado) com o motivo em texto no painel, postura no prédio e
 > balão de pensamento só ao selecionar. Decisões 2 e 3 da seção 8 respondidas como proposto (falhas entram, só a contagem;
-> balão só em evento real e ao selecionar). Falta a fase 4 (autonomia por traço real, `extroversao`).
+> balão só em evento real e ao selecionar). A **fase 4 (autonomia por traço real)** está na `feat/autonomia`: `GET /agentes`
+> devolve a `extroversao` do seed, que vira o gosto por sair da sala (0–10 → 0–40%, fonte única); tenso procura café e
+> entediado procura companhia; o painel mostra até três traços (extrovertido/reservado, noturno/madrugador, calmo), só os
+> que mudam o comportamento. Sem backend, vale a reserva escrita em `personalidade.ts`. **As quatro fases estão feitas.**
 
 | Fase | Entrega | Backend novo | Teste de regressão |
 |---|---|---|---|

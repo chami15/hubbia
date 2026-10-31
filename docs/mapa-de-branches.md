@@ -31,6 +31,7 @@ main ── backend (Sprint 0 e 2) + frontend com o prédio pixel + docs + supor
 | `feat/vida-do-predio` | **Pronta, sem PR** (base `feat/relogio-do-mundo`) | Sprint 2, Fase E: personalidade, ritmo calmo, descanso e sono individual, almoço, encontros com balão. Mergear **depois** da `feat/relogio-do-mundo` |
 | `feat/relacoes` | **Pronta, sem PR** (base `feat/vida-do-predio`) | Ideias do 3D, fase 2: afinidade real exposta, duplas do almoço por afinidade, "se dá bem com" no painel. Mergear **depois** da `feat/vida-do-predio` |
 | `feat/humor` | **Pronta, sem PR** (base `feat/relacoes`) | Ideias do 3D, fase 3: humor com motivo (painel, postura, pensamento ao selecionar). Mergear **depois** da `feat/relacoes` |
+| `feat/autonomia` | **Pronta, sem PR** (base `feat/humor`) | Ideias do 3D, fase 4: extroversão real (`GET /agentes`) e humor guiam a escolha da pausa; traços em chips no painel. Mergear **depois** da `feat/humor` |
 | `claude/modest-wright-cmvki7` | **Mantida** como laboratório 3D | Peso: `.glb` de 16,7 MB no git, bundle de 2,2 MB. As ideias dela entram na próxima sprint (`docs/aproveitamento-the-sims.md`) |
 
 Apagadas (o histórico segue nas tags): `claude/agents-hub-mvp-review-oh6zb0`, `feat/the-sims`, `frontend` (`v0.3.0`), `test/hubblaud` (`arquivo/hubblaud-prototipo`), `feat/backend-sprint-2`, `feat/predio-pixel`.

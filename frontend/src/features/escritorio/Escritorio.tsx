@@ -155,6 +155,17 @@ export function Escritorio() {
     mundo.definirAfinidades(afinidadesDoServidor(relacionamentos, localDe))
   }, [mundo, relacionamentos, agentesAoVivo])
 
+  // Traço real (extroversão do seed): fonte única do quanto cada um sai da sala; sem ele, vale a reserva de personalidade.ts
+  useEffect(() => {
+    if (!mundo || !agentesAoVivo) return
+    const tracos = new Map<string, { extroversao: number }>()
+    for (const l of AGENTES) {
+      const aoVivo = l.especialidade ? agentesAoVivo.find((a) => a.especialidade === l.especialidade) : undefined
+      if (aoVivo) tracos.set(l.id, { extroversao: aoVivo.extroversao })
+    }
+    mundo.definirTracos(tracos)
+  }, [mundo, agentesAoVivo])
+
   // Encontros: mensagem SOCIAL nova entre dois agentes vira visita com balão no prédio (Fase E). As que já existiam quando
   // a página abriu ficam de fora: reabrir o app não pode reencenar a conversa de ontem.
   const mensagensVistas = useRef<Set<number> | null>(null)

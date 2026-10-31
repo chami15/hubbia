@@ -5,6 +5,7 @@ import { PainelAgente, type LarguraPainel } from './PainelAgente'
 import { EsqueletoPainel } from './EsqueletoPainel'
 import { SeDaBemCom } from './SeDaBemCom'
 import { HumorDoAgente } from './HumorDoAgente'
+import { TracosDoAgente } from './TracosDoAgente'
 
 // Escolhe QUAL painel abrir pra cada agente. Existe porque não há um
 // "painel genérico" que sirva pros quatro (ver frontend-design.md): o
@@ -57,6 +58,7 @@ export function PainelDoAgente({ agenteId, aoFechar }: Props) {
       aoFechar={aoFechar}
       extra={
         <>
+          <TracosDoAgente agente={agente} />
           <HumorDoAgente agente={agente} />
           <SeDaBemCom agente={agente} />
         </>

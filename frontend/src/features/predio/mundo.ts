@@ -16,7 +16,7 @@ import type { Humor } from './humor'
 import { dataComHora } from './relogioDoMundo'
 import { afinidade, type Afinidades } from './relacoes'
 import {
-  adicionarAgente, areasOcupadas, criarSimulacao, definirHoraDoMundo, definirHumores, definirParado, dispensarAgente, falar, pensar, visitando, visitar, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
+  adicionarAgente, areasOcupadas, criarSimulacao, definirHoraDoMundo, definirHumores, definirParado, definirTracos, dispensarAgente, falar, pensar, visitando, visitar, figuras, iconeDe, mudarStatus, passo, portaDoElevador, visivel,
   atividadeDe, type AgenteVivo, type Status,
 } from './sim'
 
@@ -50,6 +50,8 @@ export interface Mundo {
   definirHumores: (m: ReadonlyMap<AgenteId, { humor: Humor; motivo: string }>) => void
   /** Afinidade real entre colegas (relacoes.ts): o almoço em duplas passa a juntar quem se dá bem. */
   definirAfinidades: (m: Afinidades) => void
+  /** Extroversão real (GET /agentes) por agente local: guia o quanto cada um sai da sala. */
+  definirTracos: (m: ReadonlyMap<AgenteId, { extroversao: number }>) => void
   /** Encontros a partir de mensagens sociais reais (visita com balão, ou só o balão de resposta). */
   aplicarEncontros: (lista: Encontro[]) => void
   /** Quem está visitando quem agora (o planejador usa para a resposta virar balão). */
@@ -361,6 +363,7 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
     definirAfinidades: (m) => {
       sim.afinidade = (a, b) => afinidade(m, a, b)
     },
+    definirTracos: (m) => definirTracos(sim, m),
     aplicarEncontros: (lista) => {
       const t = relogio()
       for (const e of lista) {

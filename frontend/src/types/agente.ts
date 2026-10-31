@@ -19,4 +19,6 @@ export interface Agente {
   mesa: number | null
   avatar_config: AvatarConfig
   ativo: boolean
+  // 0-10, do seed (fonte única): decide quem puxa conversa no tick e quanto o agente sai da sala no prédio
+  extroversao: number
 }

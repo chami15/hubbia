@@ -47,3 +47,16 @@ class TestRelacionamentos:
         _relacao(a, b, 12)
         r = client.get("/agentes/relacionamentos")
         assert r.status_code == 200 and r.json() == [{"agente_id": a, "alvo_agente_id": b, "afinidade": 12}]
+
+
+class TestTracos:
+    def test_regressao_get_agentes_nao_devolvia_a_extroversao(self, client):
+        """A extroversão (0-10) está no banco e no seed e já decide quem puxa conversa no tick, mas GET /agentes não a
+        devolvia: o prédio inventava o "gosto por sair da sala" à mão. Agora ela sai na rota e vira a fonte única."""
+        _agente("Vita")
+        executar_query("agentes:upsert", returning=True, params=("Norte", "colaborador", "norte", None, "{}", 0, 3))
+
+        por_nome = {a["nome"]: a for a in client.get("/agentes").json()}
+
+        assert por_nome["Norte"]["extroversao"] == 3
+        assert por_nome["Vita"]["extroversao"] == 5

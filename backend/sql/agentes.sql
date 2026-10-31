@@ -1,5 +1,5 @@
 --QUERY: listar
-SELECT id, nome, tipo, especialidade, estado, mesa, avatar_config, ativo
+SELECT id, nome, tipo, especialidade, estado, mesa, avatar_config, ativo, extroversao
 FROM agentes
 ORDER BY mesa NULLS LAST, id;
 

@@ -12,7 +12,7 @@ import { TILE, type Dir, type HeldItem, type IconName, type Pose } from './habbl
 import { mulberry32 } from './habblaud/shared/hash';
 import { agentePorId, type AgenteId, type AgenteVisual } from './agentes';
 import { SAIDA_ELEVADOR, areaEm, mesaDe, passagem, pesNoTile, type AreaId, type Figura, type Lugar, type Predio } from './predio';
-import { personalidadeDe } from './personalidade';
+import { personalidadeDe, personalidadeEfetiva } from './personalidade';
 import { escolherAtividade, type Feito, type Opcao } from './rotina';
 import { parearPorAfinidade } from './relacoes';
 import type { Humor } from './humor';
@@ -128,6 +128,8 @@ export interface Simulacao {
   modoAlmocoFixo?: ModoAlmoco;
   /** Afinidade real entre dois agentes (relacoes.ts); sem ela, as duplas do almoço são sorteadas sem peso. */
   afinidade?: (a: AgenteId, b: AgenteId) => number;
+  /** Traços reais do backend (extroversão do seed); sem eles vale a reserva escrita em personalidade.ts. */
+  tracos?: ReadonlyMap<AgenteId, { extroversao: number }>;
 }
 
 const entre = (rnd: () => number, [a, b]: [number, number]) => a + rnd() * (b - a);
@@ -234,6 +236,11 @@ export function poseDoHumor(humor: Humor, sentado: boolean): Pose | undefined {
   if (humor === 'entediado') return sentado ? 'wait' : 'stretch';
   if (humor === 'contido') return sentado ? 'wait' : 'sulk';
   return undefined;
+}
+
+/** Recebe os traços reais (GET /agentes). Só mudam a próxima escolha: ninguém larga o que está fazendo. */
+export function definirTracos(sim: Simulacao, tracos: ReadonlyMap<AgenteId, { extroversao: number }>): void {
+  sim.tracos = tracos;
 }
 
 /** Recebe o humor de cada agente (sem humor = fora do mapa). Orgulhoso que acabou de chegar comemora uma vez. */
@@ -354,7 +361,7 @@ function opcoesDe(sim: Simulacao, a: AgenteVivo, comMesa: boolean): Map<string, 
 function proximaAtividade(sim: Simulacao, a: AgenteVivo, comMesa: boolean): boolean {
   const porId = opcoesDe(sim, a, comMesa);
   const opcoes: Opcao[] = [...porId.values()].filter((l) => l.id !== a.lugar?.id).map((l) => ({ id: l.id, rotulo: l.rotulo, fora: ehComum(l) }));
-  const o = escolherAtividade(personalidadeDe(a.def.id), opcoes, a.recentes, sim.rnd);
+  const o = escolherAtividade(personalidadeEfetiva(a.def.id, sim.tracos?.get(a.def.id), a.humor), opcoes, a.recentes, sim.rnd);
   const l = o && porId.get(o.id);
   if (!o || !l || !irPara(sim, a, l, false)) return false;
   a.recentes = [...a.recentes, { id: o.id, fora: o.fora }].slice(-MEMORIA);

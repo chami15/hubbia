@@ -3,7 +3,8 @@
 // a escolha continua sorteada (rotina.ts), só que com preferência. Custo zero: é tudo visual.
 //
 // Agente novo: ganhe uma entrada aqui (o teste cobra que todo agente tem e que os favoritos existem na sala dele).
-import type { AgenteId } from './agentes'
+import { AGENTES, type AgenteId } from './agentes'
+import type { Humor } from './humor'
 
 export interface Personalidade {
   /** Horas do MUNDO em que dorme, se estiver ocioso: [dorme, acorda). Pode atravessar a meia-noite ([22, 6]). */
@@ -57,4 +58,64 @@ export function personalidadeDe(id: AgenteId): Personalidade {
 export function horaDeDormir(p: Pick<Personalidade, 'sono'>, hora: number): boolean {
   const [dorme, acorda] = p.sono
   return dorme <= acorda ? hora >= dorme && hora < acorda : hora >= dorme || hora < acorda
+}
+
+// ------------------------------------------------------------------ autonomia por traço real (ideias do 3D, fase 4)
+
+/** Chance máxima de uma pausa ser fora da sala, para extroversão 10. Acima disso o prédio vira formigueiro de novo. */
+const SAI_DA_SALA_MAX = 0.4
+
+/**
+ * Extroversão do banco (0..10, do seed) → gosto por sair da sala. É o traço REAL: o mesmo número que o backend usa
+ * nas relações. Linear de propósito: 5 dá 0,2, o padrão de antes, então ninguém muda de comportamento sem motivo.
+ */
+export function saiDaSalaPelaExtroversao(extroversao: number): number {
+  return (Math.min(10, Math.max(0, extroversao)) / 10) * SAI_DA_SALA_MAX
+}
+
+/**
+ * O que o humor pede (fase 3 → escolha): tenso procura café, entediado procura companhia (sofá da copa, recepção).
+ * Os outros humores só mudam a postura: ansioso espera resposta na mesa, contido não tem orçamento, preocupado e
+ * orgulhoso não pedem lugar. Somar em vez de fixar mantém a diferença entre um tímido e um extrovertido.
+ */
+const PEDIDO_DO_HUMOR: Partial<Record<Humor, { saiDaSala: number; favoritos: Record<string, number> }>> = {
+  tenso: { saiDaSala: 0.3, favoritos: { 'Tirando um café': 4 } },
+  entediado: { saiDaSala: 0.2, favoritos: { 'Batendo papo no sofá': 3, 'Conversando na recepção': 3 } },
+}
+
+/** Personalidade de agora: a escrita aqui, com a extroversão do backend (se veio) e o que o humor pede. */
+export function personalidadeEfetiva(id: AgenteId, tracos?: { extroversao?: number }, humor?: Humor): Personalidade {
+  const base = personalidadeDe(id)
+  let saiDaSala = tracos?.extroversao !== undefined ? saiDaSalaPelaExtroversao(tracos.extroversao) : base.saiDaSala
+  let favoritos = base.favoritos
+  const pedido = humor && PEDIDO_DO_HUMOR[humor]
+  if (pedido) {
+    saiDaSala = Math.min(1, saiDaSala + pedido.saiDaSala)
+    favoritos = { ...favoritos, ...pedido.favoritos }
+  }
+  return { ...base, saiDaSala, favoritos }
+}
+
+/** Limiares dos traços do painel: só o que de fato muda o comportamento no prédio. */
+const EXTROVERTIDO = 7
+const RESERVADO = 3
+const CALMO = 1.25
+
+/**
+ * Até três traços para o painel, com a concordância do agente (artigo 'a' = feminino). Cada um corresponde a algo
+ * visível: extrovertido sai mais da sala, noturno dorme depois da meia-noite, madrugador acorda cedo, calmo levanta
+ * menos. Sem a extroversão do backend, não diz nada sobre ela (não inventa traço a partir da reserva local).
+ */
+export function tracosDe(id: AgenteId, extroversao?: number): string[] {
+  const p = personalidadeDe(id)
+  const fem = AGENTES.find((a) => a.id === id)?.artigo === 'a'
+  const g = (masc: string, femi: string) => (fem ? femi : masc)
+  const t: string[] = []
+  if (extroversao !== undefined && extroversao >= EXTROVERTIDO) t.push(g('extrovertido', 'extrovertida'))
+  if (extroversao !== undefined && extroversao <= RESERVADO) t.push(g('reservado', 'reservada'))
+  const [dorme, acorda] = p.sono
+  if (dorme <= 4) t.push(g('noturno', 'noturna'))
+  else if (acorda <= 5) t.push(g('madrugador', 'madrugadora'))
+  if (p.ritmo >= CALMO) t.push('calm' + (fem ? 'a' : 'o'))
+  return t.slice(0, 3)
 }

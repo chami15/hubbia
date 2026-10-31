@@ -32,7 +32,8 @@ export function escolherAtividade(p: Personalidade, opcoes: readonly Opcao[], re
   const grupo = (querSair && fora.length) || !dentro.length ? fora : dentro
   if (!grupo.length) return undefined
 
-  const peso = (o: Opcao) => (o.fora ? 1 : (p.favoritos[o.rotulo] ?? 1))
+  // vale também para o que é fora da sala: é por onde o humor pede café ou companhia (personalidadeEfetiva)
+  const peso = (o: Opcao) => p.favoritos[o.rotulo] ?? 1
   const total = grupo.reduce((s, o) => s + peso(o), 0)
   let alvo = rnd() * total
   for (const o of grupo) {

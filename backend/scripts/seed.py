@@ -102,7 +102,8 @@ AGENTES = [
             "transforma o que ele despeja em tarefas curtas e claras, e pergunta só quando "
             "está em dúvida, nunca chuta."
         ),
-        "avatar_config": {"cor": "#db2777", "rosto": "📌"},
+        # amarelo post-it: o #db2777 da primeira versão é o da Rota (agente conceito do prédio)
+        "avatar_config": {"cor": "#eab308", "rosto": "📌"},
         "mesa": 5,
         # reservada: organiza mais do que conversa (proposta aceita com o "pode" da P1, 2026-11-11)
         "extroversao": 4,

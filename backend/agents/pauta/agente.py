@@ -222,7 +222,7 @@ def montar_prompt_sugestao(hoje: str, tarefa: dict, descartadas: list[str]) -> s
 
 
 async def sugerir_proximo_passo(prompt: str) -> dict:
-    return await _chamar(_get_model(SugestaoPasso), prompt, "sugerir o próximo passo")
+    return await _chamar(lambda: _get_model(SugestaoPasso), prompt, "sugerir o próximo passo")
 
 
 def montar_prompt_revisao(hoje: str, tarefas: list[dict]) -> str:
@@ -231,23 +231,25 @@ def montar_prompt_revisao(hoje: str, tarefas: list[dict]) -> str:
 
 
 async def clarear_a_vista(prompt: str) -> dict:
-    return await _chamar(_get_model(ClarearVista), prompt, "clarear a vista")
+    return await _chamar(lambda: _get_model(ClarearVista), prompt, "clarear a vista")
 
 
 async def organizar_lote(prompt: str) -> dict:
-    return await _chamar(_get_model(OrganizacaoLote), prompt, "organizar")
+    return await _chamar(lambda: _get_model(OrganizacaoLote), prompt, "organizar")
 
 
 async def consolidar_contexto(prompt: str) -> dict:
-    return await _chamar(_get_model(ContextoTarefa), prompt, "consolidar o contexto")
+    return await _chamar(lambda: _get_model(ContextoTarefa), prompt, "consolidar o contexto")
 
 
-async def _chamar(modelo, prompt: str, o_que: str) -> dict:
-    """Uma chamada, uma tentativa. Falhou -> RuntimeError (o gasto é registrado mesmo assim)."""
+async def _chamar(criar_modelo, prompt: str, o_que: str) -> dict:
+    """Uma chamada, uma tentativa. Falhou -> RuntimeError (o gasto é registrado mesmo assim).
+    O modelo é criado DENTRO do try: sem chave da OpenAI (ou com o modelo mal configurado) o erro sai ao criar, e
+    fora daqui virava 500 cru e prendia os textos em `lendo` (regressão em test_pauta_organizar)."""
     erro = None
     with cronometrar() as t:
         try:
-            resultado = await modelo.ainvoke(prompt)
+            resultado = await criar_modelo().ainvoke(prompt)
         except Exception as exc:  # noqa: BLE001 — vira RuntimeError claro logo abaixo
             erro = exc
     # registra DEPOIS do `with`: só aí o cronômetro tem o tempo (chamada que demorou e estourou é a que mais interessa)

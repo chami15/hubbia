@@ -286,6 +286,21 @@ class TestFalhaDoLlm:
         assert "sk-proj" in executar_query("anotacoes:buscar_por_id", params=(t["id"],))[0]["texto"]
 
 
+class TestRegressoes:
+    async def test_regressao_modelo_que_nao_cria_virava_500_e_prendia_os_textos(self, org, pauta, client):
+        # Sem OPENAI_API_KEY, o erro saía ao CRIAR o modelo (init_chat_model), antes do try que trata falhas: a rota
+        # devolvia 500 sem detalhe (no navegador, "não consegui falar com o servidor") e os textos ficavam em `lendo`.
+        t = pauta.registrar_texto("algo")
+        import agents.pauta.agente as agente
+        agente._modelos.clear()
+        from openai import OpenAIError  # o erro de verdade não é RuntimeError: era isso que escapava
+        with patch("agents.pauta.agente.init_chat_model", side_effect=OpenAIError("Missing credentials")):
+            r = client.post("/pauta/organizar")
+        agente._modelos.clear()
+        assert r.status_code == 422 and "Missing credentials" in r.json()["detail"]
+        assert _status(t["id"]) == "falhou"
+
+
 class TestPerguntas:
     async def _organizar(self, org, *decisoes):
         with patch("resolvers.pauta_organizar.agente_pauta.organizar_lote", new=_llm(*decisoes)):

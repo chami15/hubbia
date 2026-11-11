@@ -1,7 +1,7 @@
 # hubbia — instruções para agentes de IA
 
 Hub pessoal de agentes de IA especializados que simulam colegas num escritório:
-**Cifra** (financeiro), **Agenda**, **Vita** (saúde), **Norte** (projetos GitHub), **Motriz** (sala de máquinas, o único sem LLM).
+**Cifra** (financeiro), **Agenda**, **Vita** (saúde), **Norte** (projetos GitHub), **Motriz** (sala de máquinas, o único sem LLM), **Pauta** (secretária pessoal, em construção: `docs/pauta-desenho.md`).
 Backend FastAPI + Postgres + LangChain/OpenAI, com um motor de *tick* (manual, ou automático opt-in). Frontend React 19 + Vite + TanStack Query.
 **Uma pessoa só usa** (o "chefe"): single-user é deliberado, não esqueça de multiusuário.
 

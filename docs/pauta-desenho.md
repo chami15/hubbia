@@ -1,6 +1,6 @@
 # Pauta — secretário pessoal (desenho para aprovação)
 
-> **Status:** proposta, **sem "pode"** ainda. Nada de código antes da aprovação da fase.
+> **Status:** P1 **feita** (2026-11-11, branch `feat/pauta`). P2 em diante: proposta, cada uma espera o próprio "pode".
 > Decidido na conversa de 2026-11-11: organizar no tick **e** por botão; três frentes fixas (trabalho, faculdade,
 > pessoal), outras depois; uma pergunta por vez, curta; nome **Pauta**. Ordem: banco e backend primeiro, frontend no fim.
 
@@ -67,6 +67,12 @@ Decisões:
 - **Uma pergunta visível por vez**: índice único parcial `WHERE status = 'aberta'` (o mesmo truque de
   `acoes_pendentes` e dos cards do Norte). As outras dúvidas esperam como `na_fila` e sobem uma a uma, conforme o chefe
   responde. A fila não gasta nada: as dúvidas já saíram da mesma chamada que organizou o lote.
+- **Prioridade não é coluna.** É calculada na hora (prazo, há quanto tempo parada, frente), igual ao "estagnado" do Norte.
+- **Frentes em tabela**, não `CHECK`: criar uma frente nova depois é um `INSERT`, sem migration.
+- Custo não tem coluna aqui: vai para `tick_execucoes`, como todo gasto.
+- **Cada fase traz a própria migration** (decidido ao implementar a P1): a 015 cria só `frentes`, `tarefas`,
+  `anotacoes` e `checklist_itens`; `perguntas` nasce com a P2 e `sugestoes` com a P4. Criar tudo antes do uso travaria
+  o desenho, e migration aplicada não se edita.
 
 ### "Já li esse texto?" — o ciclo de um texto (pedido do chefe)
 
@@ -97,27 +103,30 @@ Nada é excluído de verdade; sai da vista e fica no histórico.
   aconteceu com a tarefa.
 - **Quando o último item do checklist é marcado**, a tarefa mostra "tudo feito, concluir?" com um clique. É uma conta,
   sem LLM, e a Pauta **nunca conclui sozinha**: você pode ter mais coisa a fazer que não está na lista.
-- **Prioridade não é coluna.** É calculada na hora (prazo, há quanto tempo parada, frente), igual ao "estagnado" do Norte.
-- **Frentes em tabela**, não `CHECK`: criar uma frente nova depois é um `INSERT`, sem migration.
-- Custo não tem coluna aqui: vai para `tick_execucoes`, como todo gasto.
 
-Rotas (todas sem LLM em P1):
+Rotas da P1 (**implementadas**, nenhuma chama LLM):
 
 | Rota | Faz |
 |---|---|
-| `POST /pauta/anotacoes` | salva o texto cru (opcional `tarefa_id`: escrito dentro da tarefa já nasce organizado, **sem LLM**) |
-| `GET /pauta/frentes` | as frentes com a contagem de tarefas abertas |
-| `GET /pauta/frentes/{id}/tarefas` | tarefas não ocultas da frente: abertas na ordem calculada, depois as feitas |
-| `GET /pauta/tarefas/{id}` | tarefa + checklist + contexto + textos originais (`LIMIT`) + sugestão ativa |
-| `POST /pauta/tarefas` / `PATCH /pauta/tarefas/{id}` | criar à mão; renomear, mudar frente, prazo ou termos, concluir, deixar de lado, reabrir |
-| `GET /pauta/frentes/{id}/tarefas?ocultas=true` | inclui as ocultas (o painel as mostra esmaecidas) |
-| `POST /pauta/tarefas/{id}/ocultar` / `.../desocultar` | ocultar só aceita `feita` ou `arquivada` (senão 409) |
-| `GET /pauta/perguntas/atual` / `POST /pauta/perguntas/{id}/resposta` | a pergunta visível e a resposta (em P1 só a estrutura; quem cria pergunta é a P2) |
-| `POST /pauta/tarefas/{id}/checklist` / `PATCH /pauta/checklist/{id}` | item novo; marcar, editar, reordenar, remover |
-| `GET /pauta/pendentes` | quantos textos estão `nova` (o painel mostra "3 esperando") |
-| `POST /pauta/anotacoes/{id}/tentar-de-novo` | `falhou` → `nova` (decisão do chefe, nunca automática) |
+| `POST /pauta/textos` | salva o texto cru; com `tarefa_id` (escrito dentro da tarefa) já nasce `organizada`, sem LLM |
+| `GET /pauta/textos/contagem` | `novas`, `aguardando_voce` e `falhas` (o painel mostra "3 esperando") |
+| `GET /pauta/frentes` | as frentes ativas com a contagem de tarefas abertas e o prazo mais próximo |
+| `GET /pauta/frentes/{id}/tarefas` | tarefas não ocultas: abertas (prazo mais perto primeiro), depois feitas/deixadas de lado; `?ocultas=true` inclui as ocultas, por último |
+| `POST /pauta/tarefas` | criar à mão (frente, título, prazo, termos) |
+| `GET /pauta/tarefas/{id}` | tarefa + checklist + até 20 textos originais + `itens_feitos`/`itens_total` + `tudo_feito` |
+| `PATCH /pauta/tarefas/{id}` | título, frente, termos, prazo (`"prazo": null` tira; ausente não mexe) |
+| `POST /pauta/tarefas/{id}/status` | `feita` (concluir), `arquivada` (deixar de lado), `aberta` (reabrir, desoculta); mesmo status → 409 |
+| `POST /pauta/tarefas/{id}/ocultar` / `.../desocultar` | ocultar só `feita` ou `arquivada` (senão 409) |
+| `POST /pauta/tarefas/{id}/checklist` | item novo, no fim da lista |
+| `PATCH /pauta/checklist/{id}` / `DELETE` | marcar/desmarcar, editar, reordenar; remover |
 
-Agente no `seed.py`: nome Pauta, especialidade `pauta`, extroversão a decidir (proponho 4: organizada e reservada).
+Tetos de entrada: texto 20 mil caracteres, título 120, item 200, até 20 termos (422 acima disso).
+Ficam para a P2, junto com quem os usa: `GET /pauta/perguntas/atual`, `POST /pauta/perguntas/{id}/resposta`,
+`POST /pauta/textos/{id}/tentar-de-novo` e `POST /pauta/organizar`.
+
+Agente no `seed.py`: Pauta, especialidade `pauta`, cor `#db2777`, mesa 5, extroversão 4 (organizada e reservada).
+Ainda não tem personagem no prédio (P6): o frontend liga agente do banco ao personagem pela especialidade, então até lá
+ela simplesmente não aparece.
 
 ## P2 — Organizar
 

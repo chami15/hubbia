@@ -1,7 +1,8 @@
 """Agente da Pauta (secretário pessoal). Duas chamadas estruturadas (padrão A), modelo barato:
   - P2 `organizar_lote`: um lote de textos -> destino, itens, prazo e se há dúvida;
   - P3 `consolidar_contexto`: os tópicos atuais de uma tarefa + só os textos novos -> "o que já se sabe";
-  - P4 `sugerir_proximo_passo`: a tarefa inteira (enxuta) -> o próximo passo, como e por que agora.
+  - P4 `sugerir_proximo_passo`: a tarefa inteira (enxuta) -> o próximo passo, como e por que agora;
+  - P5 `clarear_a_vista`: as tarefas abertas resumidas -> foco, pode esperar, talvez nem valha.
 
 O resolver monta tudo antes (textos já com segredo mascarado, tarefas abertas com termos, frentes, data de hoje); o
 modelo só decide destino, itens, prazo e se tem dúvida. Tudo que ele devolve é conferido em código depois
@@ -139,6 +140,42 @@ a seguir e como prosseguir, de forma objetiva. Nada de texto longo.
 - Nunca invente fato que não esteja acima. Partes [segredo] nunca são repetidas.
 """
 
+class ItemFoco(BaseModel):
+    tarefa_id: int = Field(..., description="O id de uma tarefa da lista. Nunca invente.")
+    por_que: str = Field(..., description="Uma frase curta (até 140 caracteres).")
+
+
+class ItemTalvez(ItemFoco):
+    acao: Literal["arquivar", "juntar"] | None = Field(
+        None, description="'arquivar' se perdeu o sentido; 'juntar' se é a mesma coisa que outra tarefa; null se só vale repensar."
+    )
+    juntar_com: int | None = Field(None, description="Com 'juntar': o id da outra tarefa, que fica.")
+
+
+class ClarearVista(BaseModel):
+    foco: list[ItemFoco] = Field(..., description="Até 3: o que realmente importa agora.")
+    pode_esperar: list[ItemFoco] = Field(default_factory=list, description="Até 5: real, mas sem pressa.")
+    talvez_nem_valha: list[ItemTalvez] = Field(default_factory=list, description="Até 3: parada há muito, duplicada ou sem sentido.")
+
+
+_PROMPT_REVISAO = """Você é a Pauta, secretária pessoal do chefe. Ele toca trabalho, faculdade e vida pessoal ao mesmo
+tempo e quer clarear a vista: o que importa agora, o que pode esperar e o que talvez nem valha a pena.
+
+== HOJE ==
+{hoje}
+
+== TAREFAS ABERTAS (já em ordem de urgência pela conta: prazo e tempo parada) ==
+{tarefas}
+
+== REGRAS ==
+- foco: no máximo 3. Prazo vencido ou perto pesa muito; depois o que destrava outras coisas.
+- pode_esperar: no máximo 5. Nunca uma tarefa com prazo em até 2 dias.
+- talvez_nem_valha: no máximo 3, só com motivo claro (parada há semanas sem progresso, duplicada de outra, vaga demais).
+  Para duplicada, use acao 'juntar' e juntar_com com a outra tarefa.
+- Cada tarefa aparece em no máximo um grupo. Tarefa que não cabe em nenhum, deixe de fora.
+- "por_que": uma frase curta e concreta, com o dado que justifica (prazo, dias parada, progresso).
+"""
+
 _modelos: dict = {}
 
 
@@ -186,6 +223,15 @@ def montar_prompt_sugestao(hoje: str, tarefa: dict, descartadas: list[str]) -> s
 
 async def sugerir_proximo_passo(prompt: str) -> dict:
     return await _chamar(_get_model(SugestaoPasso), prompt, "sugerir o próximo passo")
+
+
+def montar_prompt_revisao(hoje: str, tarefas: list[dict]) -> str:
+    linhas = "\n".join(json.dumps(t, ensure_ascii=False, default=str) for t in tarefas)
+    return _PROMPT_REVISAO.format(hoje=hoje, tarefas=linhas)
+
+
+async def clarear_a_vista(prompt: str) -> dict:
+    return await _chamar(_get_model(ClarearVista), prompt, "clarear a vista")
 
 
 async def organizar_lote(prompt: str) -> dict:

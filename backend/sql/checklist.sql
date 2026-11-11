@@ -41,3 +41,9 @@ RETURNING id;
 UPDATE checklist_itens
 SET ordem = (SELECT COALESCE(min(ordem), 1) - 1 FROM checklist_itens WHERE tarefa_id = %s)
 WHERE id = %s;
+
+--QUERY: mover_para_tarefa
+-- Juntar tarefas (P5): o item vai para o fim da lista da que fica.
+UPDATE checklist_itens
+SET tarefa_id = %s, ordem = (SELECT COALESCE(max(ordem), 0) + 1 FROM checklist_itens WHERE tarefa_id = %s)
+WHERE id = %s;

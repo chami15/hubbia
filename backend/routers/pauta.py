@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from resolvers import pauta as resolver
 from resolvers import pauta_contexto as contexto
 from resolvers import pauta_organizar as organizacao
+from resolvers import pauta_revisao as revisao
 from resolvers import pauta_sugestao as sugestao
 
 router = APIRouter(prefix="/pauta", tags=["pauta"])
@@ -214,3 +215,31 @@ def aceitar_sugestao(sugestao_id: int):
 @router.post("/sugestoes/{sugestao_id}/descartar")
 def descartar_sugestao(sugestao_id: int):
     return _executar(sugestao.descartar, sugestao_id)
+
+
+# ------------------------------------------------------------------------------ P5: clarear a vista
+
+@router.post("/revisao")
+async def clarear_a_vista():
+    """O botão "clarear a vista". `nova=false`: nada mudou hoje, é a mesma revisão (não gastou)."""
+    try:
+        return await revisao.clarear()
+    except resolver.ConflitoDeEstado as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/revisao")
+def obter_revisao():
+    return revisao.obter()
+
+
+@router.post("/revisao/itens/{item_id}/aceitar")
+def aceitar_item_revisao(item_id: int):
+    return _executar(revisao.aceitar_item, item_id)
+
+
+@router.post("/revisao/itens/{item_id}/descartar")
+def descartar_item_revisao(item_id: int):
+    return _executar(revisao.descartar_item, item_id)

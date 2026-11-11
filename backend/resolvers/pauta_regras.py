@@ -12,7 +12,11 @@ caso a caso (tests/test_pauta_regras.py). O resolver só junta isto com o banco.
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
+from config import settings
 from difflib import SequenceMatcher
 
 from resolvers.pauta import normalizar
@@ -239,3 +243,89 @@ def sugestao_valida(proximo_passo: str, como: list[str], por_que: str, descartad
 def item_equivalente(texto: str, itens: list[dict]) -> dict | None:
     """Item pendente do checklist que já diz o mesmo: aceitar a sugestão sobe ele para o topo em vez de duplicar."""
     return next((i for i in itens if not i["feito"] and _mesma_coisa(texto, i["texto"], _PARECIDO_ITEM)), None)
+
+
+# ------------------------------------------------------------------------------------------- P5: clarear a vista
+
+FOCO_MAX = 3
+ESPERAR_MAX = 5
+TALVEZ_MAX = 3
+DIAS_PRAZO_PERTO = 2
+
+
+def _dia(valor) -> date | None:
+    """Data no fuso do chefe. O banco devolve o horário em UTC: o `.date()` direto erra o dia entre 21h e meia-noite."""
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor.astimezone(ZoneInfo(settings.timezone_padrao)).date() if valor.tzinfo else valor.date()
+    return valor
+
+
+def urgencia(tarefa: dict, hoje: date) -> float:
+    """Conta pura para ordenar as tarefas antes do LLM (e para decidir sozinha quando há uma tarefa só): prazo vencido
+    na frente de tudo, depois prazo perto, depois o tempo parada (até 30 dias contam)."""
+    pontos = 0.0
+    prazo = _dia(tarefa.get("prazo"))
+    if prazo is not None:
+        dias = (prazo - hoje).days
+        pontos += 1000 + (-dias) * 10 if dias < 0 else max(0, 500 - dias * 30)
+    parada = _dia(tarefa.get("ultimo_movimento_em"))
+    if parada is not None:
+        pontos += min(30, (hoje - parada).days) * 2
+    return pontos
+
+
+def impressao_geral(tarefas: list[dict], hoje: date) -> str:
+    """Impressão de todas as abertas + o dia: mesma situação no mesmo dia = mesma revisão, sem chamar o LLM."""
+    dado = [hoje.isoformat()] + sorted(
+        [t["id"], normalizar(t["titulo"]), str(t.get("prazo") or ""), int(t["itens_total"]), int(t["itens_feitos"]),
+         str(_dia(t.get("ultimo_movimento_em")) or "")]
+        for t in tarefas
+    )
+    return hashlib.sha256(json.dumps(dado, ensure_ascii=False).encode()).hexdigest()
+
+
+@dataclass
+class ItemRevisao:
+    tarefa_id: int
+    por_que: str
+    acao: str | None = None
+    juntar_com: int | None = None
+
+
+@dataclass
+class Revisao5:
+    foco: list[ItemRevisao] = field(default_factory=list)
+    pode_esperar: list[ItemRevisao] = field(default_factory=list)
+    talvez_nem_valha: list[ItemRevisao] = field(default_factory=list)
+
+
+def revisao_valida(foco: list[ItemRevisao], esperar: list[ItemRevisao], talvez: list[ItemRevisao],
+                   tarefas: dict[int, dict], hoje: date) -> Revisao5:
+    """O que o código aceita da revisão: só tarefas abertas de verdade, cada uma em um grupo só (foco ganha), nos
+    limites de quantidade, e sem contradição com o prazo: tarefa com prazo em até 2 dias nunca "pode esperar".
+    Juntar só com outra tarefa aberta; ação que não fecha vira informação (sem ação)."""
+    vistas: set[int] = set()
+    r = Revisao5()
+
+    def aceitar(item: ItemRevisao, destino: list, maximo: int) -> None:
+        if item.tarefa_id not in tarefas or item.tarefa_id in vistas or len(destino) >= maximo:
+            return
+        vistas.add(item.tarefa_id)
+        destino.append(ItemRevisao(item.tarefa_id, truncar(item.por_que or "", POR_QUE_MAX), item.acao, item.juntar_com))
+
+    for item in foco:
+        aceitar(item, r.foco, FOCO_MAX)
+    for item in esperar:
+        prazo = _dia(tarefas.get(item.tarefa_id, {}).get("prazo"))
+        if prazo is not None and (prazo - hoje).days <= DIAS_PRAZO_PERTO:
+            continue
+        aceitar(item, r.pode_esperar, ESPERAR_MAX)
+    for item in talvez:
+        acao = item.acao if item.acao in ("arquivar", "juntar") else None
+        juntar = item.juntar_com if acao == "juntar" else None
+        if acao == "juntar" and (juntar not in tarefas or juntar == item.tarefa_id):
+            acao, juntar = None, None
+        aceitar(ItemRevisao(item.tarefa_id, item.por_que, acao, juntar), r.talvez_nem_valha, TALVEZ_MAX)
+    return r

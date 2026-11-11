@@ -150,3 +150,8 @@ SELECT EXISTS (
     SELECT 1 FROM anotacoes
     WHERE status = 'organizada' AND tarefa_id IS NOT NULL AND consolidada_em IS NULL AND consolidacao_erro IS NULL
 ) AS existe;
+
+--QUERY: mover_para_tarefa
+-- Juntar tarefas (P5): os textos vão para a que fica e voltam a contar como "novos" para o contexto dela (P3).
+UPDATE anotacoes SET tarefa_id = %s, consolidada_em = NULL, consolidacao_erro = NULL, consolidando_desde = NULL
+WHERE tarefa_id = %s;

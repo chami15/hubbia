@@ -40,7 +40,7 @@ _TABELAS = [
     "planos_dieta", "relatorios_saude",
     "projetos", "cards",
     # Pauta. `frentes` fica de fora de propósito: as três fixas nascem na migration 015 e são parte do modelo
-    "tarefas", "anotacoes", "checklist_itens", "perguntas", "contexto_topicos", "sugestoes",
+    "tarefas", "anotacoes", "checklist_itens", "perguntas", "contexto_topicos", "sugestoes", "revisoes", "revisao_itens",
 ]
 
 

@@ -1,5 +1,7 @@
 """Regras puras da Pauta (P2): segredo mascarado, repetição e a trava de ambiguidade. São as partes frágeis da
 organização, por isso cada caso que o chefe levantou na conversa de design tem um teste com o exemplo dele."""
+from datetime import date, datetime, timedelta, timezone
+
 import pytest
 
 from resolvers.pauta_regras import (
@@ -11,6 +13,10 @@ from resolvers.pauta_regras import (
     impressao_da_tarefa,
     item_equivalente,
     sugestao_valida,
+    ItemRevisao,
+    impressao_geral,
+    revisao_valida,
+    urgencia,
     truncar,
 )
 
@@ -216,3 +222,81 @@ class TestItemEquivalente:
         itens = [{"id": 1, "texto": "Listar endpoints", "feito": True}, {"id": 2, "texto": "Mapear campos", "feito": False}]
         assert item_equivalente("mapear os campos", itens)["id"] == 2
         assert item_equivalente("listar endpoints", itens) is None  # o feito não conta: sugerir de novo é outro passo
+
+
+HOJE = date(2026, 11, 11)
+
+
+def _aberta(id_, prazo=None, parada_dias=0, total=0, feitos=0, titulo=None):
+    movimento = datetime(2026, 11, 11, 12, tzinfo=timezone.utc) - timedelta(days=parada_dias)
+    return {"id": id_, "titulo": titulo or f"Tarefa {id_}", "prazo": prazo, "ultimo_movimento_em": movimento,
+            "itens_total": total, "itens_feitos": feitos}
+
+
+class TestUrgencia:
+    def test_vencida_antes_de_perto_antes_de_parada_antes_de_nada(self):
+        vencida = _aberta(1, prazo=HOJE - timedelta(days=1))
+        perto = _aberta(2, prazo=HOJE + timedelta(days=2))
+        parada = _aberta(3, parada_dias=20)
+        nada = _aberta(4)
+        ordem = sorted([nada, parada, perto, vencida], key=lambda t: -urgencia(t, HOJE))
+        assert [t["id"] for t in ordem] == [1, 2, 3, 4]
+
+    def test_parada_tem_teto(self):
+        assert urgencia(_aberta(1, parada_dias=300), HOJE) == urgencia(_aberta(1, parada_dias=30), HOJE)
+
+
+class TestRegressoesDeFuso:
+    def test_regressao_dias_parada_usava_a_data_em_utc(self):
+        # Movimento às 22h de 10/11 em São Paulo é 01h de 11/11 em UTC. O `.date()` direto no horário do banco (UTC)
+        # dava 11/11, e com "hoje" = 10/11 (fuso do chefe) a tarefa aparecia parada há -1 dia, entre 21h e meia-noite.
+        noite = {"prazo": None, "ultimo_movimento_em": datetime(2026, 11, 11, 1, 0, tzinfo=timezone.utc)}
+        hoje = date(2026, 11, 10)
+        assert urgencia(noite, hoje) == 0
+        from resolvers.pauta_regras import _dia
+        assert _dia(noite["ultimo_movimento_em"]) == hoje
+
+
+class TestImpressaoGeral:
+    def test_mesma_situacao_mesmo_dia(self):
+        tarefas = [_aberta(1), _aberta(2, prazo=HOJE)]
+        assert impressao_geral(tarefas, HOJE) == impressao_geral(list(reversed(tarefas)), HOJE)
+
+    @pytest.mark.parametrize("muda", [
+        lambda t, h: (t + [_aberta(9)], h),                                        # tarefa nova
+        lambda t, h: ([_aberta(1, feitos=1, total=1), t[1]], h),                   # item marcado
+        lambda t, h: (t, h + timedelta(days=1)),                                   # outro dia
+    ])
+    def test_muda_quando_a_situacao_ou_o_dia_muda(self, muda):
+        tarefas = [_aberta(1, total=1), _aberta(2)]
+        assert impressao_geral(*muda(tarefas, HOJE)) != impressao_geral(tarefas, HOJE)
+
+
+class TestRevisaoValida:
+    TAREFAS = {1: _aberta(1), 2: _aberta(2, prazo=HOJE + timedelta(days=1)), 3: _aberta(3), 4: _aberta(4), 5: _aberta(5)}
+
+    def test_so_tarefa_aberta_e_um_grupo_por_tarefa(self):
+        r = revisao_valida([ItemRevisao(1, "a"), ItemRevisao(99, "inventada")],
+                           [ItemRevisao(1, "repetida"), ItemRevisao(3, "b")], [ItemRevisao(3, "c")], self.TAREFAS, HOJE)
+        assert [i.tarefa_id for i in r.foco] == [1]
+        assert [i.tarefa_id for i in r.pode_esperar] == [3]
+        assert r.talvez_nem_valha == []
+
+    def test_prazo_perto_nunca_pode_esperar(self):
+        r = revisao_valida([], [ItemRevisao(2, "pode esperar?")], [], self.TAREFAS, HOJE)
+        assert r.pode_esperar == []
+
+    def test_limites(self):
+        itens = [ItemRevisao(i, "x" * 300) for i in (1, 3, 4, 5)]
+        r = revisao_valida(itens, [], [], self.TAREFAS, HOJE)
+        assert len(r.foco) == 3 and all(len(i.por_que) <= 140 for i in r.foco)
+
+    def test_juntar_so_com_outra_tarefa_aberta(self):
+        r = revisao_valida([], [], [ItemRevisao(1, "duplicada", "juntar", 3), ItemRevisao(4, "x", "juntar", 4),
+                                    ItemRevisao(5, "y", "juntar", 99)], self.TAREFAS, HOJE)
+        assert [(i.tarefa_id, i.acao, i.juntar_com) for i in r.talvez_nem_valha] == [
+            (1, "juntar", 3), (4, None, None), (5, None, None)]
+
+    def test_acao_desconhecida_vira_informacao(self):
+        r = revisao_valida([], [], [ItemRevisao(1, "z", "adiar")], self.TAREFAS, HOJE)
+        assert r.talvez_nem_valha[0].acao is None

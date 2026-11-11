@@ -104,6 +104,8 @@ class Settings(BaseSettings):
     # P4 — sugestão do próximo passo
     pauta_sugestao_itens_no_prompt: int = 30    # itens do checklist que vão para o LLM
     pauta_sugestao_descartadas: int = 3         # últimas descartadas que entram como "não repetir"
+    # P5 — clarear a vista
+    pauta_revisao_tarefas_no_prompt: int = 40   # as mais urgentes pela conta; o resto não entra
 
 
 settings = Settings()

@@ -1,0 +1,19 @@
+/* Efeitos do painel da Pauta que estilo inline não alcança (hover/active). Só transform e filtro: nada de layout. */
+.pauta-botao:not(:disabled):active {
+  transform: translate(2px, 2px);
+  box-shadow: none !important;
+}
+.pauta-botao:not(:disabled):hover {
+  filter: brightness(1.15);
+}
+.pauta-clicavel:hover {
+  filter: brightness(1.18);
+}
+.pauta-clicavel:focus-visible,
+.pauta-botao:focus-visible {
+  outline: 2px dashed var(--pauta);
+  outline-offset: 2px;
+}
+.pauta-painel ::placeholder {
+  color: var(--ink-faint);
+}

@@ -25,6 +25,7 @@ const PainelFinanceiro = lazy(() =>
 )
 const PainelNorte = lazy(() => import('../norte/PainelNorte').then((m) => ({ default: m.PainelNorte })))
 const PainelSaude = lazy(() => import('../saude/PainelSaude').then((m) => ({ default: m.PainelSaude })))
+const PainelPauta = lazy(() => import('../pauta/PainelPauta').then((m) => ({ default: m.PainelPauta })))
 
 // A largura sai do TIPO de conteúdo, não do gosto: conversa/menu/card
 // cabem numa faixa estreita; dashboard e formulário tabular não.
@@ -33,6 +34,7 @@ const LARGURA_POR_AGENTE: Record<string, LarguraPainel> = {
   cifra: 'largo',
   vita: 'largo',
   norte: 'largo',
+  pauta: 'largo',
 }
 
 interface Props {
@@ -69,6 +71,7 @@ export function PainelDoAgente({ agenteId, aoFechar }: Props) {
         {agenteId === 'vita' && <PainelSaude />}
         {agenteId === 'norte' && <PainelNorte />}
         {agenteId === 'cifra' && <PainelFinanceiro />}
+        {agenteId === 'pauta' && <PainelPauta />}
         {ehConceito(agente) && <PainelConceito nome={agente.nome} funcao={agente.funcao} />}
       </Suspense>
     </PainelAgente>

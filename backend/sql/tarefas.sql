@@ -66,3 +66,19 @@ RETURNING id;
 
 --QUERY: tocar
 UPDATE tarefas SET ultimo_movimento_em = now() WHERE id = %s;
+
+--QUERY: listar_abertas_para_contexto
+-- O que vai para o LLM organizar: só o necessário para escolher o destino (sem checklist, sem textos).
+SELECT t.id, t.frente_id, f.nome AS frente, t.titulo, t.termos
+FROM tarefas t
+JOIN frentes f ON f.id = t.frente_id
+WHERE t.status = 'aberta'
+ORDER BY t.ultimo_movimento_em DESC
+LIMIT %s;
+
+--QUERY: definir_prazo_se_vazio
+-- A Pauta só preenche prazo que não existe: prazo que o chefe pôs nunca é trocado por um que ela leu num texto.
+UPDATE tarefas SET prazo = %s, atualizada_em = now() WHERE id = %s AND prazo IS NULL;
+
+--QUERY: definir_termos
+UPDATE tarefas SET termos = %s, atualizada_em = now() WHERE id = %s;

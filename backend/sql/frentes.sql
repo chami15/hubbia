@@ -11,3 +11,6 @@ ORDER BY f.ordem, f.id;
 
 --QUERY: buscar_por_id
 SELECT id, nome, ordem, ativa FROM frentes WHERE id = %s;
+
+--QUERY: listar_ativas
+SELECT id, nome FROM frentes WHERE ativa ORDER BY ordem, id;

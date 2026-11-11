@@ -193,7 +193,8 @@ def _formatar_horario(inicio_iso: str) -> str:
 #   descrever(ctx) -> str curto do motivo (usado no dry_run, sem executar).
 #   executar(ctx)  -> async; faz a ação real (gera relatório/card/etc.) e
 #                  devolve a mensagem de aviso pro chefe (template
-#                  determinístico).
+#                  determinístico), ou None para trabalhar sem avisar
+#                  (Pauta: o resultado aparece no painel, não no chat).
 # Adicionar um agente novo é só plugar um handler aqui — a lógica central do
 # tick não muda. Agentes sem handler nunca disparam trabalho.
 # ---------------------------------------------------------------------------
@@ -364,6 +365,32 @@ async def _executar_infra(ctx: dict) -> str:
     return ctx["texto"]
 
 
+def _checar_pauta(agente: dict) -> dict | None:
+    """Pauta: tem texto `nova` E ainda não bateu o teto de chamadas do dia. As duas checagens são consultas; sem
+    texto novo, nada mais acontece (é o "se não tem texto novo, não faz nada" que o chefe pediu)."""
+    if not executar_query("anotacoes:existe_nova")[0]["existe"]:
+        return None
+    feitas_hoje = executar_query(
+        "tick_execucoes:contar_do_agente_desde", params=("pauta", _inicio_do_dia_real())
+    )[0]["total"]
+    if feitas_hoje >= settings.pauta_rodadas_por_dia:
+        return None
+    return {"novas": executar_query("anotacoes:contar_por_status")[0]["novas"]}
+
+
+def _descrever_pauta(ctx: dict) -> str:
+    return f"{ctx['novas']} texto(s) esperando organização."
+
+
+async def _executar_pauta(ctx: dict) -> None:
+    from resolvers import pauta_organizar
+
+    await pauta_organizar.organizar()
+    # Sem mensagem ao chefe, de propósito: ele pediu clareza, não lembrete. O que mudou aparece no painel da
+    # Pauta (tarefas e a pergunta da vez); uma mensagem a cada rodada viraria o aviso que ele não quer.
+    return None
+
+
 # `custa_llm` diz se o `executar` daquele handler chama modelo. É o que
 # permite o Motriz continuar rodando com o orçamento estourado: o teto
 # bloqueia o que gasta, não o que só lê arquivo e faz subtração. A
@@ -376,6 +403,7 @@ _HANDLERS_TRABALHO = {
     "saude": {"checar": _checar_vita, "descrever": _descrever_vita, "executar": _executar_vita, "custa_llm": True},
     "agenda": {"checar": _checar_agenda, "descrever": _descrever_agenda, "executar": _executar_agenda, "custa_llm": True},
     "infra": {"checar": _checar_infra, "descrever": _descrever_infra, "executar": _executar_infra, "custa_llm": False},
+    "pauta": {"checar": _checar_pauta, "descrever": _descrever_pauta, "executar": _executar_pauta, "custa_llm": True},
 }
 
 
@@ -462,17 +490,19 @@ async def processar_tick_completo(dry_run: bool = False) -> dict:
                 else:
                     try:
                         conteudo = await handler["executar"](contexto_trabalho)
-                        executar_query(
-                            "mensagens:inserir",
-                            returning=True,
-                            params=(agente["id"], chefe["id"], "trabalho", conteudo, numero_tick, None),
-                        )
+                        # `None` = trabalhou sem avisar (Pauta: o resultado aparece no painel dela, não no chat)
+                        if conteudo is not None:
+                            executar_query(
+                                "mensagens:inserir",
+                                returning=True,
+                                params=(agente["id"], chefe["id"], "trabalho", conteudo, numero_tick, None),
+                            )
+                            entrada["destinatario_id"] = chefe["id"]
+                            entrada["destinatario_nome"] = chefe["nome"]
+                            entrada["mensagem"] = conteudo
                         executar_query(
                             "agentes:atualizar_estado", commit=True, params=(_ESTADO_EXECUTANDO, agente["id"])
                         )
-                        entrada["destinatario_id"] = chefe["id"]
-                        entrada["destinatario_nome"] = chefe["nome"]
-                        entrada["mensagem"] = conteudo
                     except Exception as exc:
                         entrada["aviso"] = f"Falha ao executar proatividade de trabalho: {exc}"
             resultado["interacoes"].append(entrada)

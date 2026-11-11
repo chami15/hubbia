@@ -1,5 +1,6 @@
-"""HTTP fino do domínio Pauta (secretário pessoal), fase P1: textos crus, tarefas por frente e checklist.
-Nenhuma rota daqui chama LLM. Ver resolvers/pauta.py para as regras."""
+"""HTTP fino do domínio Pauta (secretário pessoal): textos crus, tarefas por frente e checklist (P1, sem LLM) e a
+organização dos textos com as perguntas de dúvida (P2). Só `POST /pauta/organizar` chama LLM, e só por clique.
+Regras em resolvers/pauta.py (P1) e resolvers/pauta_organizar.py (P2)."""
 from datetime import date
 from typing import Literal
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from resolvers import pauta as resolver
+from resolvers import pauta_organizar as organizacao
 
 router = APIRouter(prefix="/pauta", tags=["pauta"])
 
@@ -41,6 +43,10 @@ class StatusInput(BaseModel):
 
 class ItemInput(BaseModel):
     texto: str = Field(..., max_length=_ITEM_MAX)
+
+
+class RespostaInput(BaseModel):
+    opcao: int
 
 
 class ItemPatch(BaseModel):
@@ -132,3 +138,36 @@ def atualizar_item(item_id: int, corpo: ItemPatch):
 def remover_item(item_id: int):
     _executar(resolver.remover_item, item_id)
     return Response(status_code=204)
+
+
+# ------------------------------------------------------------------------------ P2: organizar e perguntas
+
+@router.post("/organizar")
+async def organizar():
+    """O botão "organizar agora". Sem texto novo, responde na hora sem gastar nada."""
+    try:
+        return await organizacao.organizar()
+    except resolver.ConflitoDeEstado as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/perguntas/atual")
+def pergunta_atual():
+    return organizacao.pergunta_atual()
+
+
+@router.post("/perguntas/{pergunta_id}/resposta")
+def responder(pergunta_id: int, corpo: RespostaInput):
+    return _executar(organizacao.responder, pergunta_id, corpo.opcao)
+
+
+@router.get("/textos/falhas")
+def listar_falhas():
+    return organizacao.listar_falhas()
+
+
+@router.post("/textos/{anotacao_id}/tentar-de-novo")
+def tentar_de_novo(anotacao_id: int):
+    return _executar(organizacao.tentar_de_novo, anotacao_id)

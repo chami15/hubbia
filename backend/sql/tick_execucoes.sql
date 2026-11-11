@@ -149,3 +149,10 @@ JOIN ticks t ON t.numero = e.tick
 WHERE t.origem = 'automatico'
   AND e.criado_em >= %s
   AND e.dry_run = FALSE;
+
+--QUERY: contar_do_agente_desde
+-- Quantas chamadas um agente fez desde um instante (ex.: meia-noite): o teto diário da Pauta no tick.
+SELECT count(*) AS total
+FROM tick_execucoes e
+JOIN agentes a ON a.id = e.agente_id
+WHERE a.especialidade = %s AND e.criado_em >= %s AND NOT e.dry_run;

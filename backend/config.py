@@ -89,5 +89,14 @@ class Settings(BaseSettings):
     interacao_dias_estagnacao_norte: int = 3         # dias reais parado (sem card ativo) pra virar candidato
     interacao_rate_limit_trabalho_por_dia: int = 5   # máx. de avisos proativos de trabalho por agente, por dia real
 
+    # Pauta (secretário pessoal), P2 — organizar os textos que o chefe despeja (docs/pauta-desenho.md)
+    pauta_lote_max_textos: int = 10             # textos por chamada de LLM (o resto fica para a próxima rodada)
+    pauta_lote_max_caracteres: int = 12000      # soma dos textos de um lote (o primeiro sempre entra)
+    pauta_caracteres_por_texto: int = 6000      # pedaço de cada texto que vai para o prompt
+    pauta_perguntas_por_lote: int = 5           # dúvidas além disso voltam para a fila de textos
+    pauta_rodadas_por_dia: int = 10             # teto de chamadas da Pauta por dia real; o tick para ao bater
+    pauta_minutos_leitura_travada: int = 10     # texto preso em "lendo" há mais que isso vira falha
+    pauta_dias_repeticao: int = 60              # janela para achar texto repetido igual (sem LLM)
+
 
 settings = Settings()

@@ -1,7 +1,7 @@
 // Hooks da Pauta. Toda mutação invalida tudo de ['pauta']: as telas se cruzam (marcar um item muda a lista da frente,
 // a contagem, a "sugestão desatualizada" e a revisão), e são poucas leituras baratas. Melhor recarregar a mais do que
 // mostrar um número velho.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient, type UseMutationOptions } from '@tanstack/react-query'
 import * as apiPauta from '../api/pauta'
 
 const RAIZ = ['pauta']
@@ -26,10 +26,16 @@ export const usePergunta = () => useQuery({ queryKey: [...RAIZ, 'pergunta'], que
 
 export const useRevisao = () => useQuery({ queryKey: [...RAIZ, 'revisao'], queryFn: apiPauta.obterRevisao })
 
+/** Opções de toda mutação da Pauta (pura, testada em __testes__/usePauta.test.ts). */
+export function opcoesDaMutacaoPauta<A, R>(cliente: QueryClient, fn: (a: A) => Promise<R>): UseMutationOptions<R, Error, A> {
+  // onSettled, não onSuccess: ação que falha também muda o backend (o "organizar" marca os textos como "com erro").
+  // Só no sucesso, a tela ficava dizendo "2 textos esperando" depois da falha.
+  return { mutationFn: fn, onSettled: () => cliente.invalidateQueries({ queryKey: RAIZ }) }
+}
+
 /** Mutação que, ao terminar, recarrega tudo da Pauta. */
 function useMutacaoPauta<A, R>(fn: (a: A) => Promise<R>) {
-  const cliente = useQueryClient()
-  return useMutation({ mutationFn: fn, onSuccess: () => void cliente.invalidateQueries({ queryKey: RAIZ }) })
+  return useMutation(opcoesDaMutacaoPauta(useQueryClient(), fn))
 }
 
 export const useRegistrarTexto = () =>

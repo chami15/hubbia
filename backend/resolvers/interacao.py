@@ -368,7 +368,9 @@ async def _executar_infra(ctx: dict) -> str:
 def _checar_pauta(agente: dict) -> dict | None:
     """Pauta: tem texto `nova` E ainda não bateu o teto de chamadas do dia. As duas checagens são consultas; sem
     texto novo, nada mais acontece (é o "se não tem texto novo, não faz nada" que o chefe pediu)."""
-    if not executar_query("anotacoes:existe_nova")[0]["existe"]:
+    tem_novo = executar_query("anotacoes:existe_nova")[0]["existe"]
+    tem_contexto = executar_query("anotacoes:existe_a_consolidar")[0]["existe"]
+    if not tem_novo and not tem_contexto:
         return None
     feitas_hoje = executar_query(
         "tick_execucoes:contar_do_agente_desde", params=("pauta", _inicio_do_dia_real())
@@ -379,13 +381,15 @@ def _checar_pauta(agente: dict) -> dict | None:
 
 
 def _descrever_pauta(ctx: dict) -> str:
-    return f"{ctx['novas']} texto(s) esperando organização."
+    if ctx["novas"]:
+        return f"{ctx['novas']} texto(s) esperando organização."
+    return "Contexto de tarefa(s) para atualizar."
 
 
 async def _executar_pauta(ctx: dict) -> None:
     from resolvers import pauta_organizar
 
-    await pauta_organizar.organizar()
+    await pauta_organizar.rodada(respeitar_teto=True)
     # Sem mensagem ao chefe, de propósito: ele pediu clareza, não lembrete. O que mudou aparece no painel da
     # Pauta (tarefas e a pergunta da vez); uma mensagem a cada rodada viraria o aviso que ele não quer.
     return None

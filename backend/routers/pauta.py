@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from resolvers import pauta as resolver
+from resolvers import pauta_contexto as contexto
 from resolvers import pauta_organizar as organizacao
 
 router = APIRouter(prefix="/pauta", tags=["pauta"])
@@ -146,7 +147,7 @@ def remover_item(item_id: int):
 async def organizar():
     """O botão "organizar agora". Sem texto novo, responde na hora sem gastar nada."""
     try:
-        return await organizacao.organizar()
+        return await organizacao.rodada(respeitar_teto=False)
     except resolver.ConflitoDeEstado as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except RuntimeError as exc:
@@ -171,3 +172,19 @@ def listar_falhas():
 @router.post("/textos/{anotacao_id}/tentar-de-novo")
 def tentar_de_novo(anotacao_id: int):
     return _executar(organizacao.tentar_de_novo, anotacao_id)
+
+
+# ------------------------------------------------------------------------------ P3: o que já se sabe
+
+@router.post("/tarefas/{tarefa_id}/contexto")
+async def atualizar_contexto(tarefa_id: int):
+    """O "atualizar" da tarefa. Sem texto novo para ela, devolve o contexto atual sem gastar."""
+    try:
+        novos = await contexto.consolidar_tarefa(tarefa_id)
+        return novos if novos is not None else contexto.topicos(tarefa_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except resolver.ConflitoDeEstado as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))

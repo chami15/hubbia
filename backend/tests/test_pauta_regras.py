@@ -7,6 +7,7 @@ from resolvers.pauta_regras import (
     juntar_termos,
     mascarar_segredos,
     revisar_decisao,
+    topicos_validos,
     truncar,
 )
 
@@ -148,3 +149,22 @@ class TestTravaDeAmbiguidade:
     def test_tarefa_nova_de_verdade_encaixa(self):
         r = _revisar("comprar ração do cachorro", destino="nova", tarefa_id=None, titulo="Comprar ração", frente=PESSOAL)
         assert r.perguntar is False
+
+
+class TestTopicos:
+    def test_topico_sem_fonte_ou_com_fonte_inventada_e_descartado(self):
+        # sem dizer de onde veio, não dá para o chefe conferir: pode ser invenção
+        r = topicos_validos([("GET /pedidos é paginado", [1]), ("A API usa GraphQL", []), ("Prazo é sexta", [99])], {1, 2})
+        assert r == [("GET /pedidos é paginado", [1])]
+
+    def test_repetido_com_outras_palavras_se_funde_somando_fontes(self):
+        r = topicos_validos([("GET /pedidos é paginado", [1]), ("get /pedidos é paginado.", [2])], {1, 2})
+        assert r == [("GET /pedidos é paginado", [1, 2])]
+
+    def test_numero_diferente_nao_funde(self):
+        r = topicos_validos([("Endpoint v1 descontinuado", [1]), ("Endpoint v2 descontinuado", [1])], {1})
+        assert len(r) == 2
+
+    def test_corta_tamanho_e_quantidade(self):
+        r = topicos_validos([(f"Fato número {i} sobre a API " + "x" * 200, [1]) for i in range(10)], {1})
+        assert len(r) == 6 and all(len(t) <= 140 for t, _ in r)

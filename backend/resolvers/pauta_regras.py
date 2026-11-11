@@ -17,6 +17,8 @@ from resolvers.pauta import normalizar
 
 TITULO_MAX = 80
 ITEM_MAX = 120
+TOPICO_MAX = 140
+TOPICOS_POR_TAREFA = 6
 ITENS_POR_TEXTO = 5
 TERMOS_POR_TAREFA = 10
 
@@ -181,3 +183,23 @@ def revisar_decisao(
         tarefas_citadas = tuple(sorted(set().union(*citados.values())))[:3]
         return Revisao(True, "destino", "tarefa nova, mas o texto cita termo de tarefa existente", candidatos=tarefas_citadas)
     return Revisao(False)
+
+
+def topicos_validos(propostos: list[tuple[str, list[int]]], fontes_validas: set[int]) -> list[tuple[str, list[int]]]:
+    """O "o que já se sabe" que o código aceita do LLM (P3). Cada tópico precisa apontar ao menos um texto que de fato
+    existe naquela tarefa: tópico sem fonte (ou com fonte inventada) pode ser invenção e é descartado. Repetido com
+    outras palavras se funde no primeiro (somando as fontes). Tamanho e quantidade cortados aqui, não no prompt."""
+    aceitos: list[tuple[str, list[int]]] = []
+    for texto, fontes in propostos:
+        texto = truncar(texto, TOPICO_MAX)
+        fontes = list(dict.fromkeys(f for f in fontes if f in fontes_validas))
+        if not normalizar(texto) or not fontes:
+            continue
+        igual = next((i for i, (t, _) in enumerate(aceitos) if _mesma_coisa(t, texto, _PARECIDO_ITEM)), None)
+        if igual is not None:
+            t, f = aceitos[igual]
+            aceitos[igual] = (t, list(dict.fromkeys([*f, *fontes])))
+            continue
+        if len(aceitos) < TOPICOS_POR_TAREFA:
+            aceitos.append((texto, fontes))
+    return aceitos

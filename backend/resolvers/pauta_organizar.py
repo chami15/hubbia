@@ -45,6 +45,18 @@ def _resumo_vazio() -> dict:
     return {"lidos": 0, "organizados": 0, "perguntas": 0, "duplicados": 0, "falhas": 0, "devolvidos": 0, "chamou_llm": False}
 
 
+# ---------------------------------------------------------------------------------------------- rodada
+
+async def rodada(respeitar_teto: bool) -> dict:
+    """Organizar os textos novos e depois atualizar o contexto das tarefas que receberam texto. É o que o botão
+    "organizar agora" e o tick fazem; o tick para no teto do dia, o botão não."""
+    from resolvers import pauta_contexto
+
+    resumo = await organizar()
+    resumo["contexto"] = await pauta_contexto.consolidar_pendentes(respeitar_teto)
+    return resumo
+
+
 # ---------------------------------------------------------------------------------------------- organizar
 
 async def organizar() -> dict:

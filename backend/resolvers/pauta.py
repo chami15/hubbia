@@ -77,6 +77,8 @@ def obter_tarefa(tarefa_id: int) -> dict:
     """Nível 3 do painel: a tarefa com o checklist e os textos que a formaram (os mais recentes primeiro)."""
     tarefa = _buscar_tarefa(tarefa_id)
     tarefa["checklist"] = executar_query("checklist:listar_da_tarefa", params=(tarefa_id,))
+    # "o que já se sabe" (P3), com a origem de cada tópico. A coluna `tarefas.contexto` da 015 ficou sem uso.
+    tarefa["contexto"] = executar_query("contexto:listar_da_tarefa", params=(tarefa_id,))
     tarefa["textos"] = executar_query("anotacoes:listar_da_tarefa", params=(tarefa_id, _TEXTOS_POR_TAREFA))
     return tarefa
 

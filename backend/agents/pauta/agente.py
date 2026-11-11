@@ -1,4 +1,6 @@
-"""Agente da Pauta (secretário pessoal) — P2: organizar um lote de textos numa chamada estruturada só (padrão A).
+"""Agente da Pauta (secretário pessoal). Duas chamadas estruturadas (padrão A), modelo barato:
+  - P2 `organizar_lote`: um lote de textos -> destino, itens, prazo e se há dúvida;
+  - P3 `consolidar_contexto`: os tópicos atuais de uma tarefa + só os textos novos -> "o que já se sabe".
 
 O resolver monta tudo antes (textos já com segredo mascarado, tarefas abertas com termos, frentes, data de hoje); o
 modelo só decide destino, itens, prazo e se tem dúvida. Tudo que ele devolve é conferido em código depois
@@ -76,15 +78,44 @@ textos longos de contexto) e você organiza cada um em uma tarefa, sem inventar 
 - Partes marcadas [segredo] foram escondidas de propósito: nunca as repita nem peça.
 """
 
-_model = None
+class TopicoContexto(BaseModel):
+    texto: str = Field(..., description="Um fato útil e curto (até 140 caracteres), sem opinião e sem repetir o título.")
+    fontes: list[int] = Field(..., description="Os ids dos textos de onde o fato saiu (dos TEXTOS NOVOS ou das fontes dos TÓPICOS ATUAIS).")
 
 
-def _get_model():
-    global _model
-    if _model is None:
+class ContextoTarefa(BaseModel):
+    topicos: list[TopicoContexto] = Field(..., description="Até 6 tópicos: os atuais revistos mais o que os textos novos acrescentam.")
+
+
+_PROMPT_CONTEXTO = """Você é a Pauta, secretária pessoal do chefe. Mantenha o "o que já se sabe" de UMA tarefa:
+fatos curtos que ajudam a fazê-la (endpoints e para que servem, decisões, números, nomes, links).
+
+== TAREFA ==
+{titulo}
+
+== TÓPICOS ATUAIS (texto, fontes) ==
+{topicos}
+
+== TEXTOS NOVOS ==
+{textos}
+
+== REGRAS ==
+- Devolva a lista inteira revista: mantenha o que continua valendo, junte o repetido, acrescente o novo.
+- Se um texto novo corrige um tópico atual, fique com a versão nova.
+- No máximo 6 tópicos, cada um com até 140 caracteres, em forma de fato ("GET /pedidos: lista com paginação").
+- Cada tópico diz de quais textos saiu (ids). Nunca escreva algo que não esteja nos textos.
+- Passos a fazer não são tópico (eles já estão no checklist). Partes [segredo] nunca são repetidas.
+"""
+
+_modelos: dict = {}
+
+
+def _get_model(saida=None):
+    saida = saida or OrganizacaoLote
+    if saida not in _modelos:
         base = init_chat_model(f"openai:{settings.llm_model_cheap}", temperature=0.1)
-        _model = base.with_structured_output(OrganizacaoLote, include_raw=True)
-    return _model
+        _modelos[saida] = base.with_structured_output(saida, include_raw=True)
+    return _modelos[saida]
 
 
 def _custo(tokens_in: int, tokens_out: int) -> float:
@@ -103,9 +134,24 @@ def montar_prompt(hoje: str, frentes: list[str], tarefas: list[dict], textos: li
     return _PROMPT.format(hoje=hoje, frentes=", ".join(frentes), tarefas=linhas_tarefas, textos=linhas_textos)
 
 
+def montar_prompt_contexto(titulo: str, topicos: list[dict], textos: list[dict]) -> str:
+    linhas_topicos = "\n".join(
+        json.dumps({"texto": t["texto"], "fontes": t["fontes"]}, ensure_ascii=False) for t in topicos
+    ) or "(nenhum ainda)"
+    linhas_textos = "\n\n".join(f"[texto {t['id']}]\n{t['texto']}" for t in textos)
+    return _PROMPT_CONTEXTO.format(titulo=titulo, topicos=linhas_topicos, textos=linhas_textos)
+
+
 async def organizar_lote(prompt: str) -> dict:
+    return await _chamar(_get_model(OrganizacaoLote), prompt, "organizar")
+
+
+async def consolidar_contexto(prompt: str) -> dict:
+    return await _chamar(_get_model(ContextoTarefa), prompt, "consolidar o contexto")
+
+
+async def _chamar(modelo, prompt: str, o_que: str) -> dict:
     """Uma chamada, uma tentativa. Falhou -> RuntimeError (o gasto é registrado mesmo assim)."""
-    modelo = _get_model()
     erro = None
     with cronometrar() as t:
         try:
@@ -118,7 +164,7 @@ async def organizar_lote(prompt: str) -> dict:
             especialidade=_ESPECIALIDADE, modelo=settings.llm_model_cheap, contexto_prompt=prompt,
             erro=f"falha na chamada: {erro}", duracao_ms=t.ms,
         )
-        raise RuntimeError(f"Falha ao chamar o modelo para organizar: {erro}") from erro
+        raise RuntimeError(f"Falha ao chamar o modelo para {o_que}: {erro}") from erro
 
     if resultado.get("parsing_error"):
         registrar_execucao(
@@ -130,7 +176,7 @@ async def organizar_lote(prompt: str) -> dict:
     usage = getattr(resultado["raw"], "usage_metadata", None) or {}
     tokens_in, tokens_out = usage.get("input_tokens", 0), usage.get("output_tokens", 0)
     custo = _custo(tokens_in, tokens_out)
-    dado: OrganizacaoLote = resultado["parsed"]
+    dado = resultado["parsed"]
     registrar_execucao(
         especialidade=_ESPECIALIDADE, modelo=settings.llm_model_cheap, tokens_in=tokens_in, tokens_out=tokens_out,
         custo_usd=custo, contexto_prompt=prompt, saida_bruta=dado.model_dump_json(), duracao_ms=t.ms,

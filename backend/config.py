@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     pauta_rodadas_por_dia: int = 10             # teto de chamadas da Pauta por dia real; o tick para ao bater
     pauta_minutos_leitura_travada: int = 10     # texto preso em "lendo" há mais que isso vira falha
     pauta_dias_repeticao: int = 60              # janela para achar texto repetido igual (sem LLM)
+    # P3 — "o que já se sabe" de cada tarefa
+    pauta_contexto_tarefas_por_rodada: int = 3  # tarefas consolidadas por rodada (uma chamada cada)
+    pauta_contexto_max_caracteres: int = 8000   # textos novos por chamada (o resto fica para a próxima)
+    pauta_contexto_min_caracteres: int = 80     # lembrete organizado mais curto que isso não vira contexto
 
 
 settings = Settings()

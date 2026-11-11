@@ -1,6 +1,6 @@
 # Pauta — secretário pessoal (desenho para aprovação)
 
-> **Status:** P1 e P2 **feitas** (2026-11-11, branch `feat/pauta`). P3 em diante: proposta, cada uma espera o próprio "pode".
+> **Status:** P1, P2 e P3 **feitas** (2026-11-11, branch `feat/pauta`). P4 em diante: proposta, cada uma espera o próprio "pode".
 > Decidido na conversa de 2026-11-11: organizar no tick **e** por botão; três frentes fixas (trabalho, faculdade,
 > pessoal), outras depois; uma pergunta por vez, curta; nome **Pauta**. Ordem: banco e backend primeiro, frontend no fim.
 
@@ -217,6 +217,25 @@ Decisões tomadas ao implementar:
 Para cada tarefa que recebeu texto novo na rodada (no máximo 3 por rodada): uma chamada com **o contexto atual +
 só os textos novos** (nunca o histórico inteiro). Saída: até 6 tópicos curtos ("Endpoint /pedidos: lista com paginação,
 útil para a tabela X"). Cada tópico guarda de quais textos veio, para o chefe conferir se nada foi inventado.
+
+### P3 como ficou (implementada)
+
+- **Tópicos em tabela própria** (`contexto_topicos`, migration 017), cada um com `fontes` (os ids dos textos de onde
+  saiu). A coluna `tarefas.contexto` da 015 ficou sem uso: não guardava a origem. `GET /pauta/tarefas/{id}` devolve os
+  tópicos em `contexto`.
+- **Quando roda:** o "organizar agora" e o tick fazem as duas coisas (organizar e depois atualizar o contexto). Botão
+  próprio na tarefa: `POST /pauta/tarefas/{id}/contexto` (sem texto novo, devolve o atual sem gastar).
+- **O que vai para o LLM:** o título, os tópicos atuais e **só os textos novos** daquela tarefa (`anotacoes.consolidada_em`
+  é o "já entrou no contexto?"), até 8 mil caracteres; o resto fica para a próxima rodada. Até 3 tarefas por rodada.
+- **Não gasta com:** lembrete curto (menos de 80 caracteres) que a P2 já virou título ou item. Texto escrito dentro da
+  tarefa pelo chefe sempre entra, mesmo curto.
+- **Validação em código:** tópico sem fonte real (ou com fonte inventada) é descartado; repetido se funde somando as
+  fontes; até 6 tópicos de 140 caracteres. Resposta vazia quando já havia contexto: mantém o anterior e marca erro.
+- **Falha não volta sozinha:** o texto fica com `consolidacao_erro` e o tick não tenta de novo. Volta junto quando
+  chegar outro texto para a mesma tarefa, ou pelo botão "atualizar".
+- **Duas rodadas ao mesmo tempo** (tick e botão) não consolidam a mesma tarefa: reserva por tarefa
+  (`consolidando_desde`), que expira em 10 min se a rodada cair.
+- O teto do dia (`PAUTA_RODADAS_POR_DIA`) conta organizar e consolidar juntos; o tick para nele, o botão não.
 
 ## P4 — Sugestão da Pauta (por tarefa)
 

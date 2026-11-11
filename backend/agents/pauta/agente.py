@@ -1,6 +1,7 @@
 """Agente da Pauta (secretário pessoal). Duas chamadas estruturadas (padrão A), modelo barato:
   - P2 `organizar_lote`: um lote de textos -> destino, itens, prazo e se há dúvida;
-  - P3 `consolidar_contexto`: os tópicos atuais de uma tarefa + só os textos novos -> "o que já se sabe".
+  - P3 `consolidar_contexto`: os tópicos atuais de uma tarefa + só os textos novos -> "o que já se sabe";
+  - P4 `sugerir_proximo_passo`: a tarefa inteira (enxuta) -> o próximo passo, como e por que agora.
 
 O resolver monta tudo antes (textos já com segredo mascarado, tarefas abertas com termos, frentes, data de hoje); o
 modelo só decide destino, itens, prazo e se tem dúvida. Tudo que ele devolve é conferido em código depois
@@ -107,6 +108,37 @@ fatos curtos que ajudam a fazê-la (endpoints e para que servem, decisões, núm
 - Passos a fazer não são tópico (eles já estão no checklist). Partes [segredo] nunca são repetidas.
 """
 
+class SugestaoPasso(BaseModel):
+    proximo_passo: str = Field(..., description="UM passo concreto, começando por verbo, que dá para fazer numa sentada. Até 100 caracteres.")
+    como: list[str] = Field(default_factory=list, description="Até 3 passos curtos (até 90 caracteres cada) de como fazer.")
+    por_que: str = Field(..., description="Uma frase curta: por que este passo agora (prazo, o que destrava, o que está parado).")
+
+
+_PROMPT_SUGESTAO = """Você é a Pauta, secretária pessoal do chefe. Ele está olhando UMA tarefa e quer saber o que fazer
+a seguir e como prosseguir, de forma objetiva. Nada de texto longo.
+
+== HOJE ==
+{hoje}
+
+== TAREFA ==
+{tarefa}
+
+== CHECKLIST (feito?, item) ==
+{checklist}
+
+== O QUE JÁ SE SABE ==
+{contexto}
+
+== JÁ SUGERIDOS E DESCARTADOS (não repita nem reformule) ==
+{descartadas}
+
+== REGRAS ==
+- Um passo só, concreto, que caiba numa sessão de trabalho. Se um item pendente do checklist é o próximo passo, use-o.
+- "como": no máximo 3 passos curtos, práticos, com o que já se sabe (nome do endpoint, do arquivo, da pessoa).
+- "por_que": uma frase. Considere o prazo e o que destrava o resto.
+- Nunca invente fato que não esteja acima. Partes [segredo] nunca são repetidas.
+"""
+
 _modelos: dict = {}
 
 
@@ -140,6 +172,20 @@ def montar_prompt_contexto(titulo: str, topicos: list[dict], textos: list[dict])
     ) or "(nenhum ainda)"
     linhas_textos = "\n\n".join(f"[texto {t['id']}]\n{t['texto']}" for t in textos)
     return _PROMPT_CONTEXTO.format(titulo=titulo, topicos=linhas_topicos, textos=linhas_textos)
+
+
+def montar_prompt_sugestao(hoje: str, tarefa: dict, descartadas: list[str]) -> str:
+    cabecalho = f"{tarefa['titulo']} (frente: {tarefa['frente']}; prazo: {tarefa['prazo'] or 'sem prazo'})"
+    checklist = "\n".join(f"[{'x' if i['feito'] else ' '}] {i['texto']}" for i in tarefa["checklist"]) or "(vazio)"
+    contexto = "\n".join(f"- {c['texto']}" for c in tarefa["contexto"]) or "(nada ainda)"
+    return _PROMPT_SUGESTAO.format(
+        hoje=hoje, tarefa=cabecalho, checklist=checklist, contexto=contexto,
+        descartadas="\n".join(f"- {d}" for d in descartadas) or "(nenhum)",
+    )
+
+
+async def sugerir_proximo_passo(prompt: str) -> dict:
+    return await _chamar(_get_model(SugestaoPasso), prompt, "sugerir o próximo passo")
 
 
 async def organizar_lote(prompt: str) -> dict:

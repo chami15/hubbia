@@ -9,6 +9,8 @@ caso a caso (tests/test_pauta_regras.py). O resolver só junta isto com o banco.
   texto cita um termo de tarefas de frentes diferentes, se o destino não tem nada a ver com o texto, ou se a
   "tarefa nova" parece uma que já existe. Na dúvida, pergunta; nunca chuta.
 """
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -19,6 +21,10 @@ TITULO_MAX = 80
 ITEM_MAX = 120
 TOPICO_MAX = 140
 TOPICOS_POR_TAREFA = 6
+PASSO_MAX = 100
+COMO_MAX = 90
+COMO_PASSOS = 3
+POR_QUE_MAX = 140
 ITENS_POR_TEXTO = 5
 TERMOS_POR_TAREFA = 10
 
@@ -203,3 +209,33 @@ def topicos_validos(propostos: list[tuple[str, list[int]]], fontes_validas: set[
         if len(aceitos) < TOPICOS_POR_TAREFA:
             aceitos.append((texto, fontes))
     return aceitos
+
+
+def impressao_da_tarefa(tarefa: dict) -> str:
+    """Impressão digital do que importa para sugerir o próximo passo (P4): título, prazo, checklist (texto e se está
+    feito, na ordem) e contexto. Mesma impressão = nada mudou = a sugestão anterior continua valendo, sem chamar o LLM.
+    Normaliza o texto (caixa, acento, espaço) para uma correção de digitação não custar uma chamada nova."""
+    dado = {
+        "titulo": normalizar(tarefa["titulo"]),
+        "prazo": str(tarefa.get("prazo") or ""),
+        "itens": [[normalizar(i["texto"]), bool(i["feito"])] for i in tarefa.get("checklist", [])],
+        "contexto": [normalizar(c["texto"]) for c in tarefa.get("contexto", [])],
+    }
+    return hashlib.sha256(json.dumps(dado, ensure_ascii=False).encode()).hexdigest()
+
+
+def sugestao_valida(proximo_passo: str, como: list[str], por_que: str, descartadas: list[str]) -> tuple[str, list[str], str]:
+    """O que o código aceita da sugestão: curta (pedido do chefe: nada de texto longo), com passo de verdade, e sem
+    repetir uma que ele já descartou. ValueError com o motivo, para virar falha visível."""
+    passo = truncar(proximo_passo or "", PASSO_MAX)
+    if not normalizar(passo):
+        raise ValueError("A Pauta não sugeriu nenhum passo.")
+    if any(_mesma_coisa(passo, d, _PARECIDO_ITEM) for d in descartadas if d):
+        raise ValueError("A Pauta repetiu uma sugestão que você já descartou.")
+    passos = [truncar(c, COMO_MAX) for c in como if normalizar(c)][:COMO_PASSOS]
+    return passo, passos, truncar(por_que or "", POR_QUE_MAX)
+
+
+def item_equivalente(texto: str, itens: list[dict]) -> dict | None:
+    """Item pendente do checklist que já diz o mesmo: aceitar a sugestão sobe ele para o topo em vez de duplicar."""
+    return next((i for i in itens if not i["feito"] and _mesma_coisa(texto, i["texto"], _PARECIDO_ITEM)), None)

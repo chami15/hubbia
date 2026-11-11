@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from resolvers import pauta as resolver
 from resolvers import pauta_contexto as contexto
 from resolvers import pauta_organizar as organizacao
+from resolvers import pauta_sugestao as sugestao
 
 router = APIRouter(prefix="/pauta", tags=["pauta"])
 
@@ -188,3 +189,28 @@ async def atualizar_contexto(tarefa_id: int):
         raise HTTPException(status_code=409, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+
+# ------------------------------------------------------------------------------ P4: sugestão da Pauta
+
+@router.post("/tarefas/{tarefa_id}/sugestao")
+async def sugerir(tarefa_id: int):
+    """O botão "sugestão da Pauta". `nova=false`: nada mudou na tarefa, é a mesma de antes (não gastou)."""
+    try:
+        return await sugestao.sugerir(tarefa_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except resolver.ConflitoDeEstado as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/sugestoes/{sugestao_id}/aceitar")
+def aceitar_sugestao(sugestao_id: int):
+    return _executar(sugestao.aceitar, sugestao_id)
+
+
+@router.post("/sugestoes/{sugestao_id}/descartar")
+def descartar_sugestao(sugestao_id: int):
+    return _executar(sugestao.descartar, sugestao_id)

@@ -79,6 +79,12 @@ def obter_tarefa(tarefa_id: int) -> dict:
     tarefa["checklist"] = executar_query("checklist:listar_da_tarefa", params=(tarefa_id,))
     # "o que já se sabe" (P3), com a origem de cada tópico. A coluna `tarefas.contexto` da 015 ficou sem uso.
     tarefa["contexto"] = executar_query("contexto:listar_da_tarefa", params=(tarefa_id,))
+    sugestao = executar_query("sugestoes:ativa_da_tarefa", params=(tarefa_id,))
+    tarefa["sugestao"] = sugestao[0] if sugestao else None
+    if tarefa["sugestao"]:
+        # a tarefa mudou depois da sugestão (item marcado, contexto novo): a tela mostra como "desatualizada"
+        from resolvers.pauta_regras import impressao_da_tarefa
+        tarefa["sugestao"]["atual"] = tarefa["sugestao"].pop("base_hash") == impressao_da_tarefa(tarefa)
     tarefa["textos"] = executar_query("anotacoes:listar_da_tarefa", params=(tarefa_id, _TEXTOS_POR_TAREFA))
     return tarefa
 

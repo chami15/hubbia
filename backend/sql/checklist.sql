@@ -30,3 +30,14 @@ RETURNING id, tarefa_id, texto, ordem, feito, feito_em, origem;
 
 --QUERY: remover
 DELETE FROM checklist_itens WHERE id = %s RETURNING tarefa_id;
+
+--QUERY: inserir_no_topo
+-- A sugestão aceita é o próximo passo: entra antes de tudo.
+INSERT INTO checklist_itens (tarefa_id, texto, origem, ordem)
+VALUES (%s, %s, 'agente', (SELECT COALESCE(min(ordem), 1) - 1 FROM checklist_itens WHERE tarefa_id = %s))
+RETURNING id;
+
+--QUERY: mover_para_o_topo
+UPDATE checklist_itens
+SET ordem = (SELECT COALESCE(min(ordem), 1) - 1 FROM checklist_itens WHERE tarefa_id = %s)
+WHERE id = %s;

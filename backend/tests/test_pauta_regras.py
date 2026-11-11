@@ -8,6 +8,9 @@ from resolvers.pauta_regras import (
     mascarar_segredos,
     revisar_decisao,
     topicos_validos,
+    impressao_da_tarefa,
+    item_equivalente,
+    sugestao_valida,
     truncar,
 )
 
@@ -168,3 +171,48 @@ class TestTopicos:
     def test_corta_tamanho_e_quantidade(self):
         r = topicos_validos([(f"Fato número {i} sobre a API " + "x" * 200, [1]) for i in range(10)], {1})
         assert len(r) == 6 and all(len(t) <= 140 for t, _ in r)
+
+
+def _tarefa_p4(**kw):
+    base = {"titulo": "Avaliar a API", "prazo": None,
+            "checklist": [{"texto": "Listar endpoints", "feito": False}], "contexto": [{"texto": "GET /pedidos paginado"}]}
+    return {**base, **kw}
+
+
+class TestImpressaoDaTarefa:
+    def test_igual_quando_nada_que_importa_mudou(self):
+        assert impressao_da_tarefa(_tarefa_p4()) == impressao_da_tarefa(_tarefa_p4(titulo="  avaliar a API "))
+
+    @pytest.mark.parametrize("mudanca", [
+        {"checklist": [{"texto": "Listar endpoints", "feito": True}]},          # marcou o item
+        {"checklist": []},                                                       # removeu o item
+        {"prazo": "2030-01-01"},                                                 # ganhou prazo
+        {"contexto": [{"texto": "GET /pedidos paginado"}, {"texto": "POST /notas"}]},  # P3 acrescentou contexto
+        {"titulo": "Avaliar a API do SL"},
+    ])
+    def test_muda_quando_algo_que_importa_mudou(self, mudanca):
+        assert impressao_da_tarefa(_tarefa_p4(**mudanca)) != impressao_da_tarefa(_tarefa_p4())
+
+
+class TestSugestaoValida:
+    def test_corta_e_limpa(self):
+        passo, como, por_que = sugestao_valida("Listar " + "x" * 200, ["a", "", "b", "c", "d"], "p" * 300, [])
+        assert len(passo) <= 100 and como == ["a", "b", "c"] and len(por_que) <= 140
+
+    def test_sem_passo_e_recusada(self):
+        with pytest.raises(ValueError, match="nenhum passo"):
+            sugestao_valida("  ", ["a"], "porque", [])
+
+    def test_repetir_descartada_e_recusado(self):
+        with pytest.raises(ValueError, match="descartou"):
+            sugestao_valida("listar os endpoints da API", [], "", ["Listar endpoints da API"])
+
+    def test_parecida_mas_com_outro_numero_passa(self):
+        assert sugestao_valida("Ler capítulo 4", [], "", ["Ler capítulo 3"])[0] == "Ler capítulo 4"
+
+
+class TestItemEquivalente:
+    def test_acha_so_pendente(self):
+        itens = [{"id": 1, "texto": "Listar endpoints", "feito": True}, {"id": 2, "texto": "Mapear campos", "feito": False}]
+        assert item_equivalente("mapear os campos", itens)["id"] == 2
+        assert item_equivalente("listar endpoints", itens) is None  # o feito não conta: sugerir de novo é outro passo

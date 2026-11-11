@@ -101,6 +101,9 @@ class Settings(BaseSettings):
     pauta_contexto_tarefas_por_rodada: int = 3  # tarefas consolidadas por rodada (uma chamada cada)
     pauta_contexto_max_caracteres: int = 8000   # textos novos por chamada (o resto fica para a próxima)
     pauta_contexto_min_caracteres: int = 80     # lembrete organizado mais curto que isso não vira contexto
+    # P4 — sugestão do próximo passo
+    pauta_sugestao_itens_no_prompt: int = 30    # itens do checklist que vão para o LLM
+    pauta_sugestao_descartadas: int = 3         # últimas descartadas que entram como "não repetir"
 
 
 settings = Settings()

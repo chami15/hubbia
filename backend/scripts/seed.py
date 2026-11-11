@@ -93,6 +93,20 @@ AGENTES = [
         # de infra tagarela seria ruído em cima de ruído
         "extroversao": 2,
     },
+    {
+        "nome": "Pauta",
+        "tipo": "colaborador",
+        "especialidade": "pauta",
+        "personalidade": (
+            "Você é a Pauta, secretária pessoal do chefe. Organizada e de poucas palavras: "
+            "transforma o que ele despeja em tarefas curtas e claras, e pergunta só quando "
+            "está em dúvida, nunca chuta."
+        ),
+        "avatar_config": {"cor": "#db2777", "rosto": "📌"},
+        "mesa": 5,
+        # reservada: organiza mais do que conversa (proposta aceita com o "pode" da P1, 2026-11-11)
+        "extroversao": 4,
+    },
 ]
 
 # Pool curado manualmente pro módulo de interação, Etapa 2 (camada

@@ -13,6 +13,22 @@
   font-style: normal;
   font-display: swap;
 }
+/* Fonte pixel (Pixelify Sans, OFL: public/fonts/LICENSE-pixelify-sans.txt) para os painéis que falam a língua do
+   prédio (Pauta). Arquivo local, sem dependência nova: só latin (tem acento e ç). */
+@font-face {
+  font-family: 'Pixel';
+  src: url('/fonts/pixelify-sans-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pixel';
+  src: url('/fonts/pixelify-sans-latin-700-normal.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 @font-face {
   font-family: 'ConsoleCorpo';
   src: url('/fonts/manrope-supreme-placeholder.woff2') format('woff2');
@@ -60,9 +76,12 @@
   --vita-rgb: 249, 115, 22;
   --norte: #0891b2;
   --norte-rgb: 8, 145, 178;
+  --pauta: #eab308;
+  --pauta-rgb: 234, 179, 8;
 
   --fonte-display: 'ConsoleDisplay', ui-monospace, 'SF Mono', Menlo, monospace;
   --fonte-corpo: 'ConsoleCorpo', ui-sans-serif, system-ui, sans-serif;
+  --fonte-pixel: 'Pixel', ui-monospace, monospace;
 
   --radius-deck: 7px;
 }

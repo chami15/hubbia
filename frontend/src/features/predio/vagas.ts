@@ -7,10 +7,10 @@ import type { Vagas } from './mundo'
 
 const CHAVE = 'hubbia:predio:vagas'
 
-/** Disposição da primeira visita: Cifra e Agenda em cima, Vita e Norte embaixo, Motriz na coluna seguinte. */
+/** Disposição da primeira visita: Cifra e Agenda em cima, Vita e Norte embaixo, Motriz e Pauta na coluna seguinte. */
 function padrao(): Vagas {
-  const [cifra, agenda, vita, norte, motriz] = INICIAIS
-  return [cifra, vita, agenda, norte, motriz, null]
+  const [cifra, agenda, vita, norte, motriz, pauta] = INICIAIS
+  return [cifra, vita, agenda, norte, motriz, pauta]
 }
 
 export function carregarVagas(): Vagas {

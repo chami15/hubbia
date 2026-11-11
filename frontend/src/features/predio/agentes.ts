@@ -122,6 +122,24 @@ export const AGENTES: AgenteVisual[] = [
     tela: 'terminal',
   },
   {
+    id: 'pauta',
+    nome: 'Pauta',
+    artigo: 'a',
+    cor: 0xeab308,
+    especialidade: 'pauta',
+    funcao: 'tarefas e prioridades',
+    look: 'f',
+    seed: 808,
+    // amarelo post-it: é a cor que ela usa no quadro da sala e no painel
+    parts: {
+      skin: '#d9a27a', hair: '#5a3424', hairStyle: 'bun', eyes: '#3a2a20',
+      top: '#eab308', topAccent: '#3d4352', topStyle: 'blouse', bottom: '#3d4352', bottomStyle: 'skirt', shoes: '#2b2b33',
+      accessory: 'glasses', accessoryColor: '#3a2a20', facialHair: 'none',
+    },
+    icone: 'check',
+    tela: 'tasks',
+  },
+  {
     id: 'lume',
     nome: 'Lume',
     artigo: 'a',
@@ -175,7 +193,7 @@ export const AGENTES: AgenteVisual[] = [
 ]
 
 /** Quem entra no prédio na primeira visita: os agentes que existem no backend. */
-export const INICIAIS: readonly AgenteId[] = ['cifra', 'agenda', 'vita', 'norte', 'motriz']
+export const INICIAIS: readonly AgenteId[] = ['cifra', 'agenda', 'vita', 'norte', 'motriz', 'pauta']
 
 export const agentePorId = (id: AgenteId): AgenteVisual | undefined => AGENTES.find((a) => a.id === id)
 

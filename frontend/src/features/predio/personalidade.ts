@@ -45,6 +45,11 @@ export const PERSONALIDADES: Record<AgenteId, Personalidade> = {
     sono: [3, 9], ritmo: 1.4, saiDaSala: 0.1,
     favoritos: { 'No console de monitoramento': 3, 'Checando os racks': 2, 'Olhando o painel de status': 2 },
   },
+  // metódica e madrugadora: vive no quadro e nas pastas, sai pouco da sala
+  pauta: {
+    sono: [22, 5], ritmo: 1.1, saiDaSala: 0.15,
+    favoritos: { 'Organizando o quadro': 3, 'Separando as pastas': 2, 'Arquivando no gaveteiro': 1.5 },
+  },
   lume: { sono: [23, 7], ritmo: 1.3, saiDaSala: 0.1, favoritos: { 'Lendo na poltrona': 3, 'Escolhendo um livro': 2 } },
   lar: { sono: [22, 6], ritmo: 1, saiDaSala: 0.2, favoritos: { 'Esquentando o almoço': 2, 'Fazendo a lista de compras': 2 } },
   rota: { sono: [0, 8], ritmo: 1, saiDaSala: 0.3, favoritos: { 'Sonhando na janela': 2, 'Lendo um guia de viagem': 2 } },

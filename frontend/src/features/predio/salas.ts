@@ -128,6 +128,7 @@ const lume = mesa(2, 2, 'gray', 'wood', 4);
 const lar = mesa(9, 2, 'red', 'white', 5);
 const rota = mesa(3, 2, 'blue', 'wood', 7);
 const motriz = mesa(2, 2, 'gray', 'dark', 9);
+const pauta = mesa(3, 2, 'gray', 'white', 8);
 
 export const SALAS: Record<string, ModeloSala> = {
   // Financeiro: arquivos, pastas, impressora, segunda mesa com a planilha
@@ -216,6 +217,24 @@ export const SALAS: Record<string, ModeloSala> = {
     ],
   },
   // Estudos (conceito): biblioteca com poltronas de leitura
+  // Secretária (Pauta): quadro de post-its, gaveteiros, estante de pastas, impressora e a poltrona de revisar a pauta
+  pauta: {
+    piso: 'carpet', tint: '#e3dcc2', tint2: '#d9d1b3',
+    parede: { base: '#fbf7e8', trim: '#eab308', pattern: 'plain' },
+    naParede: [m('window', 0, 0, { extra: 'janela' }), m('sign', 2.5, 0, { extra: 'placa' }), m('whiteboard', 10, 0, { extra: 'quadro' }), m('clock', 13, 0, { extra: 'relogio' })],
+    chao: [
+      ...pauta.moveis, m('binder_shelf', 8, 0, { seed: 31 }), m('binder_shelf', 9, 0, { seed: 32 }),
+      m('filing_cabinet', 0, 2), m('filing_cabinet', 0, 3), m('printer', 0, 5), m('trash_bin', 5, 3),
+      m('armchair', 12, 5, { variant: 'left' }), m('floor_lamp', 13, 4), m('plant_tall', 13, 7, { variant: 'bonsai' }), m('plant_small', 0, 7, { variant: 'flower' }),
+    ],
+    lugares: [
+      pauta.lugar, pe(11, 0, 'up', 'use', 'Organizando o quadro'), pe(8, 1, 'up', 'read', 'Separando as pastas', 'papers'),
+      pe(1, 3, 'left', 'use', 'Arquivando no gaveteiro'), pe(1, 5, 'left', 'use', 'Imprimindo a lista do dia'),
+      senta(12, 5, 'left', 'read', 'Revisando a pauta na poltrona', { held: 'papers', descanso: true }), pe(4, 6, 'down', 'stretch', 'Pausa para respirar'),
+    ],
+    tapetes: [{ lx: 10.5, ly: 4.25, w: 3.5, h: 2.5, cor: '#f2d48a' }],
+    quadro: Q('xx>....'),
+  },
   lume: {
     piso: 'carpet', tint: '#cdc8de', tint2: '#c2bbd5',
     parede: { base: '#f1f1fa', trim: '#4f46e5', pattern: 'wood_panel' },

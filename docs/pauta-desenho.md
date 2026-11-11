@@ -1,6 +1,6 @@
 # Pauta — secretário pessoal (desenho para aprovação)
 
-> **Status:** P1 a P4 **feitas** (2026-11-11, branch `feat/pauta`). P5 e P6: proposta, cada uma espera o próprio "pode".
+> **Status:** P1 a P5 **feitas** (2026-11-11, branch `feat/pauta`): o backend inteiro. Falta a P6 (painel), que espera o próprio "pode".
 > Decidido na conversa de 2026-11-11: organizar no tick **e** por botão; três frentes fixas (trabalho, faculdade,
 > pessoal), outras depois; uma pergunta por vez, curta; nome **Pauta**. Ordem: banco e backend primeiro, frontend no fim.
 
@@ -273,6 +273,28 @@ com as tarefas abertas resumidas (título, frente, prazo, dias parada, progresso
 - **talvez nem valha:** até 3, com a ação sugerida (arquivar, juntar com outra, adiar).
 
 Tudo é sugestão: cada item tem "aceitar" ou "descartar". Juntar duas tarefas só acontece depois do clique.
+
+### P5 como ficou (implementada)
+
+| Rota | Faz |
+|---|---|
+| `POST /pauta/revisao` | `{"revisao": {foco, pode_esperar, talvez_nem_valha, atual}, "nova": bool}`. Sem orçamento ou dois cliques seguidos → 409; falha do LLM → 422 |
+| `GET /pauta/revisao` | a última revisão (ou `null`), com `atual: false` se a situação já mudou |
+| `POST /pauta/revisao/itens/{id}/aceitar` | só em "talvez nem valha": deixa de lado, ou junta com a outra tarefa. Foco e "pode esperar" → 409 (não têm ação) |
+| `POST /pauta/revisao/itens/{id}/descartar` | tira o item da revisão (qualquer grupo) |
+
+- **Sem LLM** com nenhuma ou uma tarefa aberta (a única é o foco). **Mesma situação no mesmo dia** (impressão de todas
+  as abertas + a data) devolve a mesma revisão; no dia seguinte pode pedir de novo.
+- O LLM recebe no máximo 40 tarefas, **já ordenadas pela conta** (`pauta_regras.urgencia`: prazo vencido, prazo perto,
+  dias parada) e com os números calculados: ele não faz conta de data.
+- **Conferido em código** (`revisao_valida`): id real, cada tarefa em um grupo só (foco ganha), 3/5/3 no máximo,
+  prazo em até 2 dias nunca "pode esperar", "juntar" só com outra tarefa aberta (senão vira só informação).
+- **"Adiar" saiu do desenho:** "pode esperar" já diz isso sem criar um estado novo.
+- **Juntar** (só no clique): textos, itens não repetidos e termos vão para a tarefa que fica; fica o prazo mais cedo;
+  os textos voltam a contar como novos para o contexto dela (P3); a outra é deixada de lado com o que sobrou. Tarefa que
+  fechou depois da revisão não é mexida (409).
+- Datas sempre no fuso do chefe: os "dias parada" contados em UTC erravam um dia à noite (regressão em
+  `test_regressao_dias_parada_usava_a_data_em_utc`).
 
 ## P6 — Painel (e por que não dropdown nem tela nova)
 

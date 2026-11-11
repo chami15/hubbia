@@ -50,7 +50,7 @@ frentes          id, nome (UNIQUE), ordem, ativa             -- seed: trabalho, 
 tarefas          id, frente_id, titulo (curto), prazo (date NULL), status (aberta|feita|arquivada),
                  termos (text[]: palavras que identificam a tarefa, ex. "SL", "hubbia"),
                  contexto (text[] NULL: "o que já se sabe", P3), origem (agente|manual),
-                 criada_em, atualizada_em, ultimo_movimento_em, concluida_em NULL
+                 criada_em, atualizada_em, ultimo_movimento_em, concluida_em NULL, oculta (bool), ocultada_em NULL
 anotacoes        id, texto, texto_normalizado, tarefa_id NULL,
                  status (nova|lendo|aguardando_voce|organizada|duplicada|falhou), erro NULL,
                  recebida_em, lida_em NULL, organizada_em NULL, duplicada_de NULL
@@ -89,8 +89,12 @@ nova ──(tick ou botão pega)──> lendo ──> organizada        (foi par
 ### Quando uma tarefa acaba (pedido do chefe)
 
 Nada é excluído de verdade; sai da vista e fica no histórico.
-- **Concluir** (botão na tarefa): `feita`, com `concluida_em`. Vai para "concluídas" da frente (últimos 30 dias) e pode ser reaberta.
+- **Concluir** (botão na tarefa): `feita`, com `concluida_em`. Continua na lista da frente, marcada como feita, e pode ser reaberta.
 - **Deixar de lado** (botão): `arquivada`, para o que perdeu o sentido. Também reabrível.
+- **Ocultar** (botão, decisão do chefe em 2026-11-11): só para tarefa `feita` ou `arquivada`. Some da lista principal e
+  só volta com "exibir tarefas ocultas", **esmaecida**. É o chefe quem aperta: nada some sozinho. Reabrir uma tarefa
+  oculta a desoculta. `oculta` é coluna separada do `status` de propósito: ocultar é arrumação da tela, não muda o que
+  aconteceu com a tarefa.
 - **Quando o último item do checklist é marcado**, a tarefa mostra "tudo feito, concluir?" com um clique. É uma conta,
   sem LLM, e a Pauta **nunca conclui sozinha**: você pode ter mais coisa a fazer que não está na lista.
 - **Prioridade não é coluna.** É calculada na hora (prazo, há quanto tempo parada, frente), igual ao "estagnado" do Norte.
@@ -103,10 +107,11 @@ Rotas (todas sem LLM em P1):
 |---|---|
 | `POST /pauta/anotacoes` | salva o texto cru (opcional `tarefa_id`: escrito dentro da tarefa já nasce organizado, **sem LLM**) |
 | `GET /pauta/frentes` | as frentes com a contagem de tarefas abertas |
-| `GET /pauta/frentes/{id}/tarefas` | tarefas abertas da frente, na ordem calculada |
+| `GET /pauta/frentes/{id}/tarefas` | tarefas não ocultas da frente: abertas na ordem calculada, depois as feitas |
 | `GET /pauta/tarefas/{id}` | tarefa + checklist + contexto + textos originais (`LIMIT`) + sugestão ativa |
 | `POST /pauta/tarefas` / `PATCH /pauta/tarefas/{id}` | criar à mão; renomear, mudar frente, prazo ou termos, concluir, deixar de lado, reabrir |
-| `GET /pauta/frentes/{id}/concluidas` | concluídas dos últimos 30 dias |
+| `GET /pauta/frentes/{id}/tarefas?ocultas=true` | inclui as ocultas (o painel as mostra esmaecidas) |
+| `POST /pauta/tarefas/{id}/ocultar` / `.../desocultar` | ocultar só aceita `feita` ou `arquivada` (senão 409) |
 | `GET /pauta/perguntas/atual` / `POST /pauta/perguntas/{id}/resposta` | a pergunta visível e a resposta (em P1 só a estrutura; quem cria pergunta é a P2) |
 | `POST /pauta/tarefas/{id}/checklist` / `PATCH /pauta/checklist/{id}` | item novo; marcar, editar, reordenar, remover |
 | `GET /pauta/pendentes` | quantos textos estão `nova` (o painel mostra "3 esperando") |
@@ -222,7 +227,8 @@ organiza. Segue a receita do `AGENTS.md` do prédio.
 ## Testes por fase
 
 - **P1:** CRUD com Postgres real; texto escrito dentro da tarefa já nasce `organizada`; concluir/deixar de lado/reabrir;
-  "tudo feito, concluir?" aparece só com o checklist inteiro marcado; tabelas novas em `conftest._TABELAS`.
+  "tudo feito, concluir?" aparece só com o checklist inteiro marcado; ocultar só feita/arquivada, oculta fora da lista
+  padrão e de volta com `ocultas=true`, reabrir desoculta; tabelas novas em `conftest._TABELAS`.
 - **P2:** sem texto `nova` → LLM não é chamado (`call_count == 0`); texto repetido → `duplicada` sem chamada; tick e
   botão ao mesmo tempo não leem o mesmo texto; `tarefa_id` inventado → `falhou` e nada gravado; termo em duas frentes →
   pergunta mesmo com confiança `certa`; título parecido → pergunta "é a mesma?"; responder não chama o LLM e grava o termo;

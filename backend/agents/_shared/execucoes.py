@@ -44,12 +44,28 @@ def cronometrar():
     O tempo é contado mesmo quando o bloco levanta exceção — chamada que
     demorou 30s e estourou é justamente a que mais interessa num painel
     de monitoramento."""
-    marca = type("Cronometro", (), {"ms": None})()
-    inicio = time.perf_counter()
+    marca = _Cronometro()
     try:
         yield marca
     finally:
-        marca.ms = int((time.perf_counter() - inicio) * 1000)
+        marca.parar()
+
+
+class _Cronometro:
+    """`ms` responde o tempo decorrido mesmo DENTRO do bloco (é ali, no `except`, que os agentes registram a chamada
+    que falhou) e congela na saída. Antes só era preenchido no fim: toda falha era gravada com duração nula."""
+
+    def __init__(self):
+        self._inicio = time.perf_counter()
+        self._fim: float | None = None
+
+    def parar(self) -> None:
+        self._fim = time.perf_counter()
+
+    @property
+    def ms(self) -> int:
+        fim = self._fim if self._fim is not None else time.perf_counter()
+        return int((fim - self._inicio) * 1000)
 
 # Prompt e saída crua entram truncados. São pra replay/diagnóstico, não
 # pro dado em si — e o Norte manda contexto de repositório inteiro, que

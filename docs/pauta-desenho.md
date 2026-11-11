@@ -48,21 +48,51 @@ Migration nova, aditiva. Número 015 porque a `feat/relogio-do-mundo` já usa 01
 ```
 frentes          id, nome (UNIQUE), ordem, ativa             -- seed: trabalho, faculdade, pessoal
 tarefas          id, frente_id, titulo (curto), prazo (date NULL), status (aberta|feita|arquivada),
+                 termos (text[]: palavras que identificam a tarefa, ex. "SL", "hubbia"),
                  contexto (text[] NULL: "o que já se sabe", P3), origem (agente|manual),
-                 criada_em, atualizada_em, ultimo_movimento_em
-anotacoes        id, texto, tarefa_id NULL, status (pendente|organizada|falhou), erro NULL,
-                 recebida_em, organizada_em NULL
+                 criada_em, atualizada_em, ultimo_movimento_em, concluida_em NULL
+anotacoes        id, texto, texto_normalizado, tarefa_id NULL,
+                 status (nova|lendo|aguardando_voce|organizada|duplicada|falhou), erro NULL,
+                 recebida_em, lida_em NULL, organizada_em NULL, duplicada_de NULL
 checklist_itens  id, tarefa_id, texto (curto), ordem, feito, feito_em, origem (agente|manual)
-perguntas        id, tarefa_id NULL, anotacao_id NULL, texto, opcoes text[] NULL, resposta NULL,
-                 status (aberta|respondida|descartada), criada_em
+perguntas        id, tipo (destino|mesma_tarefa|livre), anotacao_id NULL, tarefa_id NULL, texto,
+                 opcoes jsonb (cada opção: rótulo + o que acontece se escolhida), proposta jsonb NULL,
+                 resposta NULL, status (na_fila|aberta|respondida|descartada), criada_em
 sugestoes        id, tarefa_id NULL (NULL = revisão geral), tipo (proximo_passo|revisao), conteudo jsonb,
                  base_em (timestamp do último movimento considerado), status (ativa|aceita|descartada), criada_em
 ```
 
 Decisões:
 - **Texto cru nunca é apagado nem reescrito.** A organização pode falhar ou errar; o original continua lá.
-- **Uma pergunta aberta por vez, no total**: índice único parcial `WHERE status = 'aberta'` (o mesmo truque de
-  `acoes_pendentes` e dos cards do Norte). O resolver checa antes; o índice é só a rede de segurança.
+- **Uma pergunta visível por vez**: índice único parcial `WHERE status = 'aberta'` (o mesmo truque de
+  `acoes_pendentes` e dos cards do Norte). As outras dúvidas esperam como `na_fila` e sobem uma a uma, conforme o chefe
+  responde. A fila não gasta nada: as dúvidas já saíram da mesma chamada que organizou o lote.
+
+### "Já li esse texto?" — o ciclo de um texto (pedido do chefe)
+
+A coluna `anotacoes.status` é o "novo ou lido". O tick e o botão **só olham `nova`**; o resto nunca volta ao LLM sozinho.
+
+```
+nova ──(tick ou botão pega)──> lendo ──> organizada        (foi para uma tarefa)
+                                    ├──> aguardando_voce   (dúvida: virou pergunta, espera a resposta)
+                                    ├──> duplicada         (igual a um texto que já existe)
+                                    └──> falhou            (erro do LLM; só volta a `nova` se o chefe pedir)
+```
+
+- `checar` do tick é um `SELECT EXISTS (... WHERE status = 'nova')` com índice parcial: sem texto novo, **nada** acontece.
+- `lida_em` marca quando a Pauta leu. O texto passa a `lendo` no mesmo `UPDATE ... RETURNING` que o pega
+  (`FOR UPDATE SKIP LOCKED`): se o tick e o botão rodarem juntos, nenhum texto é lido duas vezes nem cobrado duas vezes.
+- Texto escrito **dentro** de uma tarefa já nasce `organizada`: nunca passa pelo LLM.
+- Responder uma pergunta **não chama o LLM**: a proposta (itens de checklist, prazo) já veio na chamada que gerou a
+  dúvida e fica guardada em `perguntas.proposta`; a resposta só decide para onde ela vai.
+
+### Quando uma tarefa acaba (pedido do chefe)
+
+Nada é excluído de verdade; sai da vista e fica no histórico.
+- **Concluir** (botão na tarefa): `feita`, com `concluida_em`. Vai para "concluídas" da frente (últimos 30 dias) e pode ser reaberta.
+- **Deixar de lado** (botão): `arquivada`, para o que perdeu o sentido. Também reabrível.
+- **Quando o último item do checklist é marcado**, a tarefa mostra "tudo feito, concluir?" com um clique. É uma conta,
+  sem LLM, e a Pauta **nunca conclui sozinha**: você pode ter mais coisa a fazer que não está na lista.
 - **Prioridade não é coluna.** É calculada na hora (prazo, há quanto tempo parada, frente), igual ao "estagnado" do Norte.
 - **Frentes em tabela**, não `CHECK`: criar uma frente nova depois é um `INSERT`, sem migration.
 - Custo não tem coluna aqui: vai para `tick_execucoes`, como todo gasto.
@@ -75,24 +105,59 @@ Rotas (todas sem LLM em P1):
 | `GET /pauta/frentes` | as frentes com a contagem de tarefas abertas |
 | `GET /pauta/frentes/{id}/tarefas` | tarefas abertas da frente, na ordem calculada |
 | `GET /pauta/tarefas/{id}` | tarefa + checklist + contexto + textos originais (`LIMIT`) + sugestão ativa |
-| `POST /pauta/tarefas` / `PATCH /pauta/tarefas/{id}` | criar à mão; renomear, mudar frente ou prazo, concluir, arquivar, reabrir |
+| `POST /pauta/tarefas` / `PATCH /pauta/tarefas/{id}` | criar à mão; renomear, mudar frente, prazo ou termos, concluir, deixar de lado, reabrir |
+| `GET /pauta/frentes/{id}/concluidas` | concluídas dos últimos 30 dias |
+| `GET /pauta/perguntas/atual` / `POST /pauta/perguntas/{id}/resposta` | a pergunta visível e a resposta (em P1 só a estrutura; quem cria pergunta é a P2) |
 | `POST /pauta/tarefas/{id}/checklist` / `PATCH /pauta/checklist/{id}` | item novo; marcar, editar, reordenar, remover |
-| `GET /pauta/pendentes` | quantos textos esperam organização (o painel mostra "3 esperando") |
+| `GET /pauta/pendentes` | quantos textos estão `nova` (o painel mostra "3 esperando") |
+| `POST /pauta/anotacoes/{id}/tentar-de-novo` | `falhou` → `nova` (decisão do chefe, nunca automática) |
 
 Agente no `seed.py`: nome Pauta, especialidade `pauta`, extroversão a decidir (proponho 4: organizada e reservada).
 
 ## P2 — Organizar
 
 **Quando:** botão "organizar agora" (`POST /pauta/organizar`) ou o tick, por um handler em `_HANDLERS_TRABALHO`:
-`checar` = existe texto pendente? (consulta, sem custo). Sem pendente, nenhuma chamada.
+`checar` = existe texto `nova`? (consulta, sem custo). Sem texto novo, nenhuma chamada.
+
+**Antes do LLM, texto repetido igual sai de graça:** `texto_normalizado` (minúsculas, sem acento, pontuação e espaços
+extras) igual ao de um texto dos últimos 60 dias → `duplicada`, ligado ao original, sem chamada.
 
 **Uma chamada para o lote** (padrão A, modelo barato). Contexto montado antes:
 - os textos pendentes (no máximo 10 por rodada, e no máximo ~12 mil caracteres no total; o resto fica para a próxima);
-- as tarefas abertas, só id, frente e título (`LIMIT 60`);
+- as tarefas abertas, só id, frente, título e **termos** (`LIMIT 60`);
 - a data de hoje (para entender "sexta que vem").
 
-Saída estruturada, por texto: destino (`tarefa_id` existente **ou** tarefa nova com título e frente), prazo opcional,
-até 5 itens de checklist novos, e no máximo uma pergunta para o lote.
+Saída estruturada, por texto: destino (`tarefa_id` existente **ou** tarefa nova com título, frente e termos),
+**confiança** (`certa` ou `duvida`), até 3 candidatos quando houver dúvida, prazo opcional e até 5 itens de checklist.
+
+### Não confundir "API do SL" com "API do hubbia" (pedido do chefe)
+
+A regra é: **na dúvida, pergunta; nunca chuta.** Três camadas, da mais barata para a mais cara:
+
+1. **Termos por tarefa.** Cada tarefa guarda as palavras que a identificam ("SL", "cliente X", "hubbia", "TCC"). Vão no
+   contexto, então "endpoint de pedidos do SL" tem onde se apoiar. A Pauta propõe os termos ao criar a tarefa e o chefe
+   pode editar.
+2. **O LLM declara a confiança.** Se marcar `duvida`, o texto não é encaixado: vira pergunta.
+3. **Trava em código, que não depende do LLM.** Mesmo com `certa`, vira pergunta se:
+   - o texto cita um termo que aparece em tarefas de **frentes diferentes** (ex.: só "API", e há API no trabalho e no hubbia);
+   - o destino escolhido não compartilha nenhum termo nem palavra com o texto;
+   - a "tarefa nova" tem título muito parecido com uma aberta (ver duplicados abaixo).
+
+A pergunta é um **formulário curto**, não texto livre: "'Mapear os endpoints de pedidos' é de qual?" com as opções
+(as tarefas candidatas, "tarefa nova em Trabalho/Faculdade/Pessoal"). Um clique resolve.
+**A resposta ensina:** o termo que separou os casos entra nos `termos` da tarefa escolhida, e da próxima vez a Pauta
+não precisa perguntar de novo.
+
+### A mesma coisa dita duas vezes com outras palavras (pedido do chefe)
+
+| Caso | Como | Custo |
+|---|---|---|
+| Texto idêntico (ou só muda acento/pontuação) | `texto_normalizado` igual → `duplicada` | zero, antes do LLM |
+| Mesma tarefa com outro nome ("ver a API do SL" e "analisar endpoints do SL") | o LLM vê os títulos e termos abertos e aponta a existente; trava em código: título novo parecido com um aberto da mesma frente (similaridade de texto, `difflib`, sem dependência nova) → pergunta "é a mesma que X?" | já incluso na chamada |
+| Item de checklist repetido com outras palavras | comparado com os itens da tarefa (normalizado + similaridade); parecido demais → descartado | zero |
+| Informação repetida no contexto (P3) | a consolidação recebe o contexto atual e reescreve os tópicos: o repetido se funde, não duplica | já incluso |
+
+O texto original repetido nunca some: fica ligado à tarefa, e o `duplicada_de` mostra de qual era a cópia.
 
 Guardrails (todos em código, não no prompt):
 - `tarefa_id` tem que existir e estar aberta; frente tem que ser uma das ativas. Se não, o texto fica `falhou` com o
@@ -100,10 +165,11 @@ Guardrails (todos em código, não no prompt):
 - Título truncado em 80 caracteres, item em 120, pergunta em 140. Lista cortada no máximo em código.
 - Item igual a um que já existe na tarefa (comparação normalizada) é descartado.
 - **Item que o chefe já marcou ou escreveu nunca é alterado** pela Pauta: ela só acrescenta.
-- Já existe pergunta aberta? A nova é descartada, sem erro.
+- Dúvidas do lote viram perguntas `na_fila` (no máximo 5 por lote; texto além disso fica `nova` para a próxima rodada).
 - **Segredos mascarados antes de sair do banco:** padrões de token e chave (`sk-...`, `ghp_...`, `Bearer ...`,
   `api_key=...`, sequências longas aleatórias) viram `[segredo]` no texto enviado ao LLM. O original fica só no banco.
-- Uma tentativa só; falhou → os textos voltam a `pendente` com o erro visível, e o chefe decide tentar de novo.
+- Uma tentativa só; falhou → os textos ficam `falhou` com o erro visível. O tick **não** pega `falhou`; só o botão
+  "tentar de novo" do chefe devolve para `nova`.
 - Limite próprio por dia para rodadas automáticas no tick (proposta: 10), além do orçamento diário geral.
 
 ## P3 — Consolidar o contexto
@@ -155,10 +221,13 @@ organiza. Segue a receita do `AGENTS.md` do prédio.
 
 ## Testes por fase
 
-- **P1:** CRUD com Postgres real; texto escrito dentro da tarefa não fica pendente; tabelas novas em `conftest._TABELAS`.
-- **P2:** sem pendente → LLM não é chamado (`call_count == 0`); `tarefa_id` inventado → `falhou` e nada gravado; item
-  repetido descartado; item do chefe intacto; segunda pergunta descartada; segredo mascarado no prompt; falha → volta a
-  pendente; gasto em `tick_execucoes`; tick respeita o limite diário.
+- **P1:** CRUD com Postgres real; texto escrito dentro da tarefa já nasce `organizada`; concluir/deixar de lado/reabrir;
+  "tudo feito, concluir?" aparece só com o checklist inteiro marcado; tabelas novas em `conftest._TABELAS`.
+- **P2:** sem texto `nova` → LLM não é chamado (`call_count == 0`); texto repetido → `duplicada` sem chamada; tick e
+  botão ao mesmo tempo não leem o mesmo texto; `tarefa_id` inventado → `falhou` e nada gravado; termo em duas frentes →
+  pergunta mesmo com confiança `certa`; título parecido → pergunta "é a mesma?"; responder não chama o LLM e grava o termo;
+  item repetido descartado; item do chefe intacto; só uma pergunta `aberta`; segredo mascarado no prompt; `falhou` não
+  volta sozinho; gasto em `tick_execucoes`; tick respeita o limite diário.
 - **P3–P5:** saída truncada em código; sem mudança → sem chamada; contexto com `LIMIT`.
 - **P6:** Vitest para a lógica de ordenação/navegação; navegador com console limpo.
 

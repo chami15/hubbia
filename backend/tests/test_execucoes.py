@@ -46,3 +46,20 @@ class TestCronometro:
             linhas = conn.fetchall()
         assert len(linhas) == 1 and "timeout" in linhas[0]["erro"]
         assert linhas[0]["duracao_ms"] is not None and linhas[0]["duracao_ms"] >= 30
+
+
+class TestSemChaveDaOpenAI:
+    def test_regressao_sem_chave_virava_500_sem_explicacao(self, client):
+        # Sem OPENAI_API_KEY o erro sai ao criar o modelo (antes do try de cada agente) e é `OpenAIError`, que nenhum
+        # router tratava: 500 cru, que o navegador mostra como "não consegui falar com o servidor". Agora vira 422 com
+        # a causa e o que fazer, em todas as rotas de uma vez (tratador único no main.py).
+        from openai import OpenAIError
+
+        from agents.saude import agente as agente_saude
+        import resolvers.saude as saude
+        from tests.test_saude import _perfil_padrao
+        saude.salvar_perfil(_perfil_padrao())
+        with patch.object(agente_saude, "_get_model_macro", side_effect=OpenAIError("Missing credentials")):
+            r = client.post("/saude/refeicao/texto", json={"tipo_refeicao": "almoco", "descricao": "arroz e feijão"})
+        assert r.status_code == 422
+        assert "OPENAI_API_KEY" in r.json()["detail"]

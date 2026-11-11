@@ -12,8 +12,10 @@ de interação). Sobe com:  uvicorn main:app --reload
 """
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from openai import OpenAIError
 
 from routers import agenda, agentes, financeiro, infra, interacao, mensagens, norte, pauta, relogio, saude, tick
 from utils.connection import close_pool
@@ -34,6 +36,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
+# Erro da OpenAI que escapa dos agentes (o caso real: sem OPENAI_API_KEY, o erro sai ao CRIAR o modelo, antes do try
+# de cada um). Sem isto virava 500 cru, que o navegador mostra como "não consegui falar com o servidor". Um tratador só,
+# para todas as rotas, em vez de mexer nos dez lugares que criam modelo (regressão em tests/test_execucoes.py).
+@app.exception_handler(OpenAIError)
+async def erro_da_openai(_request: Request, exc: OpenAIError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"detail": f"Não consegui usar o modelo de IA ({exc}). Confira a OPENAI_API_KEY no backend/.env."},
+    )
+
 
 app.include_router(agentes.router)
 app.include_router(mensagens.router)

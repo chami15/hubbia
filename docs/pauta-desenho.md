@@ -1,6 +1,6 @@
 # Pauta — secretário pessoal (desenho para aprovação)
 
-> **Status:** P1, P2 e P3 **feitas** (2026-11-11, branch `feat/pauta`). P4 em diante: proposta, cada uma espera o próprio "pode".
+> **Status:** P1 a P4 **feitas** (2026-11-11, branch `feat/pauta`). P5 e P6: proposta, cada uma espera o próprio "pode".
 > Decidido na conversa de 2026-11-11: organizar no tick **e** por botão; três frentes fixas (trabalho, faculdade,
 > pessoal), outras depois; uma pergunta por vez, curta; nome **Pauta**. Ordem: banco e backend primeiro, frontend no fim.
 
@@ -246,6 +246,23 @@ Botão dentro da tarefa. Saída curta e fixa:
 
 Checagem antes de gastar: se nada mudou na tarefa desde a última sugestão (`base_em`), devolve a mesma, sem chamada.
 O chefe pode aceitar (vira item no topo do checklist) ou descartar.
+
+### P4 como ficou (implementada)
+
+| Rota | Faz |
+|---|---|
+| `POST /pauta/tarefas/{id}/sugestao` | `{"sugestao": {proximo_passo, como[], por_que, ...}, "nova": bool}`. `nova=false`: nada mudou, é a mesma (não gastou). Tarefa fechada ou sem orçamento → 409; dois cliques seguidos → 409 "já estou pensando"; falha do LLM → 422 |
+| `POST /pauta/sugestoes/{id}/aceitar` | o passo entra no **topo** do checklist; se um item pendente já dizia o mesmo, ele sobe em vez de duplicar |
+| `POST /pauta/sugestoes/{id}/descartar` | entra no "não repetir" das próximas |
+
+- **"Nada mudou" é pelo conteúdo**, não pelo relógio: impressão digital (`pauta_regras.impressao_da_tarefa`) do título,
+  prazo, checklist (texto e marcado) e contexto. Uma atualização de contexto da P3 conta como mudança; abrir a tela não.
+- `GET /pauta/tarefas/{id}` traz a sugestão ativa com `atual: false` quando a tarefa mudou depois dela (a tela mostra
+  como desatualizada).
+- **Não repetir:** as 3 últimas descartadas vão no pedido, e o código recusa se o LLM repetir mesmo assim (vira falha
+  visível, nada fica ativo). Número diferente não conta como repetição.
+- Reserva `gerando` (migration 018) com expiração de 5 min; falha libera o botão e fica registrada.
+- Itens e contexto passam pelo mascaramento de segredo antes de ir para o LLM (o chefe pode ter colado uma chave num item).
 
 ## P5 — Clarear a vista
 

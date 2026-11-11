@@ -254,6 +254,26 @@ especificamente.
 
 ---
 
+### Pauta (secretário pessoal)
+
+Desenho completo: `docs/pauta-desenho.md`. Padrão: **forms + cards**, nunca chat. Painel **largo**, em pixel art de
+propósito (pedido do chefe): fonte pixel local (`--fonte-pixel`, Pixelify Sans), cantos em degraus, borda chapada de
+2 px, sombra dura sem desfoque, ícones 8x8 ampliados por inteiro. As peças ficam em `features/pauta/pixel.tsx`.
+
+- **Três níveis dentro do painel**, com "voltar": frentes → tarefas da frente → a tarefa. Nem dropdown (com checklist
+  aberto vira sopa) nem tela nova (esconderia o prédio).
+- **Despejar sempre no topo** (salva na hora, sem LLM; dentro de uma tarefa, entra nela). Logo abaixo, quantos textos
+  esperam, o "organizar agora" e os que falharam com "tentar de novo".
+- **Pergunta da vez** numa linha de post-it, com as opções em um clique. Uma por vez.
+- **Lista da frente:** uma frase por tarefa, prazo em palavras ("amanhã", "venceu ontem", vermelho quando vencido),
+  progresso em blocos. Feitas e deixadas de lado têm "ocultar"; "exibir tarefas ocultas" traz de volta, esmaecidas.
+- **A tarefa:** concluir / deixar de lado / reabrir / ocultar; "tudo feito, concluir?" quando o checklist fecha;
+  sugestão da Pauta como post-it (próximo passo, como, por que; "desatualizada" quando a tarefa mudou);
+  checklist; "o que já se sabe" com "atualizar"; textos originais recolhidos.
+- **Clarear a vista:** foco, pode esperar, talvez nem valha. Abrir mostra a última; só "clarear agora" gasta.
+- RNF01/RNF07: só "organizar agora", "sugestão da Pauta", "atualizar" e "clarear agora" chamam LLM, todos com
+  "processando". Custo nunca aparece (RNF02).
+
 ## Módulo de interação (motor de tick — Etapas 1, 2 e 3 prontas)
 
 Backend do relógio simulado (Etapa 1), da camada social entre agentes

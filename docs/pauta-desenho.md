@@ -1,6 +1,6 @@
 # Pauta — secretário pessoal (desenho para aprovação)
 
-> **Status:** P1 a P5 **feitas** (2026-11-11, branch `feat/pauta`): o backend inteiro. Falta a P6 (painel), que espera o próprio "pode".
+> **Status:** P1 a P6 **feitas** (2026-11-11, branch `feat/pauta`): backend, painel em pixel art e a sala no prédio.
 > Decidido na conversa de 2026-11-11: organizar no tick **e** por botão; três frentes fixas (trabalho, faculdade,
 > pessoal), outras depois; uma pergunta por vez, curta; nome **Pauta**. Ordem: banco e backend primeiro, frontend no fim.
 
@@ -316,6 +316,18 @@ nível 3  a tarefa: checklist (marcar, adicionar), "o que já se sabe", botão "
 
 No prédio: sala própria com quadro de post-its, arquivo e mesa com pastas; o personagem aparece "trabalhando" enquanto
 organiza. Segue a receita do `AGENTS.md` do prédio.
+
+### P6 como ficou (implementada)
+
+- Painel em `frontend/src/features/pauta/` (lazy, largo), descrito em `docs/frontend-design.md` › Pauta. Pixel art a
+  pedido do chefe: fonte pixel local (Pixelify Sans, OFL, `public/fonts/`), sem dependência nova.
+- Prédio: personagem amarela post-it (coque e óculos), sala com quadro de post-its, gaveteiros, estante de pastas,
+  impressora e a poltrona de revisar a pauta (descanso). Entra na vaga livre da primeira visita. **Quem já tem o prédio
+  salvo no navegador** adiciona a Pauta pelo painel do prédio (catálogo), uma vez.
+- Cor trocada para `#eab308` (o rosa da primeira versão era o da Rota).
+- Achados no teste do painel no navegador, cada um com regressão: sem chave da OpenAI os textos ficavam presos em
+  `lendo` e a rota dava 500 (modelo criado fora do `try`; e um tratador único de `OpenAIError` no `main.py` para
+  todos os agentes); a tela não recarregava depois de uma ação que falhou (`onSettled`).
 
 ## Testes por fase
 

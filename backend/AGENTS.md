@@ -44,6 +44,8 @@ Regras que valem sempre:
 - **Nunca retry automático** (cada tentativa é token). Falhou → `RuntimeError` claro; quem decide tentar de novo é o chefe.
 - **Todo gasto vai para `tick_execucoes`** via `agents/_shared/execucoes.py::registrar_execucao` (e `cronometrar()` em volta do `ainvoke`). Esse registro
   **nunca pode derrubar o trabalho**: ele engole a própria exceção de propósito. O orçamento diário sai só dessa tabela. Domínio novo que esquece de registrar gasta invisível.
+- Erro da OpenAI que escapa (sem chave, o erro sai ao **criar** o modelo) vira 422 pelo tratador do `main.py`. Mas se o domínio grava estado
+  antes da chamada (a Pauta reserva textos), crie o modelo **dentro** do `try` que desfaz esse estado (`agents/pauta/agente.py::_chamar`).
 - Cheque o bloqueio determinístico **antes** de chamar (`_pendente_aberta`, trava semanal da Saúde, `_garantir_sem_card_ativo` do Norte).
 - Valide o que o LLM devolveu: fórmula conhecida (`_corrigir_consistencia`), campo vago (`min_length=1` + checagem explícita), limite de tamanho truncado **em código**
   (`stack[:N]`), nunca só pedido no prompt.

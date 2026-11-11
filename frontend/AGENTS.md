@@ -38,6 +38,7 @@ types/   espelha os schemas do backend (um contrato só, importado por quem prec
 
 ## Armadilhas já pagas
 
+- Mutação cuja falha também muda o backend (ex.: "organizar" marca os textos como "com erro") recarrega no **`onSettled`**, não só no `onSuccess`: senão a tela fica velha depois do erro (`hooks/__testes__/usePauta.test.ts`).
 - `tsconfig`: `erasableSyntaxOnly` (sem `enum`, `namespace` nem *parameter properties* no construtor), `verbatimModuleSyntax` (`import type` para tipos),
   `noUnusedLocals/Parameters`. `npm run build` (= `tsc -b`) quebra com qualquer um.
 - `StrictMode` roda efeito duas vezes em dev: efeito que dispara requisição com efeito visível precisa de `ref` de guarda.

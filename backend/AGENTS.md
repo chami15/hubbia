@@ -10,6 +10,7 @@ routers/<dominio>.py    HTTP fino: parse, chama o resolver, mapeia erro → stat
 resolvers/<dominio>.py  regra de negócio + guardrails. Levanta ValueError/RuntimeError com mensagem clara.
 agents/<dominio>/       só chamadas de LLM (agente.py), clientes externos e tools (padrão B).
 sql/<entidade>.sql      queries nomeadas: `--QUERY: nome`. Chamada: executar_query("arquivo:nome", params=(...)).
+                        Várias queries que precisam entrar juntas (tudo ou nada): `utils/transacao.py::em_transacao`.
 db/migrations/NNN_*.sql schema. Aditivas e imutáveis. `scripts/migrate.py` aplica em ordem.
 utils/                  infra compartilhada. Mudou aqui? Teste TODOS os agentes, não só o que motivou.
 ```
@@ -52,7 +53,7 @@ Regras que valem sempre:
 
 `db/migrations/NNN_<dominio>.sql` · `sql/<entidade>.sql` · `agents/<dominio>/` · `resolvers/<dominio>.py` · `routers/<dominio>.py` ·
 `main.py` (`app.include_router`) · `scripts/seed.py` (entrada em `AGENTES`: nome, especialidade, `avatar_config` com cor, `mesa`, `extroversao`) ·
-`resolvers/interacao.py::_HANDLERS_TRABALHO` se ele tiver proatividade (`checar`/`descrever`/`executar`/`custa_llm`; `custa_llm=False` só se **nunca** chama LLM) ·
+`resolvers/interacao.py::_HANDLERS_TRABALHO` se ele tiver proatividade (`checar`/`descrever`/`executar`/`custa_llm`; `custa_llm=False` só se **nunca** chama LLM; `executar` devolvendo `None` trabalha sem mandar mensagem ao chefe) ·
 `tests/test_<dominio>.py` · **`tests/conftest.py::_TABELAS`** (tabela nova fora dessa lista não é limpa entre testes e um teste contamina outro).
 A `especialidade` é a chave que o frontend usa para ligar o agente do banco ao personagem (`frontend/src/features/predio/agentes.ts`): combine o valor dos dois lados.
 

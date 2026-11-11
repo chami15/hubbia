@@ -1,6 +1,6 @@
 # Pauta — secretário pessoal (desenho para aprovação)
 
-> **Status:** P1 **feita** (2026-11-11, branch `feat/pauta`). P2 em diante: proposta, cada uma espera o próprio "pode".
+> **Status:** P1 e P2 **feitas** (2026-11-11, branch `feat/pauta`). P3 em diante: proposta, cada uma espera o próprio "pode".
 > Decidido na conversa de 2026-11-11: organizar no tick **e** por botão; três frentes fixas (trabalho, faculdade,
 > pessoal), outras depois; uma pergunta por vez, curta; nome **Pauta**. Ordem: banco e backend primeiro, frontend no fim.
 
@@ -185,6 +185,32 @@ Guardrails (todos em código, não no prompt):
 - Uma tentativa só; falhou → os textos ficam `falhou` com o erro visível. O tick **não** pega `falhou`; só o botão
   "tentar de novo" do chefe devolve para `nova`.
 - Limite próprio por dia para rodadas automáticas no tick (proposta: 10), além do orçamento diário geral.
+
+### P2 como ficou (implementada)
+
+Rotas novas (só a primeira chama LLM, e só por clique):
+
+| Rota | Faz |
+|---|---|
+| `POST /pauta/organizar` | uma rodada: devolve `lidos`, `organizados`, `perguntas`, `duplicados`, `falhas`, `devolvidos`, `chamou_llm`. Sem texto novo responde na hora (mesmo sem orçamento); com texto e sem orçamento, 409 |
+| `GET /pauta/perguntas/atual` | a pergunta visível (ou `null`), com o texto original já mascarado, as opções (só `indice` e `rotulo`) e quantas esperam na fila |
+| `POST /pauta/perguntas/{id}/resposta` | `{"opcao": n}`: aplica sem LLM, ensina os termos e devolve a tarefa e a próxima pergunta. Já respondida → 409; opção inexistente → 422 |
+| `GET /pauta/textos/falhas` | os textos que falharam, com o motivo |
+| `POST /pauta/textos/{id}/tentar-de-novo` | `falhou` → `nova` (só o chefe faz isso) |
+
+Decisões tomadas ao implementar:
+- **Leitura que caiu no meio** (texto preso em `lendo` há mais de 10 min) vira `falhou`, não `nova`: voltar sozinho
+  seria retentativa automática.
+- **Em dúvida, nada é validado como destino**: o LLM costuma não apontar tarefa quando está em dúvida, e isso não pode
+  virar falha (era um bug, coberto por `test_regressao_duvida_sem_tarefa_apontada_...`).
+- **No tick, a Pauta não manda mensagem ao chefe** (o handler devolve `None`): o resultado aparece no painel.
+  O teto do dia conta todas as chamadas da Pauta, inclusive as do botão; o botão continua funcionando depois do teto
+  (só o orçamento geral o bloqueia).
+- Tipos de pergunta: `destino` e `mesma_tarefa` (o `livre` do desenho saiu: toda dúvida até aqui tem opções).
+- Partes frágeis com teste próprio: `tests/test_pauta_regras.py` (segredo, repetido, ambiguidade, sem banco) e
+  `tests/test_pauta_organizar.py` (fluxo com Postgres real, LLM simulado). Inclui a regressão dos itens que só mudam
+  o número ("Ler capítulo 3" x "Ler capítulo 4").
+- `utils/transacao.py`: várias queries em uma transação (tudo ou nada), usado para gravar o lote e a resposta.
 
 ## P3 — Consolidar o contexto
 

@@ -1,7 +1,7 @@
 # Agente de investimentos — proposta (não aprovada)
 
-> **Status:** proposta de 2026-11-11, **sem "pode"**. O chefe pediu para pausar e tratar antes o **segundo andar do
-> prédio** (`docs/segundo-andar.md`); voltamos aqui depois. Nada foi codado. Perguntas em aberto no fim.
+> **Status:** proposta de 2026-11-11, **sem "pode"**. O **segundo andar** já existe (`docs/segundo-andar.md`, branch
+> `feat/andares`) e está vazio esperando este agente; voltamos aqui depois. Nada foi codado. Perguntas em aberto no fim.
 
 ## O pedido
 

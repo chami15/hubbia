@@ -27,7 +27,10 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `relogioDoMundo.ts` | A **hora do mundo** (céu, luz, "dormindo", relógio do topo): conta pura sobre o tempo real, mesma do backend (`resolvers/relogio.py`), testada com os mesmos vetores. Não confundir com `relogio.ts`. |
 | `relogio.ts` | Relógio de mundo que para com a aba escondida (injetável, para teste). |
 | `atalho.ts` | Bolha de atalho ancorada no personagem (clique direito): quem tem atalho e a geometria pura (mundo → tela, encaixe sem sair da área). O HTML da bolha da Vita é `features/saude/BolhaVita.tsx`. |
-| `vagas.ts` | Quem está em cada vaga (`localStorage`; é a única peça que muda quando isso for para o backend). |
+| `vagas.ts` | Quem está em cada vaga **de cada andar** (`localStorage`, formato v2 por andar; converte o v1, que era só o térreo). É a única peça que muda quando isso for para o backend. |
+| `andares.ts` | **Os andares**: lado do núcleo (esquerda/direita), hall em cima ou embaixo, copa opcional, quantas salas. Andar novo = uma entrada aqui. |
+| `edificio.ts` | Todos os andares vivos ao mesmo tempo (sem DOM): uma simulação por andar, viagens de elevador entre eles, visitas entre andares, vagas e obras por andar. |
+| `trocaDeAndar.ts` / `useElevador.ts` / `Elevador.tsx` | A troca de andar na tela: linha do tempo pura (portas fecham, andar troca escondido, portas abrem), o gancho que a roda, e o painel do elevador, as portas e o indicador de andar em pixel art. |
 | `PainelPredio.tsx` | Gerência: quem está no prédio (abrir/dispensar) e catálogo (adicionar). |
 | `habblaud/` | Arte do habblaud **copiada**. Não edite (veja "Arte"). |
 | `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**), `relogio.test.ts`, `status.test.ts` e os da Fase E: `rotina`, `ritmo`, `descanso`, `almoco`, `encontros`, `visita`, `relacoes`, `humor`, `humor-predio`, `autonomia`. |
@@ -36,7 +39,7 @@ O status vem do backend em `status.ts::statusNoPredio` (mensagem não lida → `
 `falando` → `conversando`; `idle` → `ocioso`, ou `dormindo` na janela de sono **da personalidade** pela hora do mundo; agente conceito: ocioso de dia, dormindo de noite).
 Os quatro estados do backend **têm de continuar distintos**: o teste cobra.
 
-**Ordem do que manda em `decidir` (sim.ts):** ir embora > visita (mensagem social real) > receber visita > almoço (12h–13h, só ocioso) > dormindo (no descanso) >
+**Ordem do que manda em `decidir` (sim.ts):** ir embora / viagem de elevador > fora do próprio andar (só a visita, depois volta) > visita (mensagem social real) > receber visita > almoço (12h–13h, só ocioso) > dormindo (no descanso) >
 precisa de você / pensando / conversando (mesa) > trabalhando (mesa + pausas da rotina) > ocioso (rotina sem pressa). Comportamento novo entra nessa fila, não por fora.
 
 ## Conceitos que todo mundo erra no começo
@@ -82,6 +85,17 @@ export const SALAS = { /* ... */ lume: {
    mesa, pausas, dispensar. Olhe o PNG: sala cheia mas respirável, nada sobreposto, agente legível.
 7. Documente: linha em `docs/guia-tecnico-frontend.md` PARTE 0 só se mudou arquitetura; o resto o código já diz.
 
+## Receita: andar novo
+
+1. Entrada em `ANDARES` (`andares.ts`): `lado` do núcleo e `hall` em cima ou embaixo (num canto diferente dos outros andares), `modeloHall` (`HALL`; a
+   `RECEPCAO` só serve em cima, por causa da porta), `copa` opcional (sem copa, o almoço daquele andar é fora, pelo elevador) e `maxVagas`
+   (núcleo à direita = número fixo de salas). `botao` é o que aparece no painel do elevador.
+2. `npm test`: `andares.test.ts` cobre sozinho o andar novo (toda sala em toda vaga, elevador alcançável, porta nunca sob item de parede).
+3. Vagas salvas: o andar novo nasce vazio (`vagas.ts` preenche). Confira no navegador: painel do elevador, troca de andar, um agente adicionado lá.
+
+**Viagem entre andares** (`sim.viajar` → `aoViajar` → `edificio` → `receberViajante`): o agente vai ao elevador, some, e reaparece **dentro** do
+elevador do destino (nunca na coordenada antiga: era o "teleporte"). Um agente está sempre em um lugar só; `edificio.test.ts` confere isso a cada passo.
+
 ## Receita: comportamento ou status novo
 
 Status novo toca, nesta ordem: tipo `Status` e `STATUS_ROTULO` (`sim.ts`) · `decidir` · `aplicarPoseDaMesa` · `iconeDe` · `atividadeDe` · mapeamento de `telas` em `mundo.ts` ·
@@ -110,6 +124,7 @@ Status novo toca, nesta ordem: tipo `Status` e `STATUS_ROTULO` (`sim.ts`) · `de
 | Depois do almoço, o "fica onde está" deixava o agente na copa | `almoco.test.ts` › "às 13h voltam para a própria sala" (`voltarParaMesa`) |
 | Visita chegava e o anfitrião já tinha saído; visita conversava de longe; os dois balões se sobrepunham | `visita.test.ts` › as três "regressão: …" (anfitrião espera, ladrilho ao lado, vez de falar) |
 | `%`/`?`/`!` e aspas não existem na fonte pixel (viram espaço) | `encontros.test.ts` › `limparParaFonte` |
+| Dispensado no caminho de volta para casa passava pelo andar de casa antes de ir embora | `viagem.test.ts` › "dispensado no meio da viagem de volta" |
 | `pkill -f vite` derruba o shell do agente | (ambiente) use `kill $(lsof -ti tcp:PORTA)` |
 | Chromium headless a ~2 fps | (ambiente) espere 8–12 s para ver agentes andando; obra e elevador levam ~2,6 s |
 

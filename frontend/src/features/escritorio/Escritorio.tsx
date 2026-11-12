@@ -4,6 +4,8 @@ import { carregarVagas, salvarVagas } from '../predio/vagas'
 import { AGENTES, agentePorId, corCss, type AgenteId } from '../predio/agentes'
 import type { Status } from '../predio/sim'
 import { PainelPredio } from '../predio/PainelPredio'
+import { IndicadorDeAndar, PainelElevador, PortasDoElevador } from '../predio/Elevador'
+import { useElevador } from '../predio/useElevador'
 import { statusNoPredio } from '../predio/status'
 import { PainelDoAgente } from '../agentes/PainelDoAgente'
 import { PainelMensagens } from '../agentes/PainelMensagens'
@@ -61,6 +63,8 @@ export function Escritorio() {
   // atalho ancorado num personagem (clique direito); nunca junto com um painel
   const [atalho, setAtalho] = useState<AgenteId | null>(null)
   const areaRef = useRef<HTMLElement>(null)
+  // painel do elevador (clique num elevador do prédio ou no indicador de andar)
+  const [elevadorAberto, setElevadorAberto] = useState(false)
   const [dryRunAtivo, setDryRunAtivoState] = useState(dryRunEstaAtivo)
   // tick automático: SEMPRE começa desligado ao carregar a página (padrão seguro); só o chefe liga. Não é lembrado entre sessões.
   const [autoLigado, setAutoLigado] = useState(false)
@@ -96,6 +100,11 @@ export function Escritorio() {
       aoAtalhoAgente: (id) => {
         setPainel(null)
         setAtalho(id)
+      },
+      aoClicarElevador: () => {
+        setPainel(null)
+        setAtalho(null)
+        setElevadorAberto(true)
       },
       aoMudarVagas: salvarVagas,
     })
@@ -264,6 +273,8 @@ export function Escritorio() {
   }, [painel, atalho])
 
   const fecharAtalho = useCallback(() => setAtalho(null), [])
+  const elevador = useElevador(mundo)
+  const fecharElevador = useCallback(() => setElevadorAberto(false), [])
   const ancoraDoAtalho = useCallback(() => (atalho ? (mundo?.ancora(atalho) ?? null) : null), [mundo, atalho])
 
   const alternar = (p: Painel) => {
@@ -369,6 +380,19 @@ export function Escritorio() {
 
       <main ref={areaRef} style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         <div ref={hospedeiroRef} style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', overflow: 'auto', padding: 16 }} />
+        {mundo && <IndicadorDeAndar andares={elevador.andares} atual={elevador.visivel} aoAbrir={() => setElevadorAberto(true)} />}
+        {elevadorAberto && (
+          <PainelElevador
+            andares={elevador.andares}
+            atual={elevador.visivel}
+            aoFechar={fecharElevador}
+            aoEscolher={(andar) => {
+              setElevadorAberto(false)
+              elevador.irPara(andar)
+            }}
+          />
+        )}
+        {elevador.troca && <PortasDoElevador troca={elevador.troca} />}
 
         {atalho === 'vita' && <BolhaVita ancora={ancoraDoAtalho} area={areaRef} aoFechar={fecharAtalho} />}
 
@@ -379,7 +403,17 @@ export function Escritorio() {
         )}
         {painel?.tipo === 'maquinas' && <PainelSalaDeMaquinas aoFechar={() => setPainel(null)} />}
         {painel?.tipo === 'predio' && mundo && (
-          <PainelPredio mundo={mundo} vaga={painel.vaga} aoAbrir={abrirAgente} aoFechar={() => setPainel(null)} />
+          <PainelPredio
+            mundo={mundo}
+            vaga={painel.vaga}
+            aoAbrir={(id) => {
+              // agente em outro andar: o elevador leva até ele antes de abrir o painel
+              const onde = mundo.andarDoAgente(id)
+              if (onde !== undefined && onde !== null && onde !== mundo.andarVisivel()) elevador.irPara(onde)
+              abrirAgente(id)
+            }}
+            aoFechar={() => setPainel(null)}
+          />
         )}
 
         <Toasts toasts={toasts} aoFechar={fechar} />

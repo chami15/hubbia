@@ -1,0 +1,11 @@
+/* As portas do elevador por cima do prédio na troca de andar. Só transform (nunca left/width). Com "reduzir
+   movimento", o index.css já zera as durações e vira um corte. */
+@keyframes elevador-fecha-esq { from { transform: translateX(-101%); } to { transform: translateX(0); } }
+@keyframes elevador-fecha-dir { from { transform: translateX(101%); } to { transform: translateX(0); } }
+@keyframes elevador-abre-esq { from { transform: translateX(0); } to { transform: translateX(-101%); } }
+@keyframes elevador-abre-dir { from { transform: translateX(0); } to { transform: translateX(101%); } }
+@keyframes elevador-pisca { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.35; } }
+
+.elevador-botao:not(:disabled):active { transform: translate(2px, 2px); box-shadow: none !important; }
+.elevador-botao:not(:disabled):hover { filter: brightness(1.15); }
+.elevador-botao:focus-visible { outline: 2px dashed #f5c542; outline-offset: 2px; }

@@ -77,6 +77,13 @@ export interface AgenteVivo {
   saindo: boolean;
   /** Entrou no elevador: some quando a porta fecha. */
   embarcouEm?: number;
+  /** Andar onde fica a sala dele. Fora dele (visitando outro andar), só faz a visita e volta. */
+  casa: number;
+  /**
+   * Indo a outro andar: caminha até o elevador, entra e some deste andar; o edifício (edificio.ts) o entrega no
+   * elevador do destino com `receberViajante`, levando a visita junto.
+   */
+  viagem?: { andar: number; visita?: { para: AgenteId; linhas: string[] } };
   /** Congelado no lugar (o chefe está com o atalho aberto nele): não anda nem decide nada até soltar. */
   parado: boolean;
   /** Últimas atividades (mais recente no fim): a rotina usa para não repetir e não ir à copa toda hora. */
@@ -122,6 +129,8 @@ export interface Simulacao {
   elevadorAbriu: number[];
   /** Avisado quando um agente dispensado entra no elevador e some. */
   aoSair: (id: AgenteId) => void;
+  /** Avisado quando um agente em viagem entra no elevador e some deste andar (o edifício o leva ao destino). */
+  aoViajar?: (a: AgenteVivo, agora: number) => void;
   /** Hora do MUNDO (0..24) que o prédio está vivendo; undefined até o relógio chegar (sem almoço). */
   hora?: number;
   almoco: EstadoAlmoco;
@@ -153,7 +162,7 @@ export function definirHoraDoMundo(sim: Simulacao, hora: number): void {
  * Coloca um agente no prédio. `jaNaMesa`: aparece sentado (primeira carga da página); senão chega pelo elevador
  * em `chegaEm` (quando a obra da sala termina).
  */
-export function adicionarAgente(sim: Simulacao, id: AgenteId, agora: number, o: { jaNaMesa?: boolean; chegaEm?: number; status?: Status } = {}): void {
+export function adicionarAgente(sim: Simulacao, id: AgenteId, agora: number, o: { jaNaMesa?: boolean; chegaEm?: number; status?: Status; casa?: number } = {}): void {
   if (sim.agentes.some((a) => a.def.id === id)) return;
   const def = agentePorId(id);
   if (!def) return;
@@ -171,6 +180,7 @@ export function adicionarAgente(sim: Simulacao, id: AgenteId, agora: number, o: 
     fase: i * 97,
     chegando: !o.jaNaMesa,
     saindo: false,
+    casa: o.casa ?? sim.predio.andar.id,
   };
   sim.agentes.push(a);
   const mesa = mesaDe(sim.predio, id);
@@ -213,7 +223,47 @@ const duracaoDaFala = (linhas: readonly string[]) => Math.min(12000, 4000 + linh
 
 /** Dá para conversar com ele agora? (no prédio, acordado e não almoçando fora) */
 function disponivel(a: AgenteVivo): boolean {
-  return !a.saindo && !a.chegando && a.embarcouEm === undefined && a.status !== 'dormindo' && a.almoco !== 'fora' && a.almoco !== 'saindo_fora';
+  return !a.saindo && !a.chegando && !a.viagem && a.embarcouEm === undefined && a.status !== 'dormindo' && a.almoco !== 'fora' && a.almoco !== 'saindo_fora';
+}
+
+/**
+ * Manda o agente a outro andar (visitar alguém lá, ou voltar para casa). Ele larga o que estava fazendo, vai ao
+ * elevador e some; o edifício o entrega no destino. false = agora não dá (chegando, indo embora, já viajando).
+ */
+export function viajar(sim: Simulacao, id: AgenteId, andar: number, agora: number, visita?: { para: AgenteId; linhas: string[] }): boolean {
+  const a = sim.agentes.find((x) => x.def.id === id);
+  if (!a || a.saindo || a.chegando || a.viagem || a.embarcouEm !== undefined || a.parado || andar === sim.predio.andar.id) return false;
+  if (a.almoco === 'fora' || a.almoco === 'saindo_fora') return false;
+  if (a.almoco === 'indo' || a.almoco === 'comendo') a.almoco = 'feito';
+  if (a.visita) {
+    soltarAnfitriao(sim, a);
+    a.visita = undefined;
+  }
+  a.viagem = { andar, visita };
+  a.ate = agora;
+  return true;
+}
+
+/**
+ * Entrega um agente que veio de outro andar: aparece dentro do elevador deste andar e sai quando a porta abre. Leva a
+ * visita junto (o anfitrião passa a esperar por ele) e, se chegou em casa, a próxima decisão é voltar para a mesa.
+ */
+export function receberViajante(sim: Simulacao, a: AgenteVivo, agora: number): void {
+  if (sim.agentes.some((x) => x.def.id === a.def.id)) return;
+  const destino = a.viagem;
+  const [x, y] = pesNoTile(...saidaDoElevador(sim, sim.agentes.length));
+  Object.assign(a, {
+    x, y, sortY: y, dir: 'down', pose: 'stand', seated: false, held: undefined,
+    caminho: [], correndo: false, lugar: undefined, destino: undefined,
+    chegando: true, embarcouEm: undefined, ate: agora, parado: false, viagem: undefined, fala: undefined, recebendo: undefined,
+  } satisfies Partial<AgenteVivo>);
+  sim.agentes.push(a);
+  if (destino?.visita) {
+    a.visita = { para: destino.visita.para, linhas: destino.visita.linhas };
+    const alvo = sim.agentes.find((g) => g.def.id === destino.visita?.para);
+    if (alvo && disponivel(alvo)) alvo.recebendo = a.def.id;
+  }
+  if (a.casa === sim.predio.andar.id) a.voltarParaMesa = true;
 }
 
 /** O remetente de uma mensagem social vai até o destinatário e fala. false = agora não dá (e o encontro é descartado). */
@@ -398,11 +448,11 @@ function saidaDoElevador(sim: Simulacao, i: number): [number, number] {
 }
 
 /** "Lugar" na frente do elevador, para quem vai embora ou vai a outro andar. */
-function elevador(sim: Simulacao, i: number): Lugar {
+function elevador(sim: Simulacao, i: number, rotulo = 'Indo embora'): Lugar {
   const el = sim.predio.elevadores[i];
   const [c, r] = el.tile;
   const [x, y] = pesNoTile(c, r);
-  return { id: `elevador:${i}`, area: el.area, tile: [c, r], x, y, dir: 'up', pose: 'stand', sortY: y, rotulo: 'Indo embora' };
+  return { id: `elevador:${i}`, area: el.area, tile: [c, r], x, y, dir: 'up', pose: 'stand', sortY: y, rotulo };
 }
 
 /** Índice do elevador de um "lugar" de elevador (`elevador:<i>`), ou -1. */
@@ -496,7 +546,10 @@ function lugarPorRotulo(sim: Simulacao, rotulo: string, ignorar?: string): Lugar
 function irAlmocar(sim: Simulacao, a: AgenteVivo): boolean {
   const st = sim.almoco;
   const atrasado = !st.ativo;
-  if (!atrasado && st.modo === 'fora') {
+  // andar sem copa: o almoço daquele andar é sempre fora (pega o elevador), seja qual for o modo sorteado
+  const semCopa = !sim.predio.areas.some((ar) => ar.nucleo === 'copa');
+  if (semCopa && atrasado) return false;
+  if (!atrasado && (st.modo === 'fora' || semCopa)) {
     const i = sim.agentes.indexOf(a) % sim.predio.elevadores.length;
     if (!irPara(sim, a, elevador(sim, i), false)) return false;
     a.almoco = 'saindo_fora';
@@ -598,11 +651,18 @@ function continuarVisita(sim: Simulacao, a: AgenteVivo, agora: number): boolean 
 }
 
 function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
-  if (a.saindo) {
+  if (a.saindo || a.viagem) {
     if (!a.destino?.id.startsWith('elevador')) {
       const i = Math.floor(sim.rnd() * sim.predio.elevadores.length);
-      if (!irPara(sim, a, elevador(sim, i), false)) a.ate = agora + 500;
+      if (!irPara(sim, a, elevador(sim, i, a.viagem ? 'Pegando o elevador' : 'Indo embora'), false)) a.ate = agora + 500;
     }
+    return;
+  }
+  // fora do próprio andar: só a visita; acabou (ou não deu), volta para casa pelo elevador
+  if (a.casa !== sim.predio.andar.id) {
+    if (a.visita && continuarVisita(sim, a, agora)) return;
+    a.viagem = { andar: a.casa };
+    a.ate = agora;
     return;
   }
   const mesa = mesaDe(sim.predio, a.def.id);
@@ -702,7 +762,7 @@ function chegou(sim: Simulacao, a: AgenteVivo, agora: number): void {
   a.seated = !!l.seated;
   a.sortY = l.sortY;
   a.correndo = false;
-  if (a.saindo || a.almoco === 'saindo_fora') {
+  if (a.saindo || a.almoco === 'saindo_fora' || a.viagem) {
     // Na frente do elevador: a porta abre, ele entra e some.
     const i = indiceDoElevador(l);
     if (i >= 0) sim.elevadorAbriu[i] = agora;
@@ -789,7 +849,9 @@ export function passo(sim: Simulacao, agora: number, dt: number): void {
       if (agora - a.embarcouEm > EMBARQUE_MS) {
         liberar(sim, a);
         sim.agentes.splice(sim.agentes.indexOf(a), 1);
-        sim.aoSair(a.def.id);
+        // viagem a outro andar: o edifício leva; dispensado: vai embora de vez
+        if (a.viagem && !a.saindo) sim.aoViajar?.(a, agora);
+        else sim.aoSair(a.def.id);
       }
       continue;
     }
@@ -842,6 +904,7 @@ export function iconeDe(a: AgenteVivo, agora: number): IconName | undefined {
 export function atividadeDe(a: AgenteVivo): string {
   if (a.chegando) return 'Subindo pelo elevador';
   if (a.saindo) return 'Indo embora';
+  if (a.viagem) return 'Pegando o elevador';
   if (a.caminho.length) {
     if (a.correndo) return 'Correndo para a mesa';
     const l = a.destino;

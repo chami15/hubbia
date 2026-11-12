@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RetratoAgente } from '../agentes/RetratoAgente'
 import { AGENTES, agentePorId, corCss, ehConceito, type AgenteId } from './agentes'
+import { andarPorId } from './andares'
 import type { Mundo, ResumoAgente } from './mundo'
 
 // Gerência do prédio: quem está em cada sala (abrir, dispensar) e o catálogo de quem pode entrar. Abre pela
@@ -31,7 +32,10 @@ export function PainelPredio({ mundo, vaga, aoAbrir, aoFechar }: Props) {
     return () => window.clearInterval(id)
   }, [mundo])
 
-  const noPredio = new Set([...mundo.vagas().filter((v): v is string => v !== null), ...presentes.map((p) => p.id)])
+  // agentes com sala em qualquer andar (as vagas são por andar) e quem está no prédio agora
+  const comSala = Object.values(mundo.vagas()).flat().filter((v): v is string => v !== null)
+  const noPredio = new Set([...comSala, ...presentes.map((p) => p.id)])
+  const andarVisivel = andarPorId(mundo.andarVisivel())
   const disponiveis = AGENTES.filter((a) => !noPredio.has(a.id))
 
   function adicionar(id: AgenteId) {
@@ -93,6 +97,8 @@ export function PainelPredio({ mundo, vaga, aoAbrir, aoFechar }: Props) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 700 }}>{a.nome}</div>
                       <div style={{ fontSize: 11, color: 'var(--ink-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {/* o andar onde está agora (no elevador, ou visitando outro andar, aparece aqui também) */}
+                        {p.andar === null ? '' : `${andarPorId(p.andar).nome.toLowerCase()} · `}
                         {p.saindo ? 'indo embora' : p.chegando ? 'chegando' : p.atividade.toLowerCase()}
                       </div>
                     </div>
@@ -110,9 +116,14 @@ export function PainelPredio({ mundo, vaga, aoAbrir, aoFechar }: Props) {
 
           <Secao titulo={vaga !== undefined ? 'quem fica nesta vaga?' : 'adicionar agente'}>
             <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--ink-dim)', lineHeight: 1.5 }}>
-              A sala é construída {vaga !== undefined ? 'nesta vaga' : 'na próxima vaga livre (ou numa coluna nova)'} e o agente chega pelo elevador.
+              A sala é construída {vaga !== undefined ? 'nesta vaga' : `na próxima vaga livre do ${andarVisivel.nome.toLowerCase()}`} e o agente chega pelo
+              elevador. Para outro andar, troque de andar pelo elevador antes.
             </p>
-            {!temEspaco && <p style={{ margin: 0, fontSize: 12, color: 'var(--official)' }}>O prédio está cheio (8 salas). Dispense alguém para abrir vaga.</p>}
+            {!temEspaco && (
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--official)' }}>
+                O {andarVisivel.nome.toLowerCase()} está cheio ({andarVisivel.maxVagas} salas). Dispense alguém ou use outro andar.
+              </p>
+            )}
             {disponiveis.length === 0 && <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-dim)' }}>Todos os agentes do catálogo já estão no prédio.</p>}
             {disponiveis.map((a) => (
               <Linha key={a.id} cor={corCss(a.cor)}>

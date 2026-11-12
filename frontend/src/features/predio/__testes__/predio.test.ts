@@ -24,11 +24,11 @@ describe('modelos de sala', () => {
 })
 
 describe('montagem do prédio', () => {
-  it('o andar tem sempre as 8 salas (as livres viram vaga) e mantém a recepção e a copa', () => {
-    // decisão do chefe (2026-11-12): todo andar com a mesma disposição, 8 salas; antes o térreo crescia de 2 em 2
-    const p = montarPredio(['cifra', 'vita', 'agenda', 'norte', 'motriz', null])
-    expect(p.areas.map((a) => a.id)).toEqual(['recepcao', 'copa', 'cifra', 'vita', 'agenda', 'norte', 'motriz', 'vaga-5', 'vaga-6', 'vaga-7'])
-    expect(p.cols).toBe(12 + 4 * 14)
+  it('o andar tem sempre as 6 salas (as livres viram vaga) e mantém a recepção e a copa', () => {
+    // decisão do chefe (2026-11-12): todo andar com a mesma disposição, 6 salas; antes o térreo crescia de 2 em 2
+    const p = montarPredio(['cifra', 'vita', 'agenda', 'norte'])
+    expect(p.areas.map((a) => a.id)).toEqual(['recepcao', 'copa', 'cifra', 'vita', 'agenda', 'norte', 'vaga-4', 'vaga-5'])
+    expect(p.cols).toBe(12 + 3 * 14)
   })
 
   it('prédio cheio (8 agentes) continua todo alcançável', () => {

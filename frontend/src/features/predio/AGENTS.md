@@ -89,7 +89,7 @@ export const SALAS = { /* ... */ lume: {
 
 1. Entrada em `ANDARES` (`andares.ts`): `lado` do núcleo e `hall` em cima ou embaixo (num canto diferente dos outros andares), `modeloHall` (`HALL`; a
    `RECEPCAO` só serve em cima, por causa da porta), `copa` opcional (sem copa, o almoço daquele andar é fora, pelo elevador) e `maxVagas`
-   (número fixo de salas, sempre desenhadas; hoje 8 em todo andar, a mesma disposição). `botao` é o que aparece no painel do elevador.
+   (número fixo de salas, sempre desenhadas; hoje 6 em todo andar, a mesma disposição). `botao` é o que aparece no painel do elevador.
 2. `npm test`: `andares.test.ts` cobre sozinho o andar novo (toda sala em toda vaga, elevador alcançável, porta nunca sob item de parede).
 3. Vagas salvas: o andar novo nasce vazio (`vagas.ts` preenche). Confira no navegador: painel do elevador, troca de andar, um agente adicionado lá.
 

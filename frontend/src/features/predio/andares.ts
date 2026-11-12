@@ -34,13 +34,13 @@ export const ANDARES: readonly AndarDef[] = [
   {
     id: 0, nome: 'Térreo', botao: 'T',
     nucleo: { lado: 'esquerda', hall: 'cima', modeloHall: RECEPCAO, copa: COPA },
-    placa: 'hubbia', maxVagas: 8,
+    placa: 'hubbia', maxVagas: 6,
   },
   // o 2º andar espelha o térreo: núcleo à direita, hall embaixo (outro canto), copa própria em cima
   {
     id: 1, nome: '2º andar', botao: '2',
     nucleo: { lado: 'direita', hall: 'baixo', modeloHall: HALL, copa: COPA },
-    maxVagas: 8,
+    maxVagas: 6,
   },
 ]
 

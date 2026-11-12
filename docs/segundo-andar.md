@@ -11,7 +11,8 @@
 - Agentes vão a outros andares pelo elevador para falar com alguém: vão até o elevador, entram, a porta fecha e eles
   aparecem no outro andar.
 - O 2º andar começa **vazio**, esperando o agente de investimentos (`docs/investimentos-proposta.md`).
-- Mesma disposição nos dois andares: **8 salas em cada** (antes o térreo crescia de 2 em 2 e o 2º tinha 4).
+- Mesma disposição nos dois andares: **6 salas em cada** (3 em cima, 3 embaixo; antes o térreo crescia de 2 em 2 e o 2º tinha 4).
+  Lista salva com mais salas (o térreo já aceitou 8): quem sobra vai para a primeira vaga livre de outro andar, ninguém some.
 - Código pronto para **mais andares**, sem bug nas transições.
 - Pergunta do chefe: os outros andares param quando não estão na tela? **Não**: todos os andares rodam o tempo todo
   (`edificio.ts`); só o desenho é do andar visível. Se parassem, a visita que vem de outro andar congelaria no meio do
@@ -21,7 +22,7 @@
 
 | Peça | Papel |
 |---|---|
-| `andares.ts` | **Mesma disposição em todo andar** (decisão do chefe, 2026-11-12): 8 salas fixas, sempre desenhadas (as livres viram vaga), mesma largura. Térreo: núcleo à esquerda, recepção em cima, copa embaixo. 2º andar: núcleo à **direita**, hall **embaixo**, copa em cima. |
+| `andares.ts` | **Mesma disposição em todo andar** (decisão do chefe, 2026-11-12): 6 salas fixas, sempre desenhadas (as livres viram vaga), mesma largura. Térreo: núcleo à esquerda, recepção em cima, copa embaixo. 2º andar: núcleo à **direita**, hall **embaixo**, copa em cima. |
 | `predio.ts` | `montarPredio(vagas, andar)` monta qualquer andar; os elevadores saem do modelo do hall (não mais duas posições fixas). |
 | `sim.ts` | `viajar` / `receberViajante`: viagem pelo elevador levando a visita junto; fora do próprio andar, o agente só visita e volta. Andar sem copa almoça fora. |
 | `edificio.ts` | Uma simulação por andar, todas vivas; entrega quem chega de elevador (tempo proporcional à distância); vagas e obras por andar. |
@@ -41,9 +42,6 @@ Abrir pelo painel do prédio um agente que está em outro andar leva até ele pe
   dispensar dentro do elevador; vagas por andar.
 - `trocaDeAndar.test.ts`: o andar só troca com as portas fechadas; clique no meio é ignorado.
 - `vagas.test.ts`: conversão do formato antigo (regressão), repetidos entre andares, lixo.
-
-Efeito colateral visível: com 8 salas, o prédio é mais largo e a tela amplia menos (em 1700 px de largura, cerca de
-1,5x em vez de 2x): os personagens ficam menores. Se incomodar, a saída é zoom/rolagem no prédio (não feito).
 
 Não coberto por teste automático: a visita entre andares **no navegador** a partir de uma mensagem social real (a
 lógica está testada; ver com o backend no ar).

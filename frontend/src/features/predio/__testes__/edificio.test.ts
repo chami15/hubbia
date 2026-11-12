@@ -5,7 +5,7 @@ import {
 } from '../edificio'
 import type { Status } from '../sim'
 
-function edificio(vagas: VagasPorAndar = { 0: ['cifra', 'vita', 'agenda', 'norte', null, null, null, null], 1: ['pauta', null, null, null, null, null, null, null] }) {
+function edificio(vagas: VagasPorAndar = { 0: ['cifra', 'vita', 'agenda', 'norte', null, null], 1: ['pauta', null, null, null, null, null] }) {
   const salvas: VagasPorAndar[] = []
   const status = new Map<string, Status>()
   const ed = criarEdificio(vagas, 0, { aoMudarVagas: (v) => salvas.push(v), status: (id) => status.get(id) ?? 'trabalhando' })
@@ -82,9 +82,9 @@ describe('edifício: os andares vivem juntos', () => {
 
 describe('edifício: vagas e obras por andar', () => {
   it('adicionar no 2º andar: obra lá, chega pelo elevador de lá, vagas salvas por andar', () => {
-    const { ed, rodar, salvas, agora } = edificio({ 0: ['cifra', 'vita', null, null, null, null, null, null], 1: Array(8).fill(null) })
+    const { ed, rodar, salvas, agora } = edificio({ 0: ['cifra', 'vita', null, null, null, null], 1: Array(6).fill(null) })
     expect(adicionarNoAndar(ed, 'lume', 1, agora())).toBe(true)
-    expect(salvas.at(-1)).toEqual({ 0: ['cifra', 'vita', null, null, null, null, null, null], 1: ['lume', null, null, null, null, null, null, null] })
+    expect(salvas.at(-1)).toEqual({ 0: ['cifra', 'vita', null, null, null, null], 1: ['lume', null, null, null, null, null] })
     rodar(15_000)
     expect(andarAtual(ed, 'lume')).toBe(1)
     expect(ed.andares.get(1)!.sim.agentes.find((a) => a.def.id === 'lume')!.chegando).toBe(false)
@@ -95,11 +95,11 @@ describe('edifício: vagas e obras por andar', () => {
     expect(adicionarNoAndar(ed, 'cifra', 1, agora())).toBe(false)
   })
 
-  it('andar cheio não cresce: 8 salas fixas (no térreo também)', () => {
-    const cheio = ['cifra', 'vita', 'agenda', 'norte', 'motriz', 'pauta', 'lume', 'lar']
-    const { ed, agora } = edificio({ 0: cheio, 1: Array(8).fill(null) })
+  it('andar cheio não cresce: 6 salas fixas (no térreo também)', () => {
+    const cheio = ['cifra', 'vita', 'agenda', 'norte', 'motriz', 'pauta']
+    const { ed, agora } = edificio({ 0: cheio, 1: Array(6).fill(null) })
     expect(temEspaco(ed, 0)).toBe(false)
-    expect(adicionarNoAndar(ed, 'rota', 0, agora())).toBe(false)
+    expect(adicionarNoAndar(ed, 'lume', 0, agora())).toBe(false)
     expect(temEspaco(ed, 1)).toBe(true)
   })
 
@@ -111,7 +111,7 @@ describe('edifício: vagas e obras por andar', () => {
     dispensar(ed, 'cifra', agora())
     rodar(30_000)
     expect(andarAtual(ed, 'cifra')).toBeUndefined()
-    expect(salvas.at(-1)![0]).toEqual([null, 'vita', 'agenda', 'norte', null, null, null, null])
+    expect(salvas.at(-1)![0]).toEqual([null, 'vita', 'agenda', 'norte', null, null])
   })
 
   it('dispensado dentro do elevador: some na hora, sem reaparecer em andar nenhum', () => {

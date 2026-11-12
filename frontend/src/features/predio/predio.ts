@@ -23,7 +23,7 @@ export const ROWS = 26;
 export const H = ROWS * TILE;
 const CORE_W = 12;
 const SALA_W = 14;
-/** No máximo 8 salas de agente (4 colunas) no térreo. Os outros andares dizem o seu em `andares.ts`. */
+/** Salas de agente do térreo (6: 3 colunas). Os outros andares dizem o seu em `andares.ts`. */
 export const MAX_VAGAS = TERREO.maxVagas;
 /** Duração da obra e da desmontagem (as do habblaud). */
 export const OBRA_MS = 2600;

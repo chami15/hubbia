@@ -16,14 +16,15 @@ import * as art from './habblaud/art/index';
 import { pixelText, pixelTextWidth } from './habblaud/art/pixelfont';
 import { FURNITURE, TILE, type Dir, type HeldItem, type Pose, type ScreenMode, type Sprite } from './habblaud/art/api';
 import { agentePorId, type AgenteId } from './agentes';
-import { COPA, RECEPCAO, SALAS, VAGA, type ModeloSala, type MovelModelo } from './salas';
+import { SALAS, VAGA, type ModeloSala, type MovelModelo } from './salas';
+import { TERREO, type AndarDef } from './andares';
 
 export const ROWS = 26;
 export const H = ROWS * TILE;
 const CORE_W = 12;
 const SALA_W = 14;
-/** No máximo 8 salas de agente (4 colunas). */
-export const MAX_VAGAS = 8;
+/** No máximo 8 salas de agente (4 colunas) no térreo. Os outros andares dizem o seu em `andares.ts`. */
+export const MAX_VAGAS = TERREO.maxVagas;
 /** Duração da obra e da desmontagem (as do habblaud). */
 export const OBRA_MS = 2600;
 export const DESMONTE_MS = 2200;
@@ -51,6 +52,8 @@ export interface Area {
   livre?: boolean;
   /** Texto da placa. */
   placa?: string;
+  /** Parte do núcleo do andar (hall do elevador ou copa), em vez de sala de agente. */
+  nucleo?: 'hall' | 'copa';
 }
 
 /** Um móvel já posicionado no mundo. */
@@ -58,6 +61,15 @@ export interface Movel extends MovelModelo {
   area: Area;
   /** Ordem na obra (os móveis aparecem um a um). */
   ordem: number;
+  /** Índice do elevador no andar (só nos elevadores): é a porta que abre quando alguém chega ou sai por ele. */
+  elevador?: number;
+}
+
+/** Um elevador do andar: onde se espera (tile na frente da porta) e o retângulo da porta (px), para o clique. */
+export interface Elevador {
+  tile: [number, number];
+  area: AreaId;
+  rect: { x: number; y: number; w: number; h: number };
 }
 
 export interface Lugar {
@@ -78,6 +90,9 @@ export interface Lugar {
 }
 
 export interface Predio {
+  andar: AndarDef;
+  /** Na ordem em que aparecem no hall (da esquerda para a direita). */
+  elevadores: Elevador[];
   cols: number;
   W: number;
   areas: Area[];
@@ -94,30 +109,36 @@ const mundo = (a: Area, lx: number, ly: number): [number, number] => [a.x0 + lx,
 /** Pés no centro de um tile (altura de quem anda). */
 export const pesNoTile = (c: number, r: number): [number, number] => [c * TILE + 8, r * TILE + WALK_FOOT_DY];
 
-/** Onde os agentes aparecem: na frente dos elevadores da recepção. */
-export const SAIDA_ELEVADOR: readonly [number, number][] = [
-  [2, ANDAR_CIMA.piso],
-  [5, ANDAR_CIMA.piso],
-];
+/** Quantas colunas de salas o andar tem para estas vagas. Núcleo à direita: fixo, senão ele andaria a cada sala nova. */
+function colunasDeSalas(vagas: readonly unknown[], andar: AndarDef): number {
+  const pelasVagas = Math.max(2, Math.ceil(vagas.length / 2));
+  return andar.nucleo.lado === 'direita' ? Math.max(pelasVagas, Math.ceil(andar.maxVagas / 2)) : pelasVagas;
+}
 
-/** Coluna inicial e andar de uma vaga. */
-export function posicaoDaVaga(i: number): { x0: number; andar: 'cima' | 'baixo' } {
-  return { x0: CORE_W + Math.floor(i / 2) * SALA_W, andar: i % 2 === 0 ? 'cima' : 'baixo' };
+/** Coluna inicial e lado do corredor de uma vaga ("andar" aqui é cima/baixo do corredor, não o andar do prédio). */
+export function posicaoDaVaga(i: number, andar: AndarDef = TERREO): { x0: number; andar: 'cima' | 'baixo' } {
+  const inicio = andar.nucleo.lado === 'esquerda' ? CORE_W : 0;
+  return { x0: inicio + Math.floor(i / 2) * SALA_W, andar: i % 2 === 0 ? 'cima' : 'baixo' };
 }
 
 /**
  * Monta o prédio para as vagas dadas (`vagas[i]` = id do agente ou null). Puro: o mesmo `vagas` dá o mesmo prédio,
  * então dá para remontar a cada mudança sem perder nada (lugares e móveis têm ids estáveis).
  */
-export function montarPredio(vagas: readonly (AgenteId | null)[]): Predio {
-  const nCols = Math.max(2, Math.ceil(vagas.length / 2));
+export function montarPredio(vagas: readonly (AgenteId | null)[], def: AndarDef = TERREO): Predio {
+  const nCols = colunasDeSalas(vagas, def);
   const cols = CORE_W + nCols * SALA_W;
+  const { nucleo } = def;
+  const xNucleo = nucleo.lado === 'esquerda' ? 0 : nCols * SALA_W;
+  const outroLado = nucleo.hall === 'cima' ? 'baixo' : 'cima';
+  // o térreo mantém os ids de sempre ('recepcao'); os outros andares têm 'hall'. Ids só precisam ser únicos no andar.
   const areas: Area[] = [
-    { id: 'recepcao', x0: 0, w: CORE_W, andar: 'cima', modelo: RECEPCAO, porta: [3, 9], placa: 'hubbia' },
-    { id: 'copa', x0: 0, w: CORE_W, andar: 'baixo', modelo: COPA, porta: [4, 9] },
+    { id: def.id === TERREO.id ? 'recepcao' : 'hall', x0: xNucleo, w: CORE_W, andar: nucleo.hall, modelo: nucleo.modeloHall,
+      porta: nucleo.modeloHall.porta ?? [6, 8], placa: def.placa, nucleo: 'hall' },
   ];
+  if (nucleo.copa) areas.push({ id: 'copa', x0: xNucleo, w: CORE_W, andar: outroLado, modelo: nucleo.copa, porta: nucleo.copa.porta ?? [6, 8], nucleo: 'copa' });
   for (let i = 0; i < nCols * 2; i++) {
-    const { x0, andar } = posicaoDaVaga(i);
+    const { x0, andar } = posicaoDaVaga(i, def);
     const dono = vagas[i] ?? null;
     if (dono) areas.push({ id: dono, x0, w: SALA_W, andar, modelo: SALAS[dono], porta: [6, 8], dono, vaga: i, placa: (agentePorId(dono)?.nome ?? dono).toLowerCase() });
     else areas.push({ id: `vaga-${i}`, x0, w: SALA_W, andar, modelo: VAGA, porta: [6, 8], vaga: i, livre: true, placa: 'vaga' });
@@ -126,9 +147,22 @@ export function montarPredio(vagas: readonly (AgenteId | null)[]): Predio {
   const naParede: Movel[] = [];
   const chao: Movel[] = [];
   const lugares: Lugar[] = [];
+  const elevadores: Elevador[] = [];
   for (const a of areas) {
     a.modelo.chao.forEach((mm, i) => chao.push({ ...mm, area: a, ordem: i }));
-    a.modelo.naParede.forEach((mm, i) => naParede.push({ ...mm, area: a, ordem: i }));
+    a.modelo.naParede.forEach((mm, i) => {
+      const mv: Movel = { ...mm, area: a, ordem: i };
+      if (mm.kind === 'elevator') {
+        // espera-se na frente da metade direita da porta (2 tiles), na primeira linha de piso
+        const an = andarDe(a);
+        mv.elevador = elevadores.length;
+        elevadores.push({
+          tile: [a.x0 + mm.lx + 1, an.piso], area: a.id,
+          rect: { x: (a.x0 + mm.lx) * TILE, y: an.face * TILE, w: 2 * TILE, h: (an.piso - an.face) * TILE },
+        });
+      }
+      naParede.push(mv);
+    });
     for (const l of a.modelo.lugares) {
       const [c, r] = mundo(a, l.lx, l.ly);
       if (l.sentado) {
@@ -165,11 +199,11 @@ export function montarPredio(vagas: readonly (AgenteId | null)[]): Predio {
   // Divisórias entre áreas vizinhas do mesmo andar (chave: "coluna da direita,linha").
   const divisorias = new Set<string>();
   for (const a of areas) {
-    if (a.x0 === 0) continue;
+    if (a.x0 === 0) continue; // a borda esquerda do prédio é parede externa, não divisória
     const an = andarDe(a);
     for (let r = an.face; r <= an.piso + an.linhas; r++) divisorias.add(`${a.x0},${r}`);
   }
-  return { cols, W: cols * TILE, areas, naParede, chao, lugares, andavel, divisorias };
+  return { andar: def, elevadores, cols, W: cols * TILE, areas, naParede, chao, lugares, andavel, divisorias };
 }
 
 /** Dá para ir do tile (c1, r1) ao vizinho (c2, r2) sem atravessar uma divisória? */
@@ -224,7 +258,8 @@ export interface EstadoCena {
   agora: Date;
   telas: Record<AreaId, ScreenMode>;
   luz: Record<AreaId, number>;
-  elevadores: [number, number];
+  /** Estado da porta de cada elevador do andar (na ordem de `Predio.elevadores`). */
+  elevadores: number[];
   obras: Map<number, Obra>;
   /** Vaga livre sob o cursor (destaque). */
   vagaSob?: number;
@@ -254,7 +289,7 @@ function quedaDoMovel(mv: Movel, total: number, p: number): number | null {
 }
 
 function desenharItemParede(ctx: CanvasRenderingContext2D, mv: Movel, e: EstadoCena, dy: number): void {
-  const elev = mv.kind === 'elevator' ? e.elevadores[mv.lx < 3 ? 0 : 1] : 0;
+  const elev = mv.elevador !== undefined ? (e.elevadores[mv.elevador] ?? 0) : 0;
   const sp = art.furnitureSprites(mv.kind, mv.variant, elev, { seed: mv.seed }).base;
   const { x, y } = ancora(mv);
   const ox = x - sp.ax;
@@ -453,8 +488,10 @@ export function desenharPredio(ctx: CanvasRenderingContext2D, p: Predio, e: Esta
 
   // o resto do pilar (tudo acima da parede sul) vai por cima, como sempre; a parte da parede sul já foi na ordenação
   for (const d of pilares) desenharDivisoria(ctx, d, { y: d.y, h: d.sul ? d.sul.y - d.y : d.h });
-  art.drawWallTop(ctx, 0, 0, 3, H, RECEPCAO.parede);
-  art.drawWallTop(ctx, W - 3, 0, 3, H, p.areas[p.areas.length - 1].modelo.parede);
+  // paredes externas na cor de quem encosta nelas (o núcleo pode estar de qualquer lado)
+  const naBorda = (x: number) => (p.areas.find((a) => a.x0 === x && a.andar === 'cima') ?? p.areas[0]).modelo.parede;
+  art.drawWallTop(ctx, 0, 0, 3, H, naBorda(0));
+  art.drawWallTop(ctx, W - 3, 0, 3, H, naBorda(Math.max(...p.areas.map((a) => a.x0))));
   art.drawSouthWall(ctx, 0, (ROWS - 1) * TILE, W, { base: '#cfd3da', trim: '#8a919c', pattern: 'brick', exterior: true });
 
   ceu(ctx, W, e.hora);

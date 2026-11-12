@@ -11,7 +11,7 @@ import * as art from './habblaud/art/index';
 import { TILE, type Dir, type HeldItem, type IconName, type Pose } from './habblaud/art/api';
 import { mulberry32 } from './habblaud/shared/hash';
 import { agentePorId, type AgenteId, type AgenteVisual } from './agentes';
-import { SAIDA_ELEVADOR, areaEm, mesaDe, passagem, pesNoTile, type AreaId, type Figura, type Lugar, type Predio } from './predio';
+import { areaEm, mesaDe, passagem, pesNoTile, type AreaId, type Figura, type Lugar, type Predio } from './predio';
 import { personalidadeDe, personalidadeEfetiva } from './personalidade';
 import { escolherAtividade, type Feito, type Opcao } from './rotina';
 import { parearPorAfinidade } from './relacoes';
@@ -118,7 +118,8 @@ export interface Simulacao {
   agentes: AgenteVivo[];
   ocupado: Map<string, AgenteId>;
   rnd: () => number;
-  elevadorAbriu: [number, number];
+  /** Quando a porta de cada elevador do andar abriu pela última vez (na ordem de `predio.elevadores`). */
+  elevadorAbriu: number[];
   /** Avisado quando um agente dispensado entra no elevador e some. */
   aoSair: (id: AgenteId) => void;
   /** Hora do MUNDO (0..24) que o prédio está vivendo; undefined até o relógio chegar (sem almoço). */
@@ -138,7 +139,7 @@ const tempo = (sim: Simulacao, a: AgenteVivo, faixa: [number, number]) => entre(
 
 export function criarSimulacao(predio: Predio, aoSair: (id: AgenteId) => void): Simulacao {
   return {
-    predio, agentes: [], ocupado: new Map(), rnd: mulberry32(20261022), elevadorAbriu: [-1e9, -1e9], aoSair,
+    predio, agentes: [], ocupado: new Map(), rnd: mulberry32(20261022), elevadorAbriu: predio.elevadores.map(() => -1e9), aoSair,
     almoco: { ativo: false, houveHoje: false, modo: 'copa', pares: new Map() },
   };
 }
@@ -157,8 +158,7 @@ export function adicionarAgente(sim: Simulacao, id: AgenteId, agora: number, o: 
   const def = agentePorId(id);
   if (!def) return;
   const i = sim.agentes.length;
-  const [c, r] = SAIDA_ELEVADOR[i % 2];
-  const [x, y] = pesNoTile(c, r);
+  const [x, y] = pesNoTile(...saidaDoElevador(sim, i));
   const a: AgenteVivo = {
     def,
     appearance: art.appearanceFromSeed(def.seed, { look: def.look, parts: def.parts }),
@@ -342,7 +342,8 @@ export function aEstrela(p: Predio, de: [number, number], para: [number, number]
 
 // ------------------------------------------------------------------ decisões
 
-const ehComum = (l: Lugar) => l.area === 'copa' || l.area === 'recepcao';
+/** Área comum do andar (copa, recepção do térreo, hall dos outros andares): quem sai da sala para uma pausa vai para lá. */
+const ehComum = (l: Lugar) => l.area === 'copa' || l.area === 'recepcao' || l.area === 'hall';
 
 /** O que o agente pode fazer agora: lugares livres da própria sala e das áreas comuns (e a mesa, se `comMesa`). */
 function opcoesDe(sim: Simulacao, a: AgenteVivo, comMesa: boolean): Map<string, Lugar> {
@@ -390,12 +391,22 @@ function irPara(sim: Simulacao, a: AgenteVivo, l: Lugar, correndo: boolean): boo
   return true;
 }
 
-/** "Lugar" na frente do elevador, para quem vai embora. */
-function elevador(i: number): Lugar {
-  const [c, r] = SAIDA_ELEVADOR[i];
-  const [x, y] = pesNoTile(c, r);
-  return { id: `elevador:${i}`, area: 'recepcao', tile: [c, r], x, y, dir: 'up', pose: 'stand', sortY: y, rotulo: 'Indo embora' };
+/** Tile na frente de um elevador do andar (os agentes se revezam entre eles pelo índice). */
+function saidaDoElevador(sim: Simulacao, i: number): [number, number] {
+  const els = sim.predio.elevadores;
+  return els[((i % els.length) + els.length) % els.length].tile;
 }
+
+/** "Lugar" na frente do elevador, para quem vai embora ou vai a outro andar. */
+function elevador(sim: Simulacao, i: number): Lugar {
+  const el = sim.predio.elevadores[i];
+  const [c, r] = el.tile;
+  const [x, y] = pesNoTile(c, r);
+  return { id: `elevador:${i}`, area: el.area, tile: [c, r], x, y, dir: 'up', pose: 'stand', sortY: y, rotulo: 'Indo embora' };
+}
+
+/** Índice do elevador de um "lugar" de elevador (`elevador:<i>`), ou -1. */
+const indiceDoElevador = (l: Lugar | undefined): number => (l?.id.startsWith('elevador:') ? Number(l.id.slice(9)) : -1);
 
 // ------------------------------------------------------------------ almoço (12h às 13h do mundo)
 
@@ -486,8 +497,8 @@ function irAlmocar(sim: Simulacao, a: AgenteVivo): boolean {
   const st = sim.almoco;
   const atrasado = !st.ativo;
   if (!atrasado && st.modo === 'fora') {
-    const i = sim.agentes.indexOf(a) % 2;
-    if (!irPara(sim, a, elevador(i), false)) return false;
+    const i = sim.agentes.indexOf(a) % sim.predio.elevadores.length;
+    if (!irPara(sim, a, elevador(sim, i), false)) return false;
     a.almoco = 'saindo_fora';
     return true;
   }
@@ -589,8 +600,8 @@ function continuarVisita(sim: Simulacao, a: AgenteVivo, agora: number): boolean 
 function decidir(sim: Simulacao, a: AgenteVivo, agora: number): void {
   if (a.saindo) {
     if (!a.destino?.id.startsWith('elevador')) {
-      const i = sim.rnd() < 0.5 ? 0 : 1;
-      if (!irPara(sim, a, elevador(i), false)) a.ate = agora + 500;
+      const i = Math.floor(sim.rnd() * sim.predio.elevadores.length);
+      if (!irPara(sim, a, elevador(sim, i), false)) a.ate = agora + 500;
     }
     return;
   }
@@ -693,8 +704,8 @@ function chegou(sim: Simulacao, a: AgenteVivo, agora: number): void {
   a.correndo = false;
   if (a.saindo || a.almoco === 'saindo_fora') {
     // Na frente do elevador: a porta abre, ele entra e some.
-    const i = l.id === 'elevador:0' ? 0 : 1;
-    sim.elevadorAbriu[i] = agora;
+    const i = indiceDoElevador(l);
+    if (i >= 0) sim.elevadorAbriu[i] = agora;
     a.embarcouEm = agora;
     return;
   }
@@ -766,7 +777,7 @@ export function passo(sim: Simulacao, agora: number, dt: number): void {
         a.chegando = true;
         a.almoco = 'fora';
         a.ate = Infinity;
-        const [x, y] = pesNoTile(...SAIDA_ELEVADOR[sim.agentes.indexOf(a) % 2]);
+        const [x, y] = pesNoTile(...saidaDoElevador(sim, sim.agentes.indexOf(a)));
         a.x = x;
         a.y = y;
         a.sortY = y;
@@ -794,7 +805,8 @@ export function passo(sim: Simulacao, agora: number, dt: number): void {
     if (a.chegando) {
       if (agora < a.ate) continue;
       // A sala ficou pronta: a porta do elevador abre e ele sai.
-      const i = SAIDA_ELEVADOR.findIndex(([c, r]) => tileDe(a.x, a.y)[0] === c && tileDe(a.x, a.y)[1] === r);
+      const [tc, tr] = tileDe(a.x, a.y);
+      const i = sim.predio.elevadores.findIndex(({ tile: [c, r] }) => tc === c && tr === r);
       if (i >= 0) sim.elevadorAbriu[i] = agora;
       a.chegando = false;
       a.ate = agora + 450;

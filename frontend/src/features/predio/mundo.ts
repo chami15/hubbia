@@ -320,7 +320,7 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
         agora: dataComHora(hora),
         telas,
         luz,
-        elevadores: [portaDoElevador(sim.elevadorAbriu[0], t), portaDoElevador(sim.elevadorAbriu[1], t)],
+        elevadores: sim.elevadorAbriu.map((abriu) => portaDoElevador(abriu, t)),
         obras,
         vagaSob,
       },

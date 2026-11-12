@@ -48,6 +48,11 @@ export interface ModeloSala {
   lugares: LugarModelo[];
   tapetes?: { lx: number; ly: number; w: number; h: number; cor: string }[];
   quadro?: ItemQuadro[];
+  /**
+   * Colunas LOCAIS da porta [de, até). Sala de agente usa sempre [6, 8] (o padrão). Hall e copa dizem a sua: a porta do
+   * hall não pode ficar embaixo dos elevadores quando ele está embaixo do corredor (a porta é na mesma parede).
+   */
+  porta?: [number, number];
 }
 
 const m = (kind: FurnitureKind, lx: number, ly: number, o: Partial<MovelModelo> = {}): MovelModelo => ({ kind, lx, ly, ...o });
@@ -63,6 +68,7 @@ const Q = (s: string): ItemQuadro[] => [...s].map((c) => ({ status: c === 'x' ? 
 // ------------------------------------------------------------------ áreas comuns (posição fixa)
 
 export const RECEPCAO: ModeloSala = {
+  porta: [3, 9],
   piso: 'marble',
   parede: { base: '#eceae6', trim: '#9aa2ae', pattern: 'marble' },
   naParede: [m('elevator', 1, 0), m('elevator', 4, 0), m('sign', 7.5, 0, { extra: 'placa' }), m('clock', 10.75, 0, { extra: 'relogio' })],
@@ -79,6 +85,7 @@ export const RECEPCAO: ModeloSala = {
 };
 
 export const COPA: ModeloSala = {
+  porta: [4, 9],
   piso: 'tile_check',
   parede: { base: '#f6f0e5', trim: '#b99f7a', pattern: 'tiles' },
   naParede: [m('shelf_wall', 0.5, 0, { seed: 2 }), m('window', 9.5, 0, { extra: 'janela' })],
@@ -107,6 +114,31 @@ export const COPA: ModeloSala = {
     senta(7, 6, 'down', 'laugh', 'Batendo papo no sofá', { dx: 4 }),
     senta(9, 6, 'down', 'talk', 'Batendo papo no sofá', { dx: -4, held: 'coffee' }),
   ],
+};
+
+/**
+ * Hall do elevador dos outros andares (o térreo tem a recepção). Os elevadores ficam à direita e a porta à esquerda:
+ * assim o mesmo modelo serve em cima do corredor (porta na parede sul) e embaixo (porta na parede norte, a mesma dos
+ * elevadores). Sem placa: o andar aparece no painel do elevador.
+ */
+export const HALL: ModeloSala = {
+  porta: [1, 6],
+  piso: 'marble',
+  parede: { base: '#e9edf1', trim: '#8e9aab', pattern: 'marble' },
+  naParede: [m('clock', 6, 0, { extra: 'relogio' }), m('elevator', 7, 0), m('elevator', 10, 0)],
+  chao: [
+    m('plant_tall', 0, 0, { variant: 'ficus' }),
+    m('water_cooler', 11, 4),
+    m('bench', 1, 6),
+    m('plant_small', 0, 7, { variant: 'fern' }),
+    m('plant_tall', 11, 7, { variant: 'palm' }),
+  ],
+  lugares: [
+    senta(1, 6, 'down', 'sit', 'No banco do hall', { dx: 4 }),
+    pe(11, 5, 'up', 'drink', 'No bebedouro do hall', 'water'),
+    pe(5, 3, 'down', 'talk', 'Conversando no hall'),
+  ],
+  tapetes: [{ lx: 3, ly: 3, w: 5, h: 3, cor: '#7f8fa6' }],
 };
 
 /** Sala vazia esperando um agente: piso de obra, parede lisa e a placa "vaga". */

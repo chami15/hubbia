@@ -60,9 +60,9 @@ export interface ResumoAgente {
   casa: AndarId
 }
 
-/** Vagas de um andar sem nada (os de núcleo à direita têm número fixo de salas; o térreo começa com 2 colunas). */
+/** Vagas de um andar sem nada: todas as salas do andar, livres. */
 export function vagasVazias(def: AndarDef): Vagas {
-  return Array<AgenteId | null>(def.nucleo.lado === 'direita' ? def.maxVagas : 4).fill(null)
+  return Array<AgenteId | null>(def.maxVagas).fill(null)
 }
 
 export function criarEdificio(
@@ -113,17 +113,13 @@ function aoSair(ed: Edificio, id: AgenteId): void {
   }
 }
 
-/** Coloca um agente numa vaga do andar (a escolhida, a primeira livre, ou uma coluna nova se o andar cresce). */
+/** Coloca um agente numa vaga do andar (a escolhida, ou a primeira livre). Andar cheio: false. */
 export function adicionarNoAndar(ed: Edificio, id: AgenteId, andar: AndarId, agora: number, vagaEscolhida?: number): boolean {
   const an = ed.andares.get(andar)
   if (!an || casaDe(ed, id) !== undefined || andarAtual(ed, id) !== undefined || !SALAS[id] || !agentePorId(id)) return false
   const livre = (k: number) => an.vagas[k] === null && !an.obras.has(k)
-  let i = vagaEscolhida !== undefined && livre(vagaEscolhida) ? vagaEscolhida : an.vagas.findIndex((_, k) => livre(k))
-  if (i < 0) {
-    if (an.def.nucleo.lado === 'direita' || an.vagas.length >= an.def.maxVagas) return false
-    i = an.vagas.length
-    an.vagas.push(null, null)
-  }
+  const i = vagaEscolhida !== undefined && livre(vagaEscolhida) ? vagaEscolhida : an.vagas.findIndex((_, k) => livre(k))
+  if (i < 0) return false
   an.vagas[i] = id
   an.obras.set(i, { inicio: agora, tipo: 'construir' })
   remontar(ed, an)
@@ -135,7 +131,7 @@ export function adicionarNoAndar(ed: Edificio, id: AgenteId, andar: AndarId, ago
 export function temEspaco(ed: Edificio, andar: AndarId): boolean {
   const an = ed.andares.get(andar)
   if (!an) return false
-  return an.vagas.some((v, k) => v === null && !an.obras.has(k)) || (an.def.nucleo.lado === 'esquerda' && an.vagas.length < an.def.maxVagas)
+  return an.vagas.some((v, k) => v === null && !an.obras.has(k))
 }
 
 /** Dispensa onde ele estiver: no andar, vai ao elevador de lá; no meio da viagem, sai direto (a porta nem abre). */

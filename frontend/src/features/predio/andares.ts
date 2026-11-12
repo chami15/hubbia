@@ -3,8 +3,8 @@
 // andar novo é só uma entrada aqui: nenhum desenho novo, o resto (salas, grade, elevadores) sai do dado.
 //
 // Regras:
-// - núcleo à esquerda pode crescer (salas novas entram à direita sem mexer em ninguém); à direita, o número de salas é
-//   fixo (`maxVagas`), senão o núcleo andaria a cada sala nova;
+// - todo andar tem o mesmo desenho de salas (decisão do chefe, 2026-11-12): `maxVagas` salas fixas, sempre desenhadas
+//   (as vazias aparecem como vaga). Assim os andares têm a mesma largura e ninguém muda de lugar quando alguém chega;
 // - todo andar tem elevador (é por ele que se chega); copa é opcional. Sem copa, o almoço daquele andar é "fora"
 //   (pega o elevador, como já acontecia).
 import { COPA, HALL, RECEPCAO, type ModeloSala } from './salas'
@@ -26,6 +26,7 @@ export interface AndarDef {
   }
   /** Placa do hall (só o térreo tem: "hubbia" na recepção). */
   placa?: string
+  /** Salas do andar, fixas (par: metade em cima, metade embaixo do corredor). */
   maxVagas: number
 }
 
@@ -39,7 +40,7 @@ export const ANDARES: readonly AndarDef[] = [
   {
     id: 1, nome: '2º andar', botao: '2',
     nucleo: { lado: 'direita', hall: 'baixo', modeloHall: HALL, copa: COPA },
-    maxVagas: 4,
+    maxVagas: 8,
   },
 ]
 

@@ -109,10 +109,12 @@ const mundo = (a: Area, lx: number, ly: number): [number, number] => [a.x0 + lx,
 /** Pés no centro de um tile (altura de quem anda). */
 export const pesNoTile = (c: number, r: number): [number, number] => [c * TILE + 8, r * TILE + WALK_FOOT_DY];
 
-/** Quantas colunas de salas o andar tem para estas vagas. Núcleo à direita: fixo, senão ele andaria a cada sala nova. */
+/**
+ * Quantas colunas de salas o andar tem: fixas pelo `maxVagas` (todo andar com o mesmo desenho, decisão do chefe). As
+ * vagas a mais que alguém passe (dado antigo) não somem: o andar estica para caber, em vez de esconder um agente.
+ */
 function colunasDeSalas(vagas: readonly unknown[], andar: AndarDef): number {
-  const pelasVagas = Math.max(2, Math.ceil(vagas.length / 2));
-  return andar.nucleo.lado === 'direita' ? Math.max(pelasVagas, Math.ceil(andar.maxVagas / 2)) : pelasVagas;
+  return Math.max(Math.ceil(andar.maxVagas / 2), Math.ceil(vagas.length / 2));
 }
 
 /** Coluna inicial e lado do corredor de uma vaga ("andar" aqui é cima/baixo do corredor, não o andar do prédio). */

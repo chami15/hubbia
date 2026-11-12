@@ -14,8 +14,8 @@ const CHAVE = 'hubbia:predio:vagas'
 export function vagasPadrao(): VagasPorAndar {
   const [cifra, agenda, vita, norte, motriz, pauta] = INICIAIS
   const v: VagasPorAndar = Object.fromEntries(ANDARES.map((a) => [a.id, vagasVazias(a)]))
-  // Cifra e Agenda em cima, Vita e Norte embaixo, Motriz e Pauta na coluna seguinte
-  v[0] = [cifra, vita, agenda, norte, motriz, pauta]
+  // Cifra e Agenda em cima, Vita e Norte embaixo, Motriz e Pauta na coluna seguinte; a última coluna livre
+  v[0] = [cifra, vita, agenda, norte, motriz, pauta, null, null]
   return v
 }
 
@@ -29,9 +29,8 @@ function limpar(lista: unknown, andar: number, vistos: Set<string>): Vagas | nul
     vistos.add(x)
     return x
   })
-  // núcleo à direita: número de salas fixo
-  if (def.nucleo.lado === 'direita') return v.length === def.maxVagas ? v : [...v, ...Array(def.maxVagas - v.length).fill(null)]
-  return v
+  // todo andar tem todas as salas: lista salva mais curta (de antes) é completada com vagas livres
+  return v.length === def.maxVagas ? v : [...v, ...Array(def.maxVagas - v.length).fill(null)]
 }
 
 /** Lê o que estava salvo (puro: recebe o texto). Qualquer coisa estranha volta ao padrão, nunca quebra a tela. */
@@ -46,7 +45,7 @@ export function lerVagas(salvo: string | null): VagasPorAndar {
   // versão 1: só a lista do térreo
   if (Array.isArray(dado)) {
     const terreo = limpar(dado, 0, vistos)
-    if (!terreo || terreo.length < 4) return vagasPadrao()
+    if (!terreo) return vagasPadrao()
     return { ...Object.fromEntries(ANDARES.map((a) => [a.id, vagasVazias(a)])), 0: terreo }
   }
   const andares = (dado as { versao?: number; andares?: Record<string, unknown> } | null)?.andares

@@ -51,6 +51,14 @@ describe('o hall de cada andar fica num canto diferente (pedido do chefe)', () =
     expect(cheio.areas.find((a) => a.id === 'hall')!.x0).toBe(vazio.areas.find((a) => a.id === 'hall')!.x0)
   })
 
+  it('térreo e 2º andar têm a mesma disposição: 8 salas e a mesma largura (decisão do chefe)', () => {
+    const terreo = montarPredio([], TERREO)
+    const segundo = montarPredio([], andarPorId(1))
+    expect(terreo.areas.filter((a) => a.vaga !== undefined)).toHaveLength(8)
+    expect(segundo.areas.filter((a) => a.vaga !== undefined)).toHaveLength(8)
+    expect(segundo.W).toBe(terreo.W)
+  })
+
   it('vazio, o 2º andar mostra as vagas livres (esperando o agente de investimentos)', () => {
     const p = montarPredio([], andarPorId(1))
     expect(p.areas.filter((a) => a.livre)).toHaveLength(andarPorId(1).maxVagas)

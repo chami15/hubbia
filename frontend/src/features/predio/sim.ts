@@ -266,6 +266,22 @@ export function receberViajante(sim: Simulacao, a: AgenteVivo, agora: number): v
   if (a.casa === sim.predio.andar.id) a.voltarParaMesa = true;
 }
 
+/**
+ * Uma área vai sumir (ampliação desmontada): quem estava lá, ou indo para lá, larga o lugar e decide de novo já, para
+ * sair andando enquanto o piso ainda existe (a desmontagem dura DESMONTE_MS).
+ */
+export function sairDaArea(sim: Simulacao, area: string, agora: number): void {
+  for (const a of sim.agentes) {
+    if (a.lugar?.area !== area && a.destino?.area !== area) continue;
+    liberar(sim, a);
+    a.caminho = [];
+    a.seated = false;
+    a.pose = 'stand';
+    a.held = undefined;
+    a.ate = agora;
+  }
+}
+
 /** O remetente de uma mensagem social vai até o destinatário e fala. false = agora não dá (e o encontro é descartado). */
 export function visitar(sim: Simulacao, de: AgenteId, para: AgenteId, linhas: string[], agora: number): boolean {
   const v = sim.agentes.find((a) => a.def.id === de);
@@ -393,13 +409,16 @@ export function aEstrela(p: Predio, de: [number, number], para: [number, number]
 // ------------------------------------------------------------------ decisões
 
 /** Área comum do andar (copa, recepção do térreo, hall dos outros andares): quem sai da sala para uma pausa vai para lá. */
-const ehComum = (l: Lugar) => l.area === 'copa' || l.area === 'recepcao' || l.area === 'hall';
+const ehComum = (l: Lugar) => l.area === 'copa' || l.area === 'copa:anexo' || l.area === 'recepcao' || l.area === 'hall';
+/** A copa inteira, com a ampliação dela se houver. */
+const ehCopa = (l: Lugar) => l.area === 'copa' || l.area === 'copa:anexo';
 
 /** O que o agente pode fazer agora: lugares livres da própria sala e das áreas comuns (e a mesa, se `comMesa`). */
 function opcoesDe(sim: Simulacao, a: AgenteVivo, comMesa: boolean): Map<string, Lugar> {
   const porId = new Map<string, Lugar>();
   for (const l of sim.predio.lugares) {
-    const dele = l.area === a.def.id && (!l.mesa || (comMesa && l.mesa === a.def.id));
+    // a sala dele inclui a ampliação, se tiver (`<id>:anexo`)
+    const dele = (l.area === a.def.id || l.area === `${a.def.id}:anexo`) && (!l.mesa || (comMesa && l.mesa === a.def.id));
     if (!dele && !(ehComum(l) && !l.mesa)) continue;
     const dono = sim.ocupado.get(l.id);
     if (dono && dono !== a.def.id) continue;
@@ -575,7 +594,7 @@ function irAlmocar(sim: Simulacao, a: AgenteVivo): boolean {
     }
   }
   // copa (o modo, o atrasado ou a dupla que não deu): um lugar livre da copa, sentado de preferência
-  const livres = sim.predio.lugares.filter((l) => l.area === 'copa' && !sim.ocupado.has(l.id));
+  const livres = sim.predio.lugares.filter((l) => ehCopa(l) && !sim.ocupado.has(l.id));
   const sentados = livres.filter((l) => l.seated);
   const alvo = (sentados.length ? sentados : livres)[Math.floor(sim.rnd() * (sentados.length || livres.length))];
   if (!alvo || !irPara(sim, a, alvo, false)) return false;

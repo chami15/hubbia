@@ -314,3 +314,168 @@ export const SALAS: Record<string, ModeloSala> = {
     tapetes: [{ lx: 8.5, ly: 1.5, w: 4, h: 3, cor: '#e7a0bd' }],
   },
 };
+
+// ------------------------------------------------------------------ ampliações (sala dupla)
+
+/**
+ * A metade nova de uma sala ampliada (decisão do chefe, 2026-11-13): ocupa a vaga vizinha do mesmo lado do corredor,
+ * sem divisória e sem porta própria (a porta é a da sala original). Cada agente tem a sua, com estilo próprio (sala
+ * de reuniões, sala de time...): é caso excepcional, não regra. Piso e parede vêm da sala original (parece um
+ * ambiente só); aqui ficam só os móveis e os lugares.
+ *
+ * Regras para funcionar dos dois lados (a ampliação pode ficar à esquerda ou à direita da sala) e em cima ou embaixo:
+ * colunas lx 0 e 13 livres nas linhas 1 a 6 (é por elas que se passa de uma metade para a outra); a ampliação.test cobra.
+ */
+export interface AnexoModelo {
+  naParede: MovelModelo[];
+  chao: MovelModelo[];
+  lugares: LugarModelo[];
+  tapetes?: ModeloSala['tapetes'];
+}
+
+const ANEXO_PADRAO: AnexoModelo = {
+  // sala de reuniões neutra (agente conceito, ou agente novo que ainda não ganhou a sua)
+  naParede: [m('whiteboard', 5, 0), m('clock', 10, 0, { extra: 'relogio' })],
+  chao: [
+    m('meeting_table', 5, 3, { seed: 3 }), m('stool', 5, 2), m('stool', 7, 2), m('stool', 5, 5), m('stool', 7, 5),
+    m('plant_tall', 12, 0, { variant: 'ficus' }), m('plant_small', 1, 7, { variant: 'fern' }),
+  ],
+  lugares: [senta(5, 2, 'down', 'talk', 'Na sala de reuniões'), senta(7, 5, 'up', 'read', 'Anotando na reunião', { held: 'papers' })],
+};
+
+export const ANEXOS: Record<string, AnexoModelo> = {
+  // Cifra: reunião de orçamento, com o arquivo de contratos
+  cifra: {
+    naParede: [m('whiteboard', 2, 0, { extra: 'quadro' }), m('clock', 10, 0, { extra: 'relogio' })],
+    chao: [
+      m('meeting_table', 5, 3, { seed: 7 }), m('stool', 5, 2), m('stool', 7, 2), m('stool', 5, 5), m('stool', 7, 5),
+      m('filing_cabinet', 10, 0), m('filing_cabinet', 11, 0), m('binder_shelf', 12, 0, { seed: 41 }), m('plant_small', 1, 7, { variant: 'succulent' }),
+    ],
+    lugares: [
+      senta(5, 2, 'down', 'talk', 'Reunião de orçamento', { held: 'papers' }), senta(7, 5, 'up', 'read', 'Conferindo planilhas na reunião', { held: 'papers' }),
+      pe(10, 1, 'up', 'use', 'No arquivo de contratos'),
+    ],
+    tapetes: [{ lx: 4, ly: 2, w: 5, h: 4, cor: '#9cc49c' }],
+  },
+  // Agenda: sala de reuniões com TV para videochamada
+  agenda: {
+    naParede: [m('tv', 4, 0, { extra: 'tv' }), m('clock', 9, 0, { extra: 'relogio' })],
+    chao: [
+      m('meeting_table', 4, 3, { seed: 5 }), m('stool', 4, 2), m('stool', 6, 2), m('stool', 4, 5), m('stool', 6, 5),
+      m('plant_tall', 12, 0, { variant: 'ficus' }), m('plant_small', 12, 7, { variant: 'flower' }),
+    ],
+    lugares: [
+      senta(4, 2, 'down', 'talk', 'Na sala de reuniões'), senta(6, 5, 'up', 'talk', 'Apresentando a pauta', { held: 'laptop' }),
+      pe(10, 3, 'down', 'talk', 'Ao telefone na reunião', 'phone'),
+    ],
+    tapetes: [{ lx: 3, ly: 2, w: 5, h: 4, cor: '#9fb3d8' }],
+  },
+  // Vita: estúdio de exercício
+  vita: {
+    naParede: [m('mirror', 3, 0), m('mirror', 4, 0), m('window', 9, 0, { extra: 'janela' })],
+    chao: [
+      m('water_cooler', 12, 0), m('beanbag', 10, 5, { variant: 'green' }), m('beanbag', 11, 5, { variant: 'yellow' }),
+      m('plant_tall', 1, 7, { variant: 'monstera' }), m('plant_small', 12, 7, { variant: 'flower' }),
+    ],
+    lugares: [
+      pe(3, 1, 'up', 'groom', 'Ajeitando o cabelo no espelho', 'comb'), pe(4, 4, 'down', 'stretch', 'Treino funcional'),
+      pe(12, 1, 'up', 'drink', 'No bebedouro do estúdio', 'water'), senta(10, 5, 'down', 'sit', 'Descansando no puff do estúdio'),
+    ],
+    tapetes: [{ lx: 2, ly: 3, w: 6, h: 3, cor: '#f2a46b' }],
+  },
+  // Norte: sala de time (mais de um agente trabalhando junto)
+  norte: {
+    naParede: [m('poster', 2, 0, { variant: 'code' }), m('whiteboard', 5, 0, { extra: 'quadro' }), m('poster', 10, 0, { variant: 'rocket' })],
+    chao: [
+      m('office_chair_front', 3, 2, { variant: 'black', dx: TILE / 2 }), m('desk_back', 3, 3, { variant: 'dark', seed: 61 }),
+      m('office_chair_front', 8, 2, { variant: 'blue', dx: TILE / 2 }), m('desk_back', 8, 3, { variant: 'dark', seed: 62 }),
+      m('desk', 3, 5, { variant: 'dark', seed: 63, extra: 'tela' }), m('office_chair', 3, 6, { variant: 'black', dx: TILE / 2 }),
+      m('plant_tall', 12, 7, { variant: 'palm' }),
+    ],
+    lugares: [
+      senta(3, 2, 'down', 'type', 'Pareando no código', { dx: TILE / 2 }), senta(8, 2, 'down', 'type', 'Revisando com o time', { dx: TILE / 2 }),
+      senta(3, 6, 'up', 'type', 'Programando na mesa do time', { dx: TILE / 2 }),
+    ],
+  },
+  // Motriz: datacenter
+  motriz: {
+    naParede: [m('clock', 12, 0, { extra: 'relogio' })],
+    chao: [
+      ...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((lx) => m('binder_shelf', lx, 0, { seed: 50 + lx })),
+      m('filing_cabinet', 2, 4), m('filing_cabinet', 3, 4), m('filing_cabinet', 4, 4),
+      m('filing_cabinet', 9, 4), m('filing_cabinet', 10, 4), m('filing_cabinet', 11, 4),
+    ],
+    lugares: [
+      pe(6, 1, 'up', 'use', 'Checando o datacenter'), pe(3, 5, 'up', 'use', 'Trocando um disco'), pe(10, 5, 'up', 'use', 'Conferindo os cabos'),
+    ],
+  },
+  // Pauta: sala de planejamento e arquivo morto
+  pauta: {
+    naParede: [m('whiteboard', 2, 0, { extra: 'quadro' }), m('window', 9, 0, { extra: 'janela' })],
+    chao: [
+      m('bookshelf', 6, 0, { seed: 33 }), m('filing_cabinet', 11, 0), m('filing_cabinet', 12, 0),
+      m('meeting_table', 4, 4, { seed: 9 }), m('stool', 4, 3), m('stool', 6, 3), m('stool', 4, 6), m('stool', 6, 6),
+      m('armchair', 11, 5, { variant: 'left' }), m('floor_lamp', 12, 4),
+    ],
+    lugares: [
+      pe(3, 1, 'up', 'use', 'Colando post-its no quadro'), senta(4, 3, 'down', 'read', 'Planejando a semana', { held: 'papers' }),
+      pe(11, 1, 'up', 'use', 'No arquivo morto'), senta(11, 5, 'left', 'read', 'Lendo a pauta na poltrona', { held: 'papers' }),
+    ],
+    tapetes: [{ lx: 3, ly: 3, w: 5, h: 4, cor: '#f2d48a' }],
+  },
+  // Lume: biblioteca
+  lume: {
+    naParede: [m('clock', 7, 0, { extra: 'relogio' })],
+    chao: [
+      m('bookshelf', 2, 0, { seed: 71 }), m('bookshelf', 4, 0, { seed: 72 }), m('bookshelf', 8, 0, { seed: 73 }), m('bookshelf', 10, 0, { seed: 74 }),
+      m('armchair', 3, 4, { variant: 'right' }), m('floor_lamp', 2, 4), m('armchair', 10, 4, { variant: 'left' }), m('floor_lamp', 11, 4),
+    ],
+    lugares: [
+      pe(3, 1, 'up', 'read', 'Procurando um livro', 'book'), pe(9, 1, 'up', 'read', 'Na biblioteca', 'book'),
+      senta(3, 4, 'right', 'read', 'Lendo na biblioteca', { held: 'book' }), senta(10, 4, 'left', 'read', 'Estudando na poltrona', { held: 'book' }),
+    ],
+    tapetes: [{ lx: 4, ly: 3, w: 6, h: 3, cor: '#a58fd8' }],
+  },
+  // Lar: sala de jantar
+  lar: {
+    naParede: [m('window', 2, 0, { extra: 'janela' }), m('painting', 6, 0, { seed: 8 }), m('window', 10, 0, { extra: 'janela' })],
+    chao: [
+      m('cafe_table', 4, 3), m('cafe_chair', 3, 3, { variant: 'right' }), m('cafe_chair', 5, 3, { variant: 'left' }),
+      m('cafe_table', 9, 3), m('cafe_chair', 8, 3, { variant: 'right' }), m('cafe_chair', 10, 3, { variant: 'left' }),
+      m('plant_tall', 12, 0, { variant: 'palm' }), m('plant_small', 1, 7, { variant: 'flower' }),
+    ],
+    lugares: [
+      senta(3, 3, 'right', 'drink', 'Jantando', { held: 'coffee' }), senta(10, 3, 'left', 'drink', 'Lanche da tarde', { held: 'coffee' }),
+      pe(6, 6, 'down', 'stretch', 'Arrumando a mesa'),
+    ],
+  },
+  // Rota: sala de embarque
+  rota: {
+    naParede: [m('window', 2, 0, { extra: 'janela' }), m('window', 5, 0, { extra: 'janela' }), m('window', 9, 0, { extra: 'janela' })],
+    chao: [m('bench', 2, 5), m('bench', 8, 5), m('plant_tall', 12, 0, { variant: 'monstera' }), m('plant_small', 1, 7, { variant: 'succulent' })],
+    lugares: [
+      senta(2, 5, 'down', 'sit', 'Esperando o embarque', { dx: 4 }), senta(8, 5, 'down', 'read', 'Planejando o roteiro', { held: 'book', dx: 4 }),
+      pe(6, 1, 'up', 'drink', 'Olhando a vista', 'coffee'),
+    ],
+    tapetes: [{ lx: 1, ly: 4, w: 11, h: 3, cor: '#e7a0bd' }],
+  },
+  // Copa maior: mais mesas, outro sofá e um segundo café
+  copa: {
+    naParede: [m('window', 5, 0, { extra: 'janela' }), m('shelf_wall', 9, 0, { seed: 6 })],
+    chao: [
+      m('coffee_machine', 11, 0), m('vending_machine', 12, 0),
+      m('cafe_table', 3, 3), m('cafe_chair', 2, 3, { variant: 'right' }), m('cafe_chair', 4, 3, { variant: 'left' }),
+      m('cafe_table', 9, 3), m('cafe_chair', 8, 3, { variant: 'right' }), m('cafe_chair', 10, 3, { variant: 'left' }),
+      m('sofa', 5, 6, { variant: 'down' }), m('plant_small', 1, 7, { variant: 'succulent' }), m('plant_tall', 12, 7, { variant: 'palm' }),
+    ],
+    lugares: [
+      pe(11, 1, 'up', 'use', 'Tirando um café'),
+      senta(2, 3, 'right', 'drink', 'Café na mesinha', { held: 'coffee' }), senta(4, 3, 'left', 'drink', 'Café na mesinha', { held: 'coffee' }),
+      senta(8, 3, 'right', 'laugh', 'Papo na mesa da copa'), senta(10, 3, 'left', 'talk', 'Papo na mesa da copa', { held: 'coffee' }),
+      senta(5, 6, 'down', 'laugh', 'Batendo papo no sofá', { dx: 4 }),
+    ],
+  },
+};
+
+/** A ampliação de quem (agente ou 'copa'); agente sem a sua usa a sala de reuniões neutra. */
+export const anexoDe = (dono: string): AnexoModelo => ANEXOS[dono] ?? ANEXO_PADRAO;

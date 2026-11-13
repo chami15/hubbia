@@ -16,7 +16,7 @@ import * as art from './habblaud/art/index';
 import { pixelText, pixelTextWidth } from './habblaud/art/pixelfont';
 import { FURNITURE, TILE, type Dir, type HeldItem, type Pose, type ScreenMode, type Sprite } from './habblaud/art/api';
 import { agentePorId, type AgenteId } from './agentes';
-import { SALAS, VAGA, type ModeloSala, type MovelModelo } from './salas';
+import { SALAS, VAGA, anexoDe, type ModeloSala, type MovelModelo } from './salas';
 import { TERREO, type AndarDef } from './andares';
 
 export const ROWS = 26;
@@ -54,7 +54,15 @@ export interface Area {
   placa?: string;
   /** Parte do núcleo do andar (hall do elevador ou copa), em vez de sala de agente. */
   nucleo?: 'hall' | 'copa';
+  /** Metade nova de uma sala ampliada: o id da sala original (agente ou 'copa'). Sem porta e sem divisória com ela. */
+  anexoDe?: AreaId;
 }
+
+/**
+ * Salas ampliadas de um andar: vaga absorvida → de quem é a ampliação (id do agente ou 'copa'). A vaga absorvida deixa
+ * de ser vaga livre; a sala ocupa as duas, sem parede no meio e com uma porta só (decisão do chefe, 2026-11-13).
+ */
+export type Ampliacoes = Record<number, AgenteId | 'copa'>;
 
 /** Um móvel já posicionado no mundo. */
 export interface Movel extends MovelModelo {
@@ -127,7 +135,9 @@ export function posicaoDaVaga(i: number, andar: AndarDef = TERREO): { x0: number
  * Monta o prédio para as vagas dadas (`vagas[i]` = id do agente ou null). Puro: o mesmo `vagas` dá o mesmo prédio,
  * então dá para remontar a cada mudança sem perder nada (lugares e móveis têm ids estáveis).
  */
-export function montarPredio(vagas: readonly (AgenteId | null)[], def: AndarDef = TERREO): Predio {
+export function montarPredio(
+  vagas: readonly (AgenteId | null)[], def: AndarDef = TERREO, ampliadas: Ampliacoes = {}, emObra: ReadonlySet<number> = new Set(),
+): Predio {
   const nCols = colunasDeSalas(vagas, def);
   const cols = CORE_W + nCols * SALA_W;
   const { nucleo } = def;
@@ -142,6 +152,18 @@ export function montarPredio(vagas: readonly (AgenteId | null)[], def: AndarDef 
   for (let i = 0; i < nCols * 2; i++) {
     const { x0, andar } = posicaoDaVaga(i, def);
     const dono = vagas[i] ?? null;
+    const ampliacao = vagas[i] ? undefined : ampliadas[i];
+    if (ampliacao && vagaDaAmpliacao(vagas, def, ampliacao, ampliadas) === i) {
+      const base = ampliacao === 'copa' ? nucleo.copa : SALAS[ampliacao];
+      if (base) {
+        // piso e parede da sala original (parece um ambiente só); móveis e lugares, os da ampliação
+        const ax = anexoDe(ampliacao);
+        const modelo: ModeloSala = { ...base, naParede: ax.naParede, chao: ax.chao, lugares: emObra.has(i) ? [] : ax.lugares, tapetes: ax.tapetes, porta: undefined };
+        // porta vazia: entra-se pela sala original
+        areas.push({ id: `${ampliacao}:anexo`, x0, w: SALA_W, andar, modelo, porta: [0, 0], dono: ampliacao === 'copa' ? undefined : ampliacao, vaga: i, anexoDe: ampliacao });
+        continue;
+      }
+    }
     if (dono) areas.push({ id: dono, x0, w: SALA_W, andar, modelo: SALAS[dono], porta: [6, 8], dono, vaga: i, placa: (agentePorId(dono)?.nome ?? dono).toLowerCase() });
     else areas.push({ id: `vaga-${i}`, x0, w: SALA_W, andar, modelo: VAGA, porta: [6, 8], vaga: i, livre: true, placa: 'vaga' });
   }
@@ -201,11 +223,44 @@ export function montarPredio(vagas: readonly (AgenteId | null)[], def: AndarDef 
   // Divisórias entre áreas vizinhas do mesmo andar (chave: "coluna da direita,linha").
   const divisorias = new Set<string>();
   for (const a of areas) {
-    if (a.x0 === 0) continue; // a borda esquerda do prédio é parede externa, não divisória
+    if (a.x0 === 0 || juntaDeAmpliacao(areas, a)) continue; // borda esquerda = parede externa; sala ampliada = sem parede no meio
     const an = andarDe(a);
     for (let r = an.face; r <= an.piso + an.linhas; r++) divisorias.add(`${a.x0},${r}`);
   }
   return { andar: def, elevadores, cols, W: cols * TILE, areas, naParede, chao, lugares, andavel, divisorias };
+}
+
+/**
+ * Qual vaga uma ampliação ocupa, ou -1 se ela não cabe (vizinha ocupada, sala original fora do andar). Ampliação é só
+ * para os lados, do mesmo lado do corredor: a de um agente na coluna vizinha à sala dele; a da copa na coluna de salas
+ * encostada no núcleo. Guardada em `ampliadas`, a vaga só vale se continua coerente (dado salvo velho não quebra nada).
+ */
+export function vagaDaAmpliacao(vagas: readonly (AgenteId | null)[], def: AndarDef, dono: AgenteId | 'copa', ampliadas: Ampliacoes): number {
+  const salvo = Object.entries(ampliadas).find(([, d]) => d === dono);
+  if (!salvo) return -1;
+  const i = Number(salvo[0]);
+  return vizinhasPossiveis(vagas, def, dono).includes(i) && vagas[i] == null ? i : -1;
+}
+
+/** Vagas onde a ampliação de `dono` pode ficar (ignorando se estão livres). */
+export function vizinhasPossiveis(vagas: readonly (AgenteId | null)[], def: AndarDef, dono: AgenteId | 'copa'): number[] {
+  const nCols = colunasDeSalas(vagas, def);
+  if (dono === 'copa') {
+    if (!def.nucleo.copa) return [];
+    const col = def.nucleo.lado === 'esquerda' ? 0 : nCols - 1;
+    return [col * 2 + (def.nucleo.hall === 'cima' ? 1 : 0)];
+  }
+  const k = vagas.indexOf(dono);
+  if (k < 0) return [];
+  return [k - 2, k + 2].filter((i) => i >= 0 && i < nCols * 2);
+}
+
+/** A divisória à esquerda de `a` some quando `a` e a área à esquerda dele são as duas metades da mesma sala. */
+function juntaDeAmpliacao(areas: readonly Area[], a: Area): boolean {
+  const esq = areas.find((b) => b.andar === a.andar && b.x0 + b.w === a.x0);
+  if (!esq) return false;
+  const original = (x: Area) => x.anexoDe ?? (x.nucleo === 'copa' ? 'copa' : x.dono);
+  return (!!a.anexoDe || !!esq.anexoDe) && original(a) === original(esq);
 }
 
 /** Dá para ir do tile (c1, r1) ao vizinho (c2, r2) sem atravessar uma divisória? */
@@ -357,7 +412,7 @@ export interface Divisoria {
 export function divisorias(p: Predio): Divisoria[] {
   const sulY = (ANDAR_CIMA.piso + ANDAR_CIMA.linhas) * TILE;
   return p.areas
-    .filter((a) => a.x0 > 0)
+    .filter((a) => a.x0 > 0 && !juntaDeAmpliacao(p.areas, a))
     .map((a) => {
       const an = andarDe(a);
       const y = an.face * TILE;
@@ -398,7 +453,7 @@ export function desenharPredio(ctx: CanvasRenderingContext2D, p: Predio, e: Esta
     const md = modeloVisivel(a);
     const o = { seed: i + 1, tint: md.tint, tint2: md.tint2 };
     art.drawFloor(ctx, md.piso, a.x0 * TILE, an.piso * TILE, a.w * TILE, an.linhas * TILE, o);
-    if (a.livre) return;
+    if (a.livre || a.anexoDe) return;
     const [p0, p1] = a.porta;
     if (a.andar === 'cima') art.drawFloor(ctx, md.piso, (a.x0 + p0) * TILE, (an.piso + an.linhas) * TILE, (p1 - p0) * TILE, TILE, o);
     else art.drawFloor(ctx, md.piso, (a.x0 + p0) * TILE, an.face * TILE, (p1 - p0) * TILE, (an.piso - an.face) * TILE, o);
@@ -411,7 +466,7 @@ export function desenharPredio(ctx: CanvasRenderingContext2D, p: Predio, e: Esta
   // Faces das paredes: em cima sem passagem (a porta é na parede sul); embaixo com o vão da porta (menos na vaga).
   for (const a of p.areas) {
     const an = andarDe(a);
-    const doorways = a.andar === 'baixo' && !a.livre ? [{ x: (a.x0 + a.porta[0]) * TILE, w: (a.porta[1] - a.porta[0]) * TILE }] : [];
+    const doorways = a.andar === 'baixo' && !a.livre && !a.anexoDe ? [{ x: (a.x0 + a.porta[0]) * TILE, w: (a.porta[1] - a.porta[0]) * TILE }] : [];
     art.drawWallFace(ctx, a.x0 * TILE, an.face * TILE, a.w * TILE, modeloVisivel(a).parede, { doorways });
   }
   for (const mv of p.naParede) {
@@ -446,7 +501,7 @@ export function desenharPredio(ctx: CanvasRenderingContext2D, p: Predio, e: Esta
   }
   const sulY = (ANDAR_CIMA.piso + ANDAR_CIMA.linhas) * TILE;
   for (const a of p.areas.filter((x) => x.andar === 'cima')) {
-    const doorways = a.livre ? [] : [{ x: (a.x0 + a.porta[0]) * TILE, w: (a.porta[1] - a.porta[0]) * TILE }];
+    const doorways = a.livre || a.anexoDe ? [] : [{ x: (a.x0 + a.porta[0]) * TILE, w: (a.porta[1] - a.porta[0]) * TILE }];
     const parede = modeloVisivel(a).parede;
     itens.push({ y: sulY + TILE, draw: () => art.drawSouthWall(ctx, a.x0 * TILE, sulY, a.w * TILE, parede, { doorways }) });
   }

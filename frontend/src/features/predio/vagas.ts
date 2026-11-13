@@ -1,11 +1,13 @@
 // Quem está em cada vaga de cada andar, guardado NESTE navegador. É estado de tela, como era o rascunho da sala no
 // escritório isométrico: quando "agentes ativos por chefe" existir no backend, esta é a única peça que muda.
 //
-// Formato salvo (versão 2): { versao: 2, andares: { "0": [...], "1": [...] } }. A versão 1 era só a lista do térreo:
-// ela vira o térreo da versão 2, sem perder ninguém (testado em __testes__/vagas.test.ts).
+// Formato salvo (versão 2): { versao: 2, andares: { "0": [...], "1": [...] }, ampliadas?: { "0": { "3": "cifra" } } }.
+// A versão 1 era só a lista do térreo: ela vira o térreo da versão 2, sem perder ninguém (testado em __testes__/vagas.test.ts).
+// `ampliadas` (salas ampliadas: vaga absorvida → dono) é opcional: quem salvou antes dela continua lendo igual.
 import { INICIAIS, type AgenteId } from './agentes'
 import { ANDARES, andarPorId } from './andares'
-import { vagasVazias, type Vagas, type VagasPorAndar } from './edificio'
+import { vagasVazias, type AmpliacoesPorAndar, type Vagas, type VagasPorAndar } from './edificio'
+import { vagaDaAmpliacao, type Ampliacoes } from './predio'
 import { SALAS } from './salas'
 
 const CHAVE = 'hubbia:predio:vagas'
@@ -79,18 +81,52 @@ export function lerVagas(salvo: string | null): VagasPorAndar {
   return acomodar(v, sobra)
 }
 
-export function carregarVagas(): VagasPorAndar {
+/**
+ * Lê as salas ampliadas salvas, já conferidas contra as vagas lidas (puro). Só fica a ampliação que ainda faz sentido:
+ * dono no andar (ou a copa, se o andar tem), vaga vizinha e livre, uma por dono. O resto some sem quebrar a tela.
+ */
+export function lerAmpliadas(salvo: string | null, vagas: VagasPorAndar): AmpliacoesPorAndar {
+  let dado: unknown
   try {
-    return lerVagas(localStorage.getItem(CHAVE))
+    dado = JSON.parse(salvo ?? 'null')
+  } catch {
+    dado = null
+  }
+  const todas = (dado as { ampliadas?: Record<string, unknown> } | null)?.ampliadas
+  const r: AmpliacoesPorAndar = {}
+  for (const def of ANDARES) {
+    r[def.id] = {}
+    const doAndar = todas && typeof todas === 'object' ? todas[String(def.id)] : undefined
+    if (!doAndar || typeof doAndar !== 'object') continue
+    for (const [k, dono] of Object.entries(doAndar as Record<string, unknown>)) {
+      const i = Number(k)
+      if (typeof dono !== 'string' || !Number.isInteger(i) || (dono !== 'copa' && !SALAS[dono])) continue
+      if (Object.values(r[def.id]).includes(dono)) continue
+      const so: Ampliacoes = { [i]: dono }
+      if (vagaDaAmpliacao(vagas[def.id], def, dono, so) === i) r[def.id][i] = dono
+    }
+  }
+  return r
+}
+
+export function carregarDisposicao(): { vagas: VagasPorAndar; ampliadas: AmpliacoesPorAndar } {
+  try {
+    const salvo = localStorage.getItem(CHAVE)
+    const vagas = lerVagas(salvo)
+    return { vagas, ampliadas: lerAmpliadas(salvo, vagas) }
   } catch {
     // sem armazenamento (aba anônima, bloqueado): começa do padrão
-    return vagasPadrao()
+    return { vagas: vagasPadrao(), ampliadas: {} }
   }
 }
 
-export function salvarVagas(vagas: VagasPorAndar): void {
+export function carregarVagas(): VagasPorAndar {
+  return carregarDisposicao().vagas
+}
+
+export function salvarVagas(vagas: VagasPorAndar, ampliadas: AmpliacoesPorAndar = {}): void {
   try {
-    localStorage.setItem(CHAVE, JSON.stringify({ versao: 2, andares: vagas }))
+    localStorage.setItem(CHAVE, JSON.stringify({ versao: 2, andares: vagas, ampliadas }))
   } catch {
     // tudo bem: só não lembra na próxima visita
   }

@@ -27,13 +27,13 @@ A arte vem do habblaud (MIT). Contexto e inventário completo: `docs/estudo-habb
 | `relogioDoMundo.ts` | A **hora do mundo** (céu, luz, "dormindo", relógio do topo): conta pura sobre o tempo real, mesma do backend (`resolvers/relogio.py`), testada com os mesmos vetores. Não confundir com `relogio.ts`. |
 | `relogio.ts` | Relógio de mundo que para com a aba escondida (injetável, para teste). |
 | `atalho.ts` | Bolha de atalho ancorada no personagem (clique direito): quem tem atalho e a geometria pura (mundo → tela, encaixe sem sair da área). O HTML da bolha da Vita é `features/saude/BolhaVita.tsx`. |
-| `vagas.ts` | Quem está em cada vaga **de cada andar** (`localStorage`, formato v2 por andar; converte o v1, que era só o térreo). É a única peça que muda quando isso for para o backend. |
+| `vagas.ts` | Quem está em cada vaga **de cada andar** e as salas ampliadas (`localStorage`, formato v2 por andar; converte o v1, que era só o térreo). É a única peça que muda quando isso for para o backend. |
 | `andares.ts` | **Os andares**: lado do núcleo (esquerda/direita), hall em cima ou embaixo, copa opcional, quantas salas. Andar novo = uma entrada aqui. |
-| `edificio.ts` | Todos os andares vivos ao mesmo tempo (sem DOM): uma simulação por andar, viagens de elevador entre eles, visitas entre andares, vagas e obras por andar. |
+| `edificio.ts` | Todos os andares vivos ao mesmo tempo (sem DOM): uma simulação por andar, viagens de elevador entre eles, visitas entre andares, vagas e obras por andar, salas ampliadas e mudança de agente de andar. |
 | `trocaDeAndar.ts` / `useElevador.ts` / `Elevador.tsx` | A troca de andar na tela: linha do tempo pura (portas fecham, andar troca escondido, portas abrem), o gancho que a roda, e o painel do elevador, as portas e o indicador de andar em pixel art. |
-| `PainelPredio.tsx` | Gerência: quem está no prédio (abrir/dispensar) e catálogo (adicionar). |
+| `PainelPredio.tsx` | Gerência: quem está no prédio (abrir/dispensar, ampliar/reduzir a sala, mudar de andar), copa do andar visível e catálogo (adicionar). |
 | `habblaud/` | Arte do habblaud **copiada**. Não edite (veja "Arte"). |
-| `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**), `relogio.test.ts`, `status.test.ts` e os da Fase E: `rotina`, `ritmo`, `descanso`, `almoco`, `encontros`, `visita`, `relacoes`, `humor`, `humor-predio`, `autonomia`. |
+| `__testes__/` | `predio.test.ts` (salas alcançáveis, vagas, simulação e **regressões**), `relogio.test.ts`, `status.test.ts` e os da Fase E: `rotina`, `ritmo`, `descanso`, `almoco`, `encontros`, `visita`, `relacoes`, `humor`, `humor-predio`, `autonomia`; dos andares: `andares`, `viagem`, `edificio`, `vagas`, `trocaDeAndar`, `ampliacao`, `reforma`. |
 
 O status vem do backend em `status.ts::statusNoPredio` (mensagem não lida → `precisa_de_voce`; `pensando` → `pensando` (lê papéis, lâmpada); `executando` → `trabalhando` (digita);
 `falando` → `conversando`; `idle` → `ocioso`, ou `dormindo` na janela de sono **da personalidade** pela hora do mundo; agente conceito: ocioso de dia, dormindo de noite).
@@ -95,6 +95,12 @@ export const SALAS = { /* ... */ lume: {
 
 **Viagem entre andares** (`sim.viajar` → `aoViajar` → `edificio` → `receberViajante`): o agente vai ao elevador, some, e reaparece **dentro** do
 elevador do destino (nunca na coordenada antiga: era o "teleporte"). Um agente está sempre em um lugar só; `edificio.test.ts` confere isso a cada passo.
+
+**Sala ampliada e mudança de andar** (`docs/segundo-andar.md`): a ampliação é a área `<dono>:anexo` na vaga vizinha
+(mesmo lado do corredor), sem porta e sem divisória com a original. Agente novo ganha a dele em `ANEXOS` (`salas.ts`;
+sem ela usa a sala de reuniões neutra): deixe livres as colunas lx 0 e 13 nas linhas 1–6, que é por onde se passa de
+uma metade à outra; `ampliacao.test.ts` cobre sozinho o agente novo em toda posição. Quem lê "a sala do agente" na
+simulação tem de incluir o `:anexo` dele (`opcoesDe`), e a copa inclui `copa:anexo` (`ehComum`/`ehCopa`).
 
 ## Receita: comportamento ou status novo
 

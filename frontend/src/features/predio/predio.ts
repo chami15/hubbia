@@ -357,7 +357,7 @@ function desenharItemParede(ctx: CanvasRenderingContext2D, mv: Movel, e: EstadoC
   blit(ctx, sp, x, y, dy);
   if (mv.extra === 'quadro' && r?.board) art.drawBoard(ctx, { x: ox + r.board.x, y: oy + r.board.y, w: r.board.w, h: r.board.h }, a.modelo.quadro ?? [], e.t);
   if (mv.extra === 'relogio' && r?.face) art.drawClock(ctx, { x: ox + r.face.x, y: oy + r.face.y, w: r.face.w, h: r.face.h }, e.agora);
-  if (mv.extra === 'tv' && r?.tv) art.drawScreen(ctx, { x: ox + r.tv.x, y: oy + r.tv.y, w: r.tv.w, h: r.tv.h }, e.telas[a.id] ?? 'off', e.t, 7);
+  if (mv.extra === 'tv' && r?.tv) art.drawScreen(ctx, { x: ox + r.tv.x, y: oy + r.tv.y, w: r.tv.w, h: r.tv.h }, e.telas[a.anexoDe ?? a.id] ?? 'off', e.t, 7);
   if (mv.extra === 'placa' && r?.sign && a.placa) {
     const txt = a.livre && e.obras.has(a.vaga as number) ? 'em obra' : a.placa;
     const tw = pixelTextWidth(txt);
@@ -367,9 +367,11 @@ function desenharItemParede(ctx: CanvasRenderingContext2D, mv: Movel, e: EstadoC
 
 /** A segunda mesa mostra outra coisa que a TV: terminal no Norte e na sala de máquinas, documento nas outras. */
 function telaDaMesa(mv: Movel, e: EstadoCena): ScreenMode {
-  const modo = e.telas[mv.area.id];
+  // na metade nova de uma sala ampliada, a tela é a do dono
+  const id = mv.area.anexoDe ?? mv.area.id;
+  const modo = e.telas[id];
   if (!modo || modo === 'off' || modo === 'standby') return modo ?? 'off';
-  return mv.area.id === 'norte' || mv.area.id === 'motriz' ? 'terminal' : 'docs';
+  return id === 'norte' || id === 'motriz' ? 'terminal' : 'docs';
 }
 
 /** Fita de obra e poeira sobre a sala em construção ou desmontagem. */

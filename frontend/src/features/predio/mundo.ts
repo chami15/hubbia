@@ -13,8 +13,9 @@ import { pixelText, pixelTextWidth } from './habblaud/art/pixelfont'
 import { corCss, type AgenteId } from './agentes'
 import { ANDARES, type AndarId } from './andares'
 import {
-  adicionarNoAndar, agentesDoEdificio, andarAtual, criarEdificio, definirStatus as definirStatusNoEdificio, dispensar, falarNoEdificio,
-  passoEdificio, resumoDoAndar, temEspaco, vagasDoEdificio, visitandoNoEdificio, visitarNoEdificio, type AndarVivo, type ResumoAgente, type VagasPorAndar,
+  adicionarNoAndar, agentesDoEdificio, ampliada, ampliar, andarAtual, casaDe, criarEdificio, definirStatus as definirStatusNoEdificio, dispensar,
+  falarNoEdificio, mudarDeAndar, ondeAmpliar, passoEdificio, reduzir, resumoDoAndar, temEspaco, vagasDoEdificio, visitandoNoEdificio, visitarNoEdificio,
+  type AmpliacoesPorAndar, type AndarVivo, type ResumoAgente, type VagasPorAndar,
 } from './edificio'
 import { H, areaEm, desenharPredio, lugaresInalcancaveis, type EstadoCena } from './predio'
 import { criarRelogio } from './relogio'
@@ -28,10 +29,12 @@ import {
   type AgenteVivo, type Status,
 } from './sim'
 
-export type { ResumoAgente, Vagas, VagasPorAndar } from './edificio'
+export type { AmpliacoesPorAndar, ResumoAgente, Vagas, VagasPorAndar } from './edificio'
 
 export interface OpcoesMundo {
   vagas: VagasPorAndar
+  /** Salas ampliadas salvas (vaga absorvida → dono), por andar. */
+  ampliadas?: AmpliacoesPorAndar
   aoClicarAgente: (id: AgenteId) => void
   /** Vaga livre clicada no andar visível. */
   aoClicarVaga: (vaga: number) => void
@@ -39,8 +42,8 @@ export interface OpcoesMundo {
   aoClicarElevador?: () => void
   /** Clique direito num agente que tem atalho rápido (ver `atalho.ts`). */
   aoAtalhoAgente?: (id: AgenteId) => void
-  /** Avisado sempre que as vagas mudam (para salvar). */
-  aoMudarVagas: (vagas: VagasPorAndar) => void
+  /** Avisado sempre que as vagas (ou as ampliações) mudam (para salvar). */
+  aoMudarVagas: (vagas: VagasPorAndar, ampliadas: AmpliacoesPorAndar) => void
 }
 
 /** Um andar para o painel do elevador. */
@@ -85,6 +88,17 @@ export interface Mundo {
   /** Onde o agente está agora: andar, `null` no elevador, `undefined` fora do prédio. */
   andarDoAgente: (id: AgenteId) => AndarId | null | undefined
   andares: () => ResumoAndar[]
+  /** Andar da sala do agente (quem está se mudando já conta o novo). */
+  casaDe: (id: AgenteId) => AndarId | undefined
+  /** A sala (de um agente, no andar dele; ou a copa, no andar dado) pode ampliar agora? */
+  podeAmpliar: (dono: AgenteId | 'copa', andar: AndarId) => boolean
+  ampliada: (dono: AgenteId | 'copa', andar: AndarId) => boolean
+  ampliar: (dono: AgenteId | 'copa', andar: AndarId) => boolean
+  reduzir: (dono: AgenteId | 'copa', andar: AndarId) => boolean
+  /** Cabe mais alguém no andar dado? */
+  temEspacoEm: (andar: AndarId) => boolean
+  /** Muda o agente de andar: sala nova em obra lá, ele pega o elevador, a sala antiga é desmontada. */
+  mudarDeAndar: (id: AgenteId, andar: AndarId) => boolean
   destruir: () => void
 }
 
@@ -119,7 +133,7 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
   document.addEventListener('visibilitychange', aoMudarVisibilidade)
 
   const statusDe = (id: AgenteId) => statusDesejado.get(id) ?? STATUS_PADRAO
-  const ed = criarEdificio(opcoes.vagas, 0, { aoMudarVagas: opcoes.aoMudarVagas, status: statusDe })
+  const ed = criarEdificio(opcoes.vagas, 0, { aoMudarVagas: opcoes.aoMudarVagas, status: statusDe, ampliadas: opcoes.ampliadas })
   let visivelId: AndarId = ANDARES[0].id
   // o andar visível; `predio` e `sim` são atalhos para ele (o resto do arquivo desenha só este)
   const atual = (): AndarVivo => ed.andares.get(visivelId) as AndarVivo
@@ -304,12 +318,15 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
     const luz = luzes.get(visivelId) ?? {}
     luzes.set(visivelId, luz)
     for (const a of predio.areas) {
-      const alvo = ocupadas.has(a.id) ? 1 : a.livre ? 0.7 : a.dono ? 0 : 0.6
+      // sala ampliada é um ambiente só: alguém em qualquer metade acende as duas
+      const ocupada = ocupadas.has(a.id) || ocupadas.has(a.anexoDe ?? `${a.id}:anexo`)
+      const alvo = ocupada ? 1 : a.livre ? 0.7 : a.dono ? 0 : 0.6
       luz[a.id] = (luz[a.id] ?? alvo) + (alvo - (luz[a.id] ?? alvo)) * 0.06
     }
     const telas: EstadoCena['telas'] = {}
     for (const a of sim.agentes) {
-      const naSala = areaEm(predio, a.x, a.y - 4)?.id === a.def.id
+      const onde = areaEm(predio, a.x, a.y - 4)
+      const naSala = onde?.id === a.def.id || onde?.anexoDe === a.def.id
       const naMesa = !!a.lugar?.mesa
       telas[a.def.id] =
         a.status === 'dormindo' ? 'off' : naMesa && a.status === 'trabalhando' ? a.def.tela : naMesa && a.status === 'precisa_de_voce' ? 'alert' : naMesa && a.status === 'conversando' ? 'chat' : naMesa && a.status === 'pensando' ? 'search' : naSala ? 'standby' : 'off'
@@ -400,6 +417,13 @@ export function criarMundo(hospedeiro: HTMLElement, opcoes: OpcoesMundo): Mundo 
     },
     andarDoAgente: (id) => andarAtual(ed, id),
     andares: () => ANDARES.map((a) => ({ id: a.id, nome: a.nome, botao: a.botao, ...resumoDoAndar(ed, a.id) })),
+    casaDe: (id) => casaDe(ed, id),
+    podeAmpliar: (dono, andar) => ondeAmpliar(ed, andar, dono).length > 0,
+    ampliada: (dono, andar) => ampliada(ed, andar, dono),
+    ampliar: (dono, andar) => ampliar(ed, andar, dono, relogio()),
+    reduzir: (dono, andar) => reduzir(ed, andar, dono, relogio()),
+    temEspacoEm: (andar) => temEspaco(ed, andar),
+    mudarDeAndar: (id, andar) => mudarDeAndar(ed, id, andar, relogio()),
     destruir: () => {
       cancelAnimationFrame(quadroId)
       observador.disconnect()

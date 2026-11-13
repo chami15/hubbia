@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { criarMundo, type Mundo } from '../predio/mundo'
-import { carregarVagas, salvarVagas } from '../predio/vagas'
+import { carregarDisposicao, salvarVagas } from '../predio/vagas'
 import { AGENTES, agentePorId, corCss, type AgenteId } from '../predio/agentes'
 import type { Status } from '../predio/sim'
 import { PainelPredio } from '../predio/PainelPredio'
@@ -90,8 +90,10 @@ export function Escritorio() {
   useEffect(() => {
     const hospedeiro = hospedeiroRef.current
     if (!hospedeiro) return
+    const disposicao = carregarDisposicao()
     const m = criarMundo(hospedeiro, {
-      vagas: carregarVagas(),
+      vagas: disposicao.vagas,
+      ampliadas: disposicao.ampliadas,
       aoClicarAgente: abrirAgente,
       aoClicarVaga: (vaga) => {
         setAtalho(null)

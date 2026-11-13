@@ -45,3 +45,30 @@ Abrir pelo painel do prédio um agente que está em outro andar leva até ele pe
 
 Não coberto por teste automático: a visita entre andares **no navegador** a partir de uma mensagem social real (a
 lógica está testada; ver com o backend no ar).
+
+## Salas ampliadas e mudança de andar (2026-11-13)
+
+Decisões do chefe:
+
+1. Ampliação é **caso excepcional**, com **estilo próprio por agente** (sala de reuniões, sala de time onde trabalha
+   mais de um agente...), não uma cópia da sala.
+2. **Só para os lados**: a vaga vizinha do mesmo lado do corredor.
+3. A copa também amplia, **por andar e opcional** ("nem todas as copas vão ser grandes"): é um botão na seção da copa
+   do andar visível, não uma regra para todos os andares.
+4. **Uma porta só**: a metade nova não tem porta nem parede no meio; entra-se pela sala original.
+5. **Mudar agente de andar**, com a sala sendo desmontada num andar e construída no outro.
+
+| Peça | Papel |
+|---|---|
+| `salas.ts` › `ANEXOS` | A metade nova de cada agente (Cifra: reunião de orçamento; Agenda: reuniões com TV; Vita: estúdio; Norte: sala de time com 3 mesas; Motriz: datacenter; Pauta: planejamento e arquivo; Lume: biblioteca; Lar: sala de jantar; Rota: sala de embarque) e a da copa (mais mesas, sofá, outro café). Piso e parede vêm da sala original. |
+| `predio.ts` | `montarPredio(vagas, andar, ampliadas, emObra)`: área `<dono>:anexo` na vaga absorvida, sem divisória com a original e sem vão de porta. `vagaDaAmpliacao` ignora dado incoerente (vizinha ocupada, dono fora do andar). |
+| `sim.ts` | A sala do agente inclui a ampliação dele; a ampliação da copa é área comum (café, almoço). `sairDaArea` tira quem está numa ampliação que vai sumir. |
+| `edificio.ts` | `ondeAmpliar` / `ampliar` / `reduzir` (obra na vaga vizinha) e `mudarDeAndar`: obra da sala nova no destino, ele vai ao elevador, a sala antiga (com a ampliação) é desmontada quando ele embarca. |
+| `vagas.ts` | Salva `ampliadas` junto das vagas (opcional; formato anterior continua valendo) e confere ao ler. |
+| `PainelPredio.tsx` | Por agente: "ampliar sala" / "reduzir sala" e "mudar p/ <andar>"; seção da copa do andar visível. |
+
+Testes: `ampliacao.test.ts` (todo agente ampliado em toda posição dos dois andares, alcançável; sem parede no meio e
+com parede para o outro vizinho; sem porta; copa encostada; dado incoerente ignorado; dono usa, colega não entra) e
+`reforma.test.ts` (ampliar, reduzir com alguém dentro, dispensar desmonta as duas metades, mudança completa sem nunca
+estar em dois lugares, mudança recusada nos casos que não dão, dispensado no meio da mudança, leitura do que foi salvo).
+Conferido no navegador: Agenda e copa ampliadas; Norte mudado do térreo para o 2º andar (anda ao elevador, sala desmontada, chega à sala nova).

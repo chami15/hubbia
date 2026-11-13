@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RetratoAgente } from '../agentes/RetratoAgente'
 import { AGENTES, agentePorId, corCss, ehConceito, type AgenteId } from './agentes'
-import { andarPorId } from './andares'
+import { ANDARES, andarPorId } from './andares'
 import type { Mundo, ResumoAgente } from './mundo'
 
 // Gerência do prédio: quem está em cada sala (abrir, dispensar) e o catálogo de quem pode entrar. Abre pela
@@ -91,6 +91,8 @@ export function PainelPredio({ mundo, vaga, aoAbrir, aoFechar }: Props) {
                 const a = agentePorId(p.id)
                 if (!a) return null
                 const ocupado = p.chegando || p.saindo
+                const casa = mundo.casaDe(p.id)
+                const deMudanca = casa !== undefined && p.andar !== casa
                 return (
                   <Linha key={p.id} cor={corCss(a.cor)}>
                     <RetratoAgente agente={a} tamanho={36} anel={2} />
@@ -101,6 +103,9 @@ export function PainelPredio({ mundo, vaga, aoAbrir, aoFechar }: Props) {
                         {p.andar === null ? '' : `${andarPorId(p.andar).nome.toLowerCase()} · `}
                         {p.saindo ? 'indo embora' : p.chegando ? 'chegando' : p.atividade.toLowerCase()}
                       </div>
+                      {casa !== undefined && !p.saindo && (
+                        <AcoesDaSala mundo={mundo} id={p.id} nome={a.nome} casa={casa} desligado={ocupado || deMudanca} />
+                      )}
                     </div>
                     <BotaoPequeno disabled={ocupado} onClick={() => aoAbrir(p.id)}>
                       abrir
@@ -111,6 +116,19 @@ export function PainelPredio({ mundo, vaga, aoAbrir, aoFechar }: Props) {
                   </Linha>
                 )
               })}
+            </Secao>
+          )}
+
+          {vaga === undefined && andarVisivel.nucleo.copa && (
+            <Secao titulo={`copa do ${andarVisivel.nome.toLowerCase()}`}>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-dim)', lineHeight: 1.5 }}>
+                {mundo.ampliada('copa', andarVisivel.id)
+                  ? 'Ampliada: ocupa também a sala encostada nela.'
+                  : 'Ampliar ocupa a sala encostada na copa (precisa estar livre): mais mesas, sofá e outro café.'}
+              </p>
+              <div>
+                <BotaoDaAmpliacao mundo={mundo} dono="copa" andar={andarVisivel.id} nome="a copa" />
+              </div>
             </Secao>
           )}
 
@@ -144,6 +162,52 @@ export function PainelPredio({ mundo, vaga, aoAbrir, aoFechar }: Props) {
         </div>
       </div>
     </>
+  )
+}
+
+/**
+ * Ações sobre a sala de um agente: ampliar/reduzir (a vaga vizinha vira a metade nova da sala) e mudar de andar
+ * (a sala é desmontada aqui e construída lá; ele vai de elevador). Desligado enquanto ele chega, sai ou se muda.
+ */
+function AcoesDaSala({ mundo, id, nome, casa, desligado }: { mundo: Mundo; id: AgenteId; nome: string; casa: number; desligado: boolean }) {
+  const outros = ANDARES.filter((a) => a.id !== casa)
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+      <BotaoDaAmpliacao mundo={mundo} dono={id} andar={casa} nome={nome} desligado={desligado} />
+      {outros.map((an) => {
+        const cabe = mundo.temEspacoEm(an.id)
+        return (
+          <BotaoPequeno
+            key={an.id}
+            disabled={desligado || !cabe}
+            onClick={() => mundo.mudarDeAndar(id, an.id)}
+            titulo={cabe ? `mudar ${nome} para o ${an.nome.toLowerCase()}: a sala é desmontada aqui e construída lá` : `o ${an.nome.toLowerCase()} está cheio`}
+          >
+            mudar p/ {an.nome.toLowerCase()}
+          </BotaoPequeno>
+        )
+      })}
+    </div>
+  )
+}
+
+function BotaoDaAmpliacao({ mundo, dono, andar, nome, desligado = false }: { mundo: Mundo; dono: AgenteId | 'copa'; andar: number; nome: string; desligado?: boolean }) {
+  if (mundo.ampliada(dono, andar)) {
+    return (
+      <BotaoPequeno disabled={desligado} onClick={() => mundo.reduzir(dono, andar)} titulo={`reduzir ${nome}: a metade nova é desmontada e a vaga fica livre`}>
+        reduzir sala
+      </BotaoPequeno>
+    )
+  }
+  const pode = mundo.podeAmpliar(dono, andar)
+  return (
+    <BotaoPequeno
+      disabled={desligado || !pode}
+      onClick={() => mundo.ampliar(dono, andar)}
+      titulo={pode ? `ampliar ${nome}: ocupa a vaga ao lado, sem parede no meio` : 'sem vaga livre ao lado (ou já em obra)'}
+    >
+      ampliar sala
+    </BotaoPequeno>
   )
 }
 
